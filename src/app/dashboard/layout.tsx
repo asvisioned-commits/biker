@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import styles from './layout.module.css';
 import { signOut } from '@/lib/auth';
+import NotificationsDropdown from '@/components/notifications';
 import type { UserRole } from '@/types';
 
 interface MockSession {
@@ -175,8 +176,11 @@ export default function DashboardLayout({
             ☰
           </button>
           <span className={styles.mobileTitle}>Biker<span className={styles.logoDot}>.</span></span>
-          <div className="avatar avatar--sm">
-            {session?.full_name?.[0] || 'U'}
+          <div className={styles.headerRight}>
+            <NotificationsDropdown />
+            <div className="avatar avatar--sm">
+              {session?.full_name?.[0] || 'U'}
+            </div>
           </div>
         </header>
 
