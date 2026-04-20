@@ -1,0 +1,284 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+}
+
+.container {
+  display: flex;
+  width: 100%;
+  min-height: 100dvh;
+}
+
+/* ---- Brand Side ---- */
+.brandSide {
+  display: none;
+  width: 50%;
+  background: linear-gradient(
+    160deg,
+    var(--color-primary-900),
+    var(--color-primary-800),
+    hsl(230, 55%, 20%)
+  );
+  color: white;
+  padding: var(--space-12);
+  position: relative;
+  overflow: hidden;
+}
+
+.brandSide::before {
+  content: '';
+  position: absolute;
+  top: -100px;
+  right: -100px;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: hsla(215, 80%, 55%, 0.08);
+}
+
+.brandSide::after {
+  content: '';
+  position: absolute;
+  bottom: -150px;
+  left: -80px;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: hsla(200, 80%, 55%, 0.06);
+}
+
+@media (min-width: 1024px) {
+  .brandSide { display: flex; }
+}
+
+.brandContent {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.logo {
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  letter-spacing: var(--tracking-tight);
+  color: white;
+  text-decoration: none;
+  margin-bottom: var(--space-12);
+}
+
+.logoDot {
+  color: var(--color-primary-300);
+}
+
+.brandTitle {
+  font-size: var(--text-4xl);
+  font-weight: 800;
+  line-height: var(--leading-tight);
+  margin-bottom: var(--space-4);
+}
+
+.brandSubtitle {
+  font-size: var(--text-lg);
+  color: hsla(0, 0%, 100%, 0.6);
+  margin-bottom: var(--space-12);
+}
+
+.brandFeatures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.brandFeature {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: hsla(0, 0%, 100%, 0.75);
+  padding: var(--space-3) var(--space-4);
+  background: hsla(0, 0%, 100%, 0.06);
+  border-radius: var(--radius-lg);
+  border: 1px solid hsla(0, 0%, 100%, 0.08);
+}
+
+/* ---- Form Side ---- */
+.formSide {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-4);
+  background: var(--bg-primary);
+}
+
+@media (min-width: 1024px) {
+  .formSide { width: 50%; }
+}
+
+.formContainer {
+  width: 100%;
+  max-width: 420px;
+}
+
+.formHeader {
+  margin-bottom: var(--space-6);
+}
+
+.formTitle {
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  margin-bottom: var(--space-2);
+}
+
+.formSubtitle {
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+}
+
+/* ---- Google Button ---- */
+.googleBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  box-shadow: var(--shadow-sm);
+}
+
+.googleBtn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.googleBtn:active {
+  transform: scale(0.98);
+}
+
+.googleBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.googleIcon {
+  flex-shrink: 0;
+}
+
+/* ---- Divider ---- */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: var(--border-default);
+}
+
+.dividerText {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* ---- Mode Toggle ---- */
+.modeToggle {
+  display: flex;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  margin-bottom: var(--space-6);
+}
+
+.modeBtn {
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: all var(--duration-fast) var(--ease-out);
+  background: transparent;
+}
+
+.modeBtnActive {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- Form ---- */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.phoneInput {
+  display: flex;
+  align-items: stretch;
+}
+
+.phonePrefix {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-right: none;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.error {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger-50);
+  border: 1px solid var(--color-danger-200);
+  border-radius: var(--radius-md);
+  color: var(--color-danger-600);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.otpMessage {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+/* ---- Footer ---- */
+.formFooter {
+  margin-top: var(--space-8);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.link {
+  color: var(--color-primary-500);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.link:hover {
+  color: var(--color-primary-600);
+}
