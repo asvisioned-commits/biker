@@ -44,14 +44,15 @@ export default function DashboardLayout({
       { label: 'Tracking', href: '/dashboard/tracking', icon: '📍' },
       { label: 'Addresses', href: '/dashboard/addresses', icon: '🗺️' },
       { label: 'Disputes', href: '/dashboard/disputes', icon: '⚖️' },
+      { label: 'Settings', href: '/dashboard/settings', icon: '⚙️' },
     ],
     rider: [
       { label: 'Dashboard', href: '/dashboard', icon: '🏠' },
       { label: 'Available Jobs', href: '/dashboard/jobs', icon: '📦' },
       { label: 'Active Job', href: '/dashboard/active', icon: '🚴' },
       { label: 'Earnings', href: '/dashboard/earnings', icon: '💰' },
-      { label: 'History', href: '/dashboard/history', icon: '📋' },
-      { label: 'Profile', href: '/dashboard/profile', icon: '👤' },
+      { label: 'My Deliveries', href: '/dashboard/orders', icon: '📋' },
+      { label: 'Settings', href: '/dashboard/settings', icon: '⚙️' },
     ],
     merchant: [
       { label: 'Dashboard', href: '/dashboard', icon: '🏠' },
