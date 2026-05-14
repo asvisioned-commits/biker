@@ -1,6 +1,12 @@
 .page {
-  padding: var(--space-6) var(--space-6) var(--space-16);
+  padding: var(--space-2) 0 var(--space-16);
   max-width: 900px;
+}
+
+@media (min-width: 768px) {
+  .page {
+    padding: var(--space-6) var(--space-6) var(--space-16);
+  }
 }
 
 .header {
