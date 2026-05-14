@@ -23,7 +23,7 @@
 .headerInner {
   max-width: var(--container-xl);
   margin-inline: auto;
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -64,7 +64,14 @@
 .headerActions {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .signupBtn {
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-xs);
+  }
 }
 
 .loginBtn {
@@ -79,14 +86,14 @@
 
 /* ---- Hero ---- */
 .hero {
-  padding-top: calc(var(--header-height) + var(--space-16));
-  padding-bottom: var(--space-16);
+  padding-top: calc(var(--header-height) + var(--space-10));
+  padding-bottom: var(--space-12);
   padding-inline: var(--space-4);
   max-width: var(--container-xl);
   margin-inline: auto;
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--space-12);
+  gap: var(--space-8);
   align-items: center;
 }
 
@@ -96,6 +103,7 @@
     padding-top: calc(var(--header-height) + var(--space-24));
     padding-bottom: var(--space-24);
     padding-inline: var(--space-8);
+    gap: var(--space-12);
   }
 }
 
@@ -126,17 +134,18 @@
 }
 
 .heroTitle {
-  font-size: var(--text-4xl);
+  font-size: clamp(1.75rem, 6vw, var(--text-4xl));
   font-weight: 800;
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 
 @media (min-width: 768px) {
   .heroTitle {
     font-size: var(--text-5xl);
+    margin-bottom: var(--space-6);
   }
 }
 
@@ -163,8 +172,18 @@
 .heroCtas {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-bottom: var(--space-8);
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: 479px) {
+  .heroCtas {
+    flex-direction: column;
+  }
+  .heroCtas .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .heroPrimary {
@@ -207,13 +226,27 @@
   animation-fill-mode: both;
 }
 
+@media (max-width: 767px) {
+  .heroVisual {
+    order: -1;
+  }
+}
+
 .heroPhone {
-  width: 320px;
+  width: 280px;
   background: var(--color-neutral-900);
-  border-radius: 36px;
-  padding: 12px;
+  border-radius: 32px;
+  padding: 10px;
   box-shadow: var(--shadow-xl), 0 0 60px hsla(215, 75%, 47%, 0.08);
   position: relative;
+}
+
+@media (min-width: 768px) {
+  .heroPhone {
+    width: 320px;
+    border-radius: 36px;
+    padding: 12px;
+  }
 }
 
 .heroPhoneScreen {
@@ -368,8 +401,13 @@
 
 /* ---- How It Works ---- */
 .howItWorks {
-  padding: var(--space-20) 0;
-  background: var(--bg-secondary);
+  padding: var(--space-12) 0;
+}
+
+@media (min-width: 768px) {
+  .howItWorks {
+    padding: var(--space-20) 0;
+  }
 }
 
 .stepsGrid {
@@ -416,7 +454,13 @@
 
 /* ---- Services ---- */
 .services {
-  padding: var(--space-20) 0;
+  padding: var(--space-12) 0;
+}
+
+@media (min-width: 768px) {
+  .services {
+    padding: var(--space-20) 0;
+  }
 }
 
 .servicesGrid {
@@ -466,8 +510,14 @@
 
 /* ---- Speed Modes ---- */
 .speedSection {
-  padding: var(--space-20) 0;
+  padding: var(--space-12) 0;
   background: var(--bg-secondary);
+}
+
+@media (min-width: 768px) {
+  .speedSection {
+    padding: var(--space-20) 0;
+  }
 }
 
 .speedGrid {
@@ -530,7 +580,13 @@
 
 /* ---- Trust Section ---- */
 .trustSection {
-  padding: var(--space-20) 0;
+  padding: var(--space-12) 0;
+}
+
+@media (min-width: 768px) {
+  .trustSection {
+    padding: var(--space-20) 0;
+  }
 }
 
 .trustGrid {
@@ -575,7 +631,7 @@
 
 /* ---- Merchant CTA ---- */
 .merchantSection {
-  padding: var(--space-20) 0;
+  padding: var(--space-12) 0;
   background: linear-gradient(
     135deg,
     var(--color-primary-900),
@@ -583,6 +639,12 @@
     hsl(230, 60%, 18%)
   );
   color: white;
+}
+
+@media (min-width: 768px) {
+  .merchantSection {
+    padding: var(--space-20) 0;
+  }
 }
 
 .merchantInner {
@@ -679,8 +741,14 @@
 
 /* ---- Rider Section ---- */
 .riderSection {
-  padding: var(--space-20) 0;
+  padding: var(--space-12) 0;
   background: var(--bg-secondary);
+}
+
+@media (min-width: 768px) {
+  .riderSection {
+    padding: var(--space-20) 0;
+  }
 }
 
 .riderContent {
@@ -728,7 +796,13 @@
 
 /* ---- FAQ ---- */
 .faqSection {
-  padding: var(--space-20) 0;
+  padding: var(--space-12) 0;
+}
+
+@media (min-width: 768px) {
+  .faqSection {
+    padding: var(--space-20) 0;
+  }
 }
 
 .faqGrid {
@@ -799,8 +873,15 @@
 
 .footerLinks {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-8);
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6);
+}
+
+@media (min-width: 640px) {
+  .footerLinks {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-8);
+  }
 }
 
 .footerColumn {
@@ -821,6 +902,7 @@
   color: hsla(0, 0%, 100%, 0.5);
   text-decoration: none;
   transition: color var(--duration-fast) var(--ease-out);
+  padding: var(--space-1) 0;
 }
 
 .footerColumn a:hover {
@@ -835,6 +917,7 @@
   margin-top: var(--space-12);
   border-top: 1px solid hsla(0, 0%, 100%, 0.08);
   font-size: var(--text-xs);
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 @media (min-width: 768px) {
