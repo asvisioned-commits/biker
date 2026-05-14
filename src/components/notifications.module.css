@@ -59,8 +59,12 @@
 
 @media (max-width: 480px) {
   .dropdown {
-    width: calc(100vw - 32px);
-    right: -60px;
+    position: fixed;
+    top: 56px;
+    left: var(--space-3);
+    right: var(--space-3);
+    width: auto;
+    max-height: calc(100dvh - 140px);
   }
 }
 
