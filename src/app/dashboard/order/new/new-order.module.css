@@ -72,9 +72,15 @@
 }
 
 .stepTitle {
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   font-weight: 800;
   margin-bottom: var(--space-2);
+}
+
+@media (min-width: 768px) {
+  .stepTitle {
+    font-size: var(--text-2xl);
+  }
 }
 
 .stepSubtitle {
@@ -105,7 +111,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-6) var(--space-4);
+  padding: var(--space-4) var(--space-3);
   background: var(--bg-card);
   border: 2px solid var(--border-default);
   border-radius: var(--radius-xl);
@@ -113,6 +119,12 @@
   transition: all var(--duration-normal) var(--ease-out);
   text-align: center;
   position: relative;
+  touch-action: manipulation;
+  min-height: 44px;
+}
+
+.serviceCard:active {
+  transform: scale(0.97);
 }
 
 .serviceCard:hover {
@@ -160,10 +172,16 @@
 /* ---- Address Section ---- */
 .addressSection {
   margin-bottom: var(--space-6);
-  padding: var(--space-6);
+  padding: var(--space-4);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
+}
+
+@media (min-width: 768px) {
+  .addressSection {
+    padding: var(--space-6);
+  }
 }
 
 .addressTitle {
@@ -200,10 +218,16 @@
 /* ---- Shopping Section ---- */
 .shoppingSection {
   margin-bottom: var(--space-6);
-  padding: var(--space-6);
+  padding: var(--space-4);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
+}
+
+@media (min-width: 768px) {
+  .shoppingSection {
+    padding: var(--space-6);
+  }
 }
 
 .itemForm {
@@ -312,11 +336,17 @@
 
 /* ---- Review Card ---- */
 .reviewCard {
-  padding: var(--space-6);
+  padding: var(--space-4);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
   margin-bottom: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .reviewCard {
+    padding: var(--space-6);
+  }
 }
 
 .reviewSection {
@@ -342,11 +372,17 @@
 
 /* ---- Price Breakdown ---- */
 .priceBreakdown {
-  padding: var(--space-6);
+  padding: var(--space-4);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
   margin-bottom: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .priceBreakdown {
+    padding: var(--space-6);
+  }
 }
 
 .priceLine {

@@ -17,7 +17,7 @@
 }
 
 .welcomeTitle {
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   font-weight: 800;
   margin-bottom: var(--space-1);
 }
@@ -33,14 +33,27 @@
 
 /* ---- Quick Actions ---- */
 .quickActions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
   gap: var(--space-3);
   margin-bottom: var(--space-8);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  padding-bottom: var(--space-2);
+  scrollbar-width: none;
+}
+
+.quickActions::-webkit-scrollbar {
+  display: none;
 }
 
 @media (min-width: 640px) {
-  .quickActions { grid-template-columns: repeat(6, 1fr); }
+  .quickActions {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
 }
 
 .quickAction {
@@ -48,19 +61,27 @@
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-5) var(--space-3);
+  padding: var(--space-4) var(--space-3);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
   text-decoration: none;
   color: var(--text-primary);
   transition: all var(--duration-normal) var(--ease-out);
+  min-width: 80px;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  touch-action: manipulation;
 }
 
 .quickAction:hover {
   border-color: var(--color-primary-200);
   box-shadow: var(--shadow-md);
   transform: translateY(-3px);
+}
+
+.quickAction:active {
+  transform: scale(0.95);
 }
 
 .qaIcon {
@@ -165,6 +186,20 @@
   align-items: flex-end;
   gap: var(--space-2);
   flex-shrink: 0;
+}
+
+@media (max-width: 479px) {
+  .orderCard {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  .orderCardRight {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
 }
 
 .orderAmount {
