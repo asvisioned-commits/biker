@@ -110,7 +110,7 @@
 
 .mapPlaceholder {
   width: 100%;
-  height: 400px;
+  height: 280px;
   background: linear-gradient(135deg, var(--color-primary-50), var(--bg-secondary));
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
@@ -345,6 +345,17 @@
   color: var(--text-secondary);
   max-width: 280px;
   margin-inline: auto;
+}
+
+@media (max-width: 380px) {
+  .pinDigit {
+    width: 44px;
+    height: 52px;
+    font-size: var(--text-xl);
+  }
+  .pinDigits {
+    gap: var(--space-2);
+  }
 }
 
 /* Timeline */
