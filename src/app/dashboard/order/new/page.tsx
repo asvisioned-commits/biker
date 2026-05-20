@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './new-order.module.css';
 import type { ServiceType, FulfillmentMode, ProtectionLevel, HandoverMode, ShoppingItem } from '@/types';
+import MapPickerModal from '@/components/map/MapPickerModal';
 
 const LOCATION_COORDINATES: Record<string, [number, number]> = {
   "Sam Levy's Village, Borrowdale": [-17.7502, 31.0858],
@@ -59,6 +60,28 @@ function NewOrderContent() {
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>('standard');
   const [protectionLevel, setProtectionLevel] = useState<ProtectionLevel>('none');
   const [handoverMode, setHandoverMode] = useState<HandoverMode>('hand_to_recipient');
+
+  // Map picker state
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickerType, setPickerType] = useState<'pickup' | 'dropoff'>('pickup');
+  const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
+  const [dropoffCoords, setDropoffCoords] = useState<[number, number] | null>(null);
+
+  const handleMapPickerConfirm = (coords: [number, number], address: string, landmarkNote: string) => {
+    if (pickerType === 'pickup') {
+      setPickupCoords(coords);
+      setPickupAddress(address);
+      if (landmarkNote) {
+        setPickupLandmark(landmarkNote);
+      }
+    } else {
+      setDropoffCoords(coords);
+      setDropoffAddress(address);
+      if (landmarkNote) {
+        setDropoffGateColor(landmarkNote);
+      }
+    }
+  };
 
   // Addresses
   const [pickupAddress, setPickupAddress] = useState('');
@@ -195,8 +218,8 @@ function NewOrderContent() {
     const timer2 = setTimeout(() => setScanStep(2), 2400);
     const timer3 = setTimeout(() => setScanStep(3), 3600);
     const timer4 = setTimeout(() => {
-      const pCoords = LOCATION_COORDINATES[pickupAddress] || [-17.7502, 31.0858];
-      const dCoords = LOCATION_COORDINATES[dropoffAddress] || [-17.7289, 31.1345];
+      const pCoords = pickupCoords || LOCATION_COORDINATES[pickupAddress] || [-17.7502, 31.0858];
+      const dCoords = dropoffCoords || LOCATION_COORDINATES[dropoffAddress] || [-17.7289, 31.1345];
       router.push(
         `/dashboard/tracking?id=mock-new-order&pLat=${pCoords[0]}&pLng=${pCoords[1]}&dLat=${dCoords[0]}&dLng=${dCoords[1]}&pAddr=${encodeURIComponent(pickupAddress)}&dAddr=${encodeURIComponent(dropoffAddress)}`
       );
@@ -314,7 +337,20 @@ function NewOrderContent() {
             </h3>
             <div className={styles.addressForm}>
               <div className="input-group">
-                <label className="input-label input-label--required">Address</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="input-label input-label--required">Address</label>
+                  <button
+                    type="button"
+                    className="btn btn--link btn--sm"
+                    style={{ padding: 0, height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}
+                    onClick={() => {
+                      setPickerType('pickup');
+                      setIsPickerOpen(true);
+                    }}
+                  >
+                    🗺️ Pick on Map
+                  </button>
+                </div>
                 <div className={styles.inputWrapper}>
                   <input
                     type="text"
@@ -389,7 +425,20 @@ function NewOrderContent() {
             </h3>
             <div className={styles.addressForm}>
               <div className="input-group">
-                <label className="input-label input-label--required">Address</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="input-label input-label--required">Address</label>
+                  <button
+                    type="button"
+                    className="btn btn--link btn--sm"
+                    style={{ padding: 0, height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}
+                    onClick={() => {
+                      setPickerType('dropoff');
+                      setIsPickerOpen(true);
+                    }}
+                  >
+                    🗺️ Pick on Map
+                  </button>
+                </div>
                 <div className={styles.inputWrapper}>
                   <input
                     type="text"
@@ -750,6 +799,13 @@ function NewOrderContent() {
           </div>
         </div>
       )}
+      <MapPickerModal
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onConfirm={handleMapPickerConfirm}
+        title={pickerType === 'pickup' ? 'Select Pickup Location' : 'Select Delivery Location'}
+        initialCoords={pickerType === 'pickup' ? pickupCoords : dropoffCoords}
+      />
     </div>
   );
 }
