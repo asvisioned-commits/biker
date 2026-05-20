@@ -1,6 +1,7 @@
 /**
  * Biker Auth Utilities
  * Handles both real Supabase auth and mock dev-mode auth
+ * Merges auth.users data with profiles + user_roles tables
  */
 
 import { createClient } from '@/lib/supabase/client';
@@ -13,9 +14,12 @@ export interface BikerSession {
   email?: string;
   phone?: string;
   role: string;
+  roles: string[];
   avatar_url?: string;
+  trust_score?: number;
   vehicle_registration?: string;
   business_name?: string;
+  is_suspended?: boolean;
 }
 
 /**
@@ -29,6 +33,7 @@ export async function signInWithGoogle() {
       full_name: 'Google User',
       email: 'user@gmail.com',
       role: 'customer',
+      roles: ['customer'],
       avatar_url: undefined,
     };
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
@@ -63,9 +68,16 @@ export async function signInWithEmail(email: string, password: string) {
       full_name: 'Test User',
       email,
       role: 'customer',
+      roles: ['customer'],
     };
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
-    return { data: mockSession, error: null };
+    return {
+      data: {
+        user: { id: mockSession.user_id, email: mockSession.email } as any,
+        session: { access_token: 'mock-token', user: { id: mockSession.user_id } } as any,
+      },
+      error: null,
+    };
   }
 
   const supabase = createClient();
@@ -78,7 +90,7 @@ export async function signInWithEmail(email: string, password: string) {
  */
 export async function signInWithPhone(phone: string) {
   if (IS_DEV) {
-    return { data: { phone }, error: null };
+    return { data: { user: null, session: null }, error: null };
   }
 
   const supabase = createClient();
@@ -96,9 +108,16 @@ export async function verifyPhoneOtp(phone: string, token: string) {
       full_name: 'Test User',
       phone: `+263${phone}`,
       role: 'customer',
+      roles: ['customer'],
     };
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
-    return { data: mockSession, error: null };
+    return {
+      data: {
+        user: { id: mockSession.user_id, phone: mockSession.phone } as any,
+        session: { access_token: 'mock-token', user: { id: mockSession.user_id } } as any,
+      },
+      error: null,
+    };
   }
 
   const supabase = createClient();
@@ -125,9 +144,16 @@ export async function signUpWithEmail(
       email,
       phone: metadata.phone as string,
       role: (metadata.role as string) || 'customer',
+      roles: [(metadata.role as string) || 'customer'],
     };
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
-    return { data: mockSession, error: null };
+    return {
+      data: {
+        user: { id: mockSession.user_id, email: mockSession.email } as any,
+        session: { access_token: 'mock-token', user: { id: mockSession.user_id } } as any,
+      },
+      error: null,
+    };
   }
 
   const supabase = createClient();
@@ -158,25 +184,54 @@ export async function signOut() {
 }
 
 /**
- * Get current session
+ * Get current session — merges auth user with profile + roles from DB
+ * This is the single source of truth for "who is the current user"
  */
 export async function getSession(): Promise<BikerSession | null> {
   if (IS_DEV) {
     if (typeof window === 'undefined') return null;
     const stored = localStorage.getItem('biker_mock_session');
-    return stored ? JSON.parse(stored) : null;
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        localStorage.removeItem('biker_mock_session');
+        return null;
+      }
+    }
+    return null;
   }
 
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Fetch profile + roles from DB to merge with auth user
+  const [profileRes, rolesRes] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('full_name, phone, avatar_url, trust_score, active_role, is_suspended')
+      .eq('id', user.id)
+      .single(),
+    supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('is_active', true),
+  ]);
+
+  const profile = profileRes.data;
+  const activeRoles = rolesRes.data?.map((r: { role: string }) => r.role) || ['customer'];
+
   return {
     user_id: user.id,
-    full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+    full_name: profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
     email: user.email || undefined,
-    phone: user.phone || undefined,
-    role: user.user_metadata?.role || 'customer',
-    avatar_url: user.user_metadata?.avatar_url || undefined,
+    phone: profile?.phone || user.phone || undefined,
+    role: profile?.active_role || activeRoles[0] || 'customer',
+    roles: activeRoles,
+    avatar_url: profile?.avatar_url || user.user_metadata?.avatar_url || undefined,
+    trust_score: profile?.trust_score || 50,
+    is_suspended: profile?.is_suspended || false,
   };
 }
