@@ -42,7 +42,6 @@ function LoginContent() {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     const { error: phoneError } = await signInWithPhone(phone);
     if (phoneError) {
       setError(typeof phoneError === 'string' ? phoneError : (phoneError as { message?: string }).message || 'Failed to send OTP');
@@ -57,7 +56,6 @@ function LoginContent() {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     const { error: emailError } = await signInWithEmail(email, password);
     if (emailError) {
       setError(typeof emailError === 'string' ? emailError : (emailError as { message?: string }).message || 'Invalid credentials');
@@ -72,7 +70,6 @@ function LoginContent() {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     const { error: otpError } = await verifyPhoneOtp(phone, otp);
     if (otpError) {
       setError(typeof otpError === 'string' ? otpError : (otpError as { message?: string }).message || 'Invalid OTP');
@@ -117,18 +114,10 @@ function LoginContent() {
           <div className={styles.formContainer}>
             <div className={styles.formHeader}>
               <h1 className={styles.formTitle}>Welcome back</h1>
-              <p className={styles.formSubtitle}>
-                Log in to your Biker account
-              </p>
+              <p className={styles.formSubtitle}>Log in to your Biker account</p>
             </div>
 
-            {/* Google Sign In */}
-            <button
-              className={styles.googleBtn}
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading}
-              id="google-signin-btn"
-            >
+            <button className={styles.googleBtn} onClick={handleGoogleSignIn} disabled={googleLoading} id="google-signin-btn">
               {googleLoading ? (
                 <span className="spinner" />
               ) : (
@@ -144,32 +133,18 @@ function LoginContent() {
               )}
             </button>
 
-            {/* Divider */}
             <div className={styles.divider}>
               <span className={styles.dividerLine} />
               <span className={styles.dividerText}>or</span>
               <span className={styles.dividerLine} />
             </div>
 
-            {/* Mode Toggle */}
             <div className={styles.modeToggle}>
-              <button
-                className={`${styles.modeBtn} ${mode === 'phone' ? styles.modeBtnActive : ''}`}
-                onClick={() => { setMode('phone'); setStep('credentials'); }}
-              >
-                Phone
-              </button>
-              <button
-                className={`${styles.modeBtn} ${mode === 'email' ? styles.modeBtnActive : ''}`}
-                onClick={() => { setMode('email'); setStep('credentials'); }}
-              >
-                Email
-              </button>
+              <button className={`${styles.modeBtn} ${mode === 'phone' ? styles.modeBtnActive : ''}`} onClick={() => { setMode('phone'); setStep('credentials'); }}>Phone</button>
+              <button className={`${styles.modeBtn} ${mode === 'email' ? styles.modeBtnActive : ''}`} onClick={() => { setMode('email'); setStep('credentials'); }}>Email</button>
             </div>
 
-            {error && (
-              <div className={styles.error}>{error}</div>
-            )}
+            {error && <div className={styles.error}>{error}</div>}
 
             {step === 'credentials' && mode === 'phone' && (
               <form onSubmit={handlePhoneSubmit} className={styles.form}>
@@ -177,23 +152,10 @@ function LoginContent() {
                   <label className="input-label" htmlFor="phone">Phone number</label>
                   <div className={styles.phoneInput}>
                     <span className={styles.phonePrefix}>+263</span>
-                    <input
-                      id="phone"
-                      type="tel"
-                      className="input"
-                      placeholder="77 123 4567"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      required
-                      style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }}
-                    />
+                    <input id="phone" type="tel" className="input" placeholder="77 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} required style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} />
                   </div>
                 </div>
-                <button
-                  type="submit"
-                  className="btn btn--primary btn--lg btn--full"
-                  disabled={loading}
-                >
+                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
                   {loading ? <span className="spinner" /> : 'Send OTP'}
                 </button>
               </form>
@@ -203,33 +165,13 @@ function LoginContent() {
               <form onSubmit={handleEmailSubmit} className={styles.form}>
                 <div className="input-group">
                   <label className="input-label" htmlFor="email">Email</label>
-                  <input
-                    id="email"
-                    type="email"
-                    className="input"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
+                  <input id="email" type="email" className="input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div className="input-group">
                   <label className="input-label" htmlFor="password">Password</label>
-                  <input
-                    id="password"
-                    type="password"
-                    className="input"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
+                  <input id="password" type="password" className="input" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
-                <button
-                  type="submit"
-                  className="btn btn--primary btn--lg btn--full"
-                  disabled={loading}
-                >
+                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
                   {loading ? <span className="spinner" /> : 'Log in'}
                 </button>
               </form>
@@ -237,58 +179,24 @@ function LoginContent() {
 
             {step === 'otp' && (
               <form onSubmit={handleOtpVerify} className={styles.form}>
-                <p className={styles.otpMessage}>
-                  We sent a 6-digit code to <strong>+263 {phone}</strong>
-                </p>
+                <p className={styles.otpMessage}>We sent a 6-digit code to <strong>+263 {phone}</strong></p>
                 <div className="pin-input-group">
                   {[0, 1, 2, 3, 4, 5].map((i) => (
-                    <input
-                      key={i}
-                      type="text"
-                      maxLength={1}
-                      className={`pin-digit ${otp[i] ? 'pin-digit--filled' : ''}`}
-                      value={otp[i] || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (/^\d?$/.test(val)) {
-                          const newOtp = otp.split('');
-                          newOtp[i] = val;
-                          setOtp(newOtp.join(''));
-                          if (val && e.target.nextElementSibling) {
-                            (e.target.nextElementSibling as HTMLInputElement).focus();
-                          }
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Backspace' && !otp[i] && e.currentTarget.previousElementSibling) {
-                          (e.currentTarget.previousElementSibling as HTMLInputElement).focus();
-                        }
-                      }}
+                    <input key={i} type="text" maxLength={1} className={`pin-digit ${otp[i] ? 'pin-digit--filled' : ''}`} value={otp[i] || ''}
+                      onChange={(e) => { const val = e.target.value; if (/^\d?$/.test(val)) { const newOtp = otp.split(''); newOtp[i] = val; setOtp(newOtp.join('')); if (val && e.target.nextElementSibling) { (e.target.nextElementSibling as HTMLInputElement).focus(); } } }}
+                      onKeyDown={(e) => { if (e.key === 'Backspace' && !otp[i] && e.currentTarget.previousElementSibling) { (e.currentTarget.previousElementSibling as HTMLInputElement).focus(); } }}
                     />
                   ))}
                 </div>
-                <button
-                  type="submit"
-                  className="btn btn--primary btn--lg btn--full"
-                  disabled={loading || otp.length < 6}
-                >
+                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading || otp.length < 6}>
                   {loading ? <span className="spinner" /> : 'Verify'}
                 </button>
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--full"
-                  onClick={() => setStep('credentials')}
-                >
-                  Change number
-                </button>
+                <button type="button" className="btn btn--ghost btn--full" onClick={() => setStep('credentials')}>Change number</button>
               </form>
             )}
 
             <div className={styles.formFooter}>
-              <p>
-                Don&apos;t have an account?{' '}
-                <Link href="/signup" className={styles.link}>Sign up</Link>
-              </p>
+              <p>Don&apos;t have an account? <Link href="/signup" className={styles.link}>Sign up</Link></p>
             </div>
           </div>
         </div>
