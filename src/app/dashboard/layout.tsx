@@ -49,7 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       { label: 'Audit', href: '/dashboard/audit', icon: '📝' },
     ],
     admin: [
-      { label: 'Overview', href: '/dashboard', icon: '📊' }, { label: 'Users', href: '/dashboard/users', icon: '👥' },
+      { label: 'Overview', href: '/dashboard', icon: '📊' }, { label: 'Billing Queue', href: '/dashboard/admin/billing', icon: '💳' }, { label: 'Users', href: '/dashboard/users', icon: '👥' },
       { label: 'Orders', href: '/dashboard/orders', icon: '📦' }, { label: 'Finance', href: '/dashboard/finance', icon: '💰' },
       { label: 'Settings', href: '/dashboard/settings', icon: '⚙️' },
     ],
@@ -67,7 +67,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
         <div className={styles.roleSwitcher}>
           <select className={styles.roleSelect} value={activeRole} onChange={(e) => { const newRole = e.target.value as UserRole; setActiveRole(newRole); if (session) { const updated = { ...session, role: newRole }; localStorage.setItem('biker_mock_session', JSON.stringify(updated)); } }}>
-            <option value="customer">📦 Customer</option><option value="rider">🚴 Rider</option><option value="merchant">🏪 Merchant</option><option value="ops">🔧 Ops</option>
+            <option value="customer">📦 Customer</option><option value="rider">🚴 Rider</option><option value="merchant">🏪 Merchant</option><option value="ops">🔧 Ops</option><option value="admin">👑 Admin</option>
           </select>
         </div>
         <nav className={styles.nav}>

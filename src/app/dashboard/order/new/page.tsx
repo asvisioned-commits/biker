@@ -5,6 +5,19 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './new-order.module.css';
 import type { ServiceType, FulfillmentMode, ProtectionLevel, HandoverMode, ShoppingItem } from '@/types';
 
+const LOCATION_COORDINATES: Record<string, [number, number]> = {
+  "Sam Levy's Village, Borrowdale": [-17.7502, 31.0858],
+  "Avondale Shops, King George Rd": [-17.7994, 31.0378],
+  "Eastgate Mall, Harare CBD": [-17.8312, 31.0521],
+  "Borrowdale Brooke Golf Estate": [-17.7289, 31.1345],
+  "Arundel Office Park, Mount Pleasant": [-17.7812, 31.0531],
+  "Joina City, Harare CBD": [-17.8306, 31.0494],
+  "Belgravia Shops, Second Street Extension": [-17.7932, 31.0468],
+  "Kensington Shops, Avondale": [-17.8015, 31.0298],
+  "Westgate Shopping Mall, Harare": [-17.7667, 30.9856],
+  "Harare International Airport (RG Mugabe)": [-17.9312, 31.0928],
+};
+
 function NewOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -12,6 +25,34 @@ function NewOrderContent() {
 
   const [step, setStep] = useState<number>(preselectedType ? 2 : 1);
   const [loading, setLoading] = useState(false);
+
+  // Scanning simulation state
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanStep, setScanStep] = useState(0);
+
+  // Autocomplete state
+  const [showPickupSuggestions, setShowPickupSuggestions] = useState(false);
+  const [showDropoffSuggestions, setShowDropoffSuggestions] = useState(false);
+
+  const POPULAR_LOCATIONS = [
+    "Sam Levy's Village, Borrowdale",
+    "Avondale Shops, King George Rd",
+    "Eastgate Mall, Harare CBD",
+    "Borrowdale Brooke Golf Estate",
+    "Arundel Office Park, Mount Pleasant",
+    "Joina City, Harare CBD",
+    "Belgravia Shops, Second Street Extension",
+    "Kensington Shops, Avondale",
+    "Westgate Shopping Mall, Harare",
+    "Harare International Airport (RG Mugabe)",
+  ];
+
+  const getFilteredLocations = (query: string) => {
+    if (!query) return POPULAR_LOCATIONS;
+    return POPULAR_LOCATIONS.filter(loc =>
+      loc.toLowerCase().includes(query.toLowerCase())
+    );
+  };
 
   // Order form state
   const [serviceType, setServiceType] = useState<ServiceType>(preselectedType || 'send_item');
@@ -146,15 +187,74 @@ function NewOrderContent() {
   const quote = calculateQuote();
 
   const handleSubmit = () => {
-    setLoading(true);
-    // Mock order creation
-    setTimeout(() => {
-      router.push('/dashboard/tracking?id=mock-new-order');
-      setLoading(false);
-    }, 1500);
+    setIsScanning(true);
+    setScanStep(0);
+    
+    // Animate scanning process steps
+    const timer1 = setTimeout(() => setScanStep(1), 1200);
+    const timer2 = setTimeout(() => setScanStep(2), 2400);
+    const timer3 = setTimeout(() => setScanStep(3), 3600);
+    const timer4 = setTimeout(() => {
+      const pCoords = LOCATION_COORDINATES[pickupAddress] || [-17.7502, 31.0858];
+      const dCoords = LOCATION_COORDINATES[dropoffAddress] || [-17.7289, 31.1345];
+      router.push(
+        `/dashboard/tracking?id=mock-new-order&pLat=${pCoords[0]}&pLng=${pCoords[1]}&dLat=${dCoords[0]}&dLng=${dCoords[1]}&pAddr=${encodeURIComponent(pickupAddress)}&dAddr=${encodeURIComponent(dropoffAddress)}`
+      );
+    }, 4800);
   };
 
   const stepLabels = ['Service', 'Details', 'Speed', 'Protection', 'Review'];
+
+  if (isScanning) {
+    const scanSteps = [
+      { text: 'Securing escrow payment...', icon: '🔒' },
+      { text: 'Broadcasting order to nearby riders...', icon: '📡' },
+      { text: 'Rider matched! Verifying availability...', icon: '🤝' },
+      { text: 'Takudzwa M. accepted! Connecting...', icon: '✅' },
+    ];
+
+    return (
+      <div className={styles.page}>
+        <div className={styles.radarContainer}>
+          <div className={styles.radarOuter}>
+            <div className={`${styles.radarCircle} ${styles.radarCircle1}`} />
+            <div className={`${styles.radarCircle} ${styles.radarCircle2}`} />
+            <div className={`${styles.radarCircle} ${styles.radarCircle3}`} />
+            <div className={styles.radarSweep} />
+            <div className={styles.radarCore}>📦</div>
+            {scanStep >= 1 && <div className={`${styles.radarRider} ${styles.radarRider1}`}>🚴</div>}
+            {scanStep >= 2 && <div className={`${styles.radarRider} ${styles.radarRider2}`}>🚴</div>}
+          </div>
+
+          <h2 className={styles.scanStatusTitle}>Finding a Rider</h2>
+          <p className={styles.scanStatusSubtitle}>
+            {scanStep === 0 && 'Connecting with payment gateway...'}
+            {scanStep === 1 && 'Searching within 2.5 km...'}
+            {scanStep === 2 && 'Negotiating best fare...'}
+            {scanStep === 3 && 'Rider is on the way!'}
+          </p>
+
+          <div className={styles.logsContainer}>
+            {scanSteps.map((stepInfo, idx) => {
+              const isActive = scanStep === idx;
+              const isDone = scanStep > idx;
+              return (
+                <div
+                  key={idx}
+                  className={`${styles.logLine} ${isActive ? styles.logLineActive : ''} ${isDone ? styles.logLineDone : ''}`}
+                >
+                  <span className={styles.logIcon}>
+                    {isDone ? '✓' : isActive ? '⏳' : '○'}
+                  </span>
+                  <span>{stepInfo.text}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>
@@ -215,13 +315,38 @@ function NewOrderContent() {
             <div className={styles.addressForm}>
               <div className="input-group">
                 <label className="input-label input-label--required">Address</label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="e.g. Sam Levy's Village, Borrowdale"
-                  value={pickupAddress}
-                  onChange={(e) => setPickupAddress(e.target.value)}
-                />
+                <div className={styles.inputWrapper}>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. Sam Levy's Village, Borrowdale"
+                    value={pickupAddress}
+                    onChange={(e) => {
+                      setPickupAddress(e.target.value);
+                      setShowPickupSuggestions(true);
+                    }}
+                    onFocus={() => setShowPickupSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowPickupSuggestions(false), 200)}
+                  />
+                  {showPickupSuggestions && (
+                    <div className={styles.suggestionsList}>
+                      {getFilteredLocations(pickupAddress).map((loc) => (
+                        <button
+                          key={loc}
+                          type="button"
+                          className={styles.suggestionItem}
+                          onClick={() => {
+                            setPickupAddress(loc);
+                            setShowPickupSuggestions(false);
+                          }}
+                        >
+                          <span className={styles.suggestionIcon}>📍</span>
+                          <span className={styles.suggestionText}>{loc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className={styles.addressRow}>
                 <div className="input-group" style={{ flex: 1 }}>
@@ -265,13 +390,38 @@ function NewOrderContent() {
             <div className={styles.addressForm}>
               <div className="input-group">
                 <label className="input-label input-label--required">Address</label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="e.g. 42 Churchill Ave, Mount Pleasant"
-                  value={dropoffAddress}
-                  onChange={(e) => setDropoffAddress(e.target.value)}
-                />
+                <div className={styles.inputWrapper}>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. 42 Churchill Ave, Mount Pleasant"
+                    value={dropoffAddress}
+                    onChange={(e) => {
+                      setDropoffAddress(e.target.value);
+                      setShowDropoffSuggestions(true);
+                    }}
+                    onFocus={() => setShowDropoffSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowDropoffSuggestions(false), 200)}
+                  />
+                  {showDropoffSuggestions && (
+                    <div className={styles.suggestionsList}>
+                      {getFilteredLocations(dropoffAddress).map((loc) => (
+                        <button
+                          key={loc}
+                          type="button"
+                          className={styles.suggestionItem}
+                          onClick={() => {
+                            setDropoffAddress(loc);
+                            setShowDropoffSuggestions(false);
+                          }}
+                        >
+                          <span className={styles.suggestionIcon}>📍</span>
+                          <span className={styles.suggestionText}>{loc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className={styles.addressRow}>
                 <div className="input-group" style={{ flex: 1 }}>

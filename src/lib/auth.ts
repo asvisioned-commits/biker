@@ -27,17 +27,11 @@ export interface BikerSession {
  */
 export async function signInWithGoogle() {
   if (IS_DEV) {
-    // In dev mode, create a mock Google session
-    const mockSession: BikerSession = {
-      user_id: 'google-mock-' + Date.now(),
-      full_name: 'Google User',
-      email: 'user@gmail.com',
-      role: 'customer',
-      roles: ['customer'],
-      avatar_url: undefined,
-    };
-    localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
-    window.location.href = '/dashboard';
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirect = searchParams.get('redirect') || '/dashboard';
+      window.location.href = `/login/mock-google?redirect=${encodeURIComponent(redirect)}`;
+    }
     return;
   }
 

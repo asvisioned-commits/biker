@@ -1,0 +1,539 @@
+/* ============================================================
+   Admin Billing & Moderation Stylesheet
+   ============================================================ */
+
+.page {
+  padding: var(--space-4) var(--space-4) var(--space-20);
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+@media (min-width: 768px) {
+  .page {
+    padding: var(--space-6) var(--space-6) var(--space-24);
+  }
+}
+
+/* Loading States */
+.loadingContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 450px;
+  gap: var(--space-4);
+  color: var(--text-secondary);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--border-default);
+  border-top-color: var(--color-primary-500);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Breadcrumbs & Header */
+.breadcrumbs {
+  margin-bottom: var(--space-2);
+}
+
+.breadcrumbs a {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-primary-600);
+  text-decoration: none;
+}
+
+.breadcrumbs a:hover {
+  text-decoration: underline;
+}
+
+.header {
+  margin-bottom: var(--space-8);
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* Analytics Widget Grid */
+.analyticsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+@media (min-width: 900px) {
+  .analyticsGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.analyticCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+.analyticLabel {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.analyticValue {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.analyticDesc {
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+}
+
+/* Layout Grid */
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-8);
+}
+
+@media (min-width: 1024px) {
+  .dashboardGrid {
+    grid-template-columns: 1fr 1.2fr;
+  }
+}
+
+.sectionTitle {
+  font-size: var(--text-base);
+  font-weight: 800;
+  margin-bottom: var(--space-4);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Verification Queue Column (Left) */
+.queueColumn {
+  display: flex;
+  flex-direction: column;
+}
+
+.emptyCard {
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.proofsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.proofCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  transition: all var(--duration-fast);
+}
+
+.proofState_pending {
+  border-left: 4px solid var(--color-warning-500);
+}
+
+.proofState_approved {
+  border-left: 4px solid var(--color-success-500);
+  opacity: 0.8;
+}
+
+.proofState_rejected {
+  border-left: 4px solid var(--color-danger-500);
+  opacity: 0.7;
+}
+
+.proofHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.proofHeader strong {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.proofTime {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  display: block;
+}
+
+.proofStatusBadge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.proofState_pending .proofStatusBadge {
+  background: hsl(35, 90%, 94%);
+  color: var(--color-warning-700);
+  border-color: var(--color-warning-200);
+}
+
+.proofState_approved .proofStatusBadge {
+  background: var(--color-success-50);
+  color: var(--color-success-700);
+  border-color: var(--color-success-200);
+}
+
+.proofState_rejected .proofStatusBadge {
+  background: hsl(0, 90%, 94%);
+  color: var(--color-danger-700);
+  border-color: var(--color-danger-200);
+}
+
+.proofDetails {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.detailItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.detailItem span {
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+
+.detailItem strong {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.methodBadge {
+  color: var(--color-primary-600) !important;
+}
+
+.refCode {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.imageThumbnail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.thumbnailLabel {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mockScreenshot {
+  background: hsl(210, 20%, 93%);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+}
+
+.screenshotTop {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-default);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+.screenshotBody {
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.proofActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.rejectionNote {
+  background: hsl(0, 90%, 97%);
+  border: 1px solid hsl(0, 80%, 90%);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--color-danger-700);
+}
+
+/* Rider Ledger Column (Right) */
+.ledgerColumn {
+  display: flex;
+  flex-direction: column;
+}
+
+.tableCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.ledgerTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--text-sm);
+}
+
+.ledgerTable th {
+  background: var(--bg-secondary);
+  padding: var(--space-3) var(--space-4);
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.ledgerTable td {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: middle;
+}
+
+.ledgerTable tr:last-child td {
+  border-bottom: none;
+}
+
+.emptyTable {
+  text-align: center;
+  color: var(--text-tertiary);
+  padding: var(--space-8) !important;
+}
+
+.riderIdSub {
+  display: block;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.earningCapSub {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.regionBadge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.statusLabel {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+}
+
+.status_active {
+  background: var(--color-success-50);
+  color: var(--color-success-700);
+}
+
+.status_grace_period {
+  background: hsl(35, 90%, 94%);
+  color: var(--color-warning-700);
+}
+
+.status_suspended {
+  background: hsl(0, 90%, 94%);
+  color: var(--color-danger-700);
+}
+
+.status_closed {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+}
+
+.actionLink {
+  color: var(--color-primary-600);
+  background: transparent;
+  border: none;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.actionLink:hover {
+  color: var(--color-primary-800);
+}
+
+/* Modals */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.modalContent {
+  background: var(--bg-card);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--border-default);
+  width: 100%;
+  max-width: 460px;
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.modalHeader h3 {
+  font-size: var(--text-base);
+  font-weight: 800;
+}
+
+.modalClose {
+  font-size: 1.5rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.modalForm {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formGroup label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.modalSelect {
+  background: white;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.modalTextarea {
+  background: white;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+}
+
+.modalTextarea:focus,
+.modalSelect:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+}
+
+.modalActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}

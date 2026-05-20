@@ -1,21 +1,40 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import styles from './tracking.module.css';
 
 function TrackingContent() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<'map' | 'info'>('map');
-  const [currentStatus, setCurrentStatus] = useState(3); // simulated progress
+  const [currentStatus, setCurrentStatus] = useState(3); // 3: en route pickup, 4: at pickup, 6: en route delivery, 7: delivered
+  const [progress, setProgress] = useState(0); // 0 to 100
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
+  const [pinVerified, setPinVerified] = useState(false);
+  const [pinError, setPinError] = useState(false);
+  const [enteredPin, setEnteredPin] = useState('');
 
-  // Mock order data
+  const mapRef = useRef<any>(null);
+  const riderMarkerRef = useRef<any>(null);
+  const mapId = 'leaflet-tracking-map';
+
+  // Read coordinates and addresses from URL, fallback to default Harare coordinates
+  const pickupLat = parseFloat(searchParams.get('pLat') || '-17.7502');
+  const pickupLng = parseFloat(searchParams.get('pLng') || '31.0858');
+  const dropoffLat = parseFloat(searchParams.get('dLat') || '-17.7289');
+  const dropoffLng = parseFloat(searchParams.get('dLng') || '31.1345');
+  
+  const pickupAddress = searchParams.get('pAddr') || "Sam Levy's Village, Borrowdale";
+  const dropoffAddress = searchParams.get('dAddr') || "Borrowdale Brooke Golf Estate";
+
+  // Mock order details
   const order = {
     reference_code: 'BKR-7X2K9M',
     service_type: 'send_item' as const,
     fulfillment_mode: 'standard' as const,
     protection_level: 'protected' as string,
-    status: 'en_route_delivery' as const,
-    pickup_address: 'Sam Levy\'s Village, Borrowdale',
-    dropoff_address: 'Borrowdale Brooke, 42 Churchill Ave',
+    pickup_address: pickupAddress,
+    dropoff_address: dropoffAddress,
     dropoff_gate_color: 'Brown gate',
     delivery_pin: '4729',
     rider: {
@@ -33,27 +52,167 @@ function TrackingContent() {
       protection_fee: 0.50,
       total: 3.38,
     },
-    estimated_delivery: '12 min',
+    estimated_delivery: progress < 25 ? '12 min' : progress < 45 ? '10 min' : progress < 90 ? '5 min' : 'Arrived',
     created_at: '2:15 PM',
   };
+
+  // Load Leaflet dynamically
+  useEffect(() => {
+    if ((window as any).L) {
+      setLeafletLoaded(true);
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = () => setLeafletLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // Initialize Map
+  useEffect(() => {
+    if (!leafletLoaded) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    const container = document.getElementById(mapId);
+    if (!container) return;
+
+    if (mapRef.current) {
+      mapRef.current.remove();
+    }
+
+    const map = L.map(mapId).setView([pickupLat, pickupLng], 13);
+    mapRef.current = map;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
+
+    const createCustomIcon = (emoji: string) => {
+      return L.divIcon({
+        html: `<div style="font-size: 24px; text-shadow: 0 2px 4px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;">${emoji}</div>`,
+        className: 'custom-leaflet-icon',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
+    };
+
+    L.marker([pickupLat, pickupLng], { icon: createCustomIcon('📍') })
+      .addTo(map)
+      .bindPopup('<b>Pickup Point</b>');
+
+    L.marker([dropoffLat, dropoffLng], { icon: createCustomIcon('🏁') })
+      .addTo(map)
+      .bindPopup('<b>Dropoff Point</b>');
+
+    const polyline = L.polyline(
+      [
+        [pickupLat, pickupLng],
+        [dropoffLat, dropoffLng],
+      ],
+      {
+        color: '#1a73e8',
+        weight: 4,
+        opacity: 0.8,
+        dashArray: '8, 8',
+      }
+    ).addTo(map);
+
+    map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+
+    const riderMarker = L.marker([pickupLat, pickupLng], { icon: createCustomIcon('🚴') }).addTo(map);
+    riderMarkerRef.current = riderMarker;
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, [leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+
+  // Simulate progress interval (0 to 100 in 25 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          return 100;
+        }
+        return prev + 1;
+      });
+    }, 250); // 100 steps * 250ms = 25 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update Rider position and status based on progress
+  useEffect(() => {
+    if (!leafletLoaded || !riderMarkerRef.current || !mapRef.current) return;
+
+    const interpolate = (p1: [number, number], p2: [number, number], t: number): [number, number] => {
+      return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t];
+    };
+
+    let lat: number;
+    let lng: number;
+    let status = 3;
+
+    if (progress < 25) {
+      // Phase 1: Rider moving to pickup
+      const startOffset: [number, number] = [pickupLat + 0.005, pickupLng - 0.005];
+      const t = progress / 25;
+      [lat, lng] = interpolate(startOffset, [pickupLat, pickupLng], t);
+      status = 3;
+    } else if (progress < 45) {
+      // Phase 2: Rider at pickup
+      lat = pickupLat;
+      lng = pickupLng;
+      status = 4;
+    } else if (progress < 90) {
+      // Phase 3: Rider en route to delivery
+      const t = (progress - 45) / 45;
+      [lat, lng] = interpolate([pickupLat, pickupLng], [dropoffLat, dropoffLng], t);
+      status = 6;
+    } else {
+      // Phase 4: Delivered (arrived)
+      lat = dropoffLat;
+      lng = dropoffLng;
+      status = 7;
+    }
+
+    riderMarkerRef.current.setLatLng([lat, lng]);
+    if (progress % 4 === 0) {
+      mapRef.current.panTo([lat, lng]);
+    }
+    setCurrentStatus(status);
+  }, [progress, leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
   const timeline = [
     { status: 'Order placed', time: '2:15 PM', completed: true, description: 'Order confirmed and payment secured' },
     { status: 'Rider assigned', time: '2:16 PM', completed: true, description: 'Takudzwa M. accepted your delivery' },
-    { status: 'En route to pickup', time: '2:18 PM', completed: true, description: 'Rider is heading to Sam Levy\'s Village' },
-    { status: 'At pickup', time: '2:25 PM', completed: currentStatus >= 4, active: currentStatus === 3, description: 'Rider arrived at pickup point' },
-    { status: 'Proof uploaded', time: '', completed: currentStatus >= 5, active: currentStatus === 4, description: 'Pickup photo captured' },
-    { status: 'En route to delivery', time: '', completed: currentStatus >= 6, active: currentStatus === 5, description: 'On the way to Borrowdale Brooke' },
-    { status: 'Delivered', time: '', completed: currentStatus >= 7, active: currentStatus === 6, description: 'Confirmed with PIN' },
+    { status: 'En route to pickup', time: '2:18 PM', completed: true, description: 'Rider is heading to pickup location' },
+    { status: 'At pickup', time: progress >= 25 ? '2:25 PM' : '', completed: currentStatus >= 4, active: currentStatus === 3, description: 'Rider arrived at pickup point' },
+    { status: 'Proof uploaded', time: progress >= 45 ? '2:28 PM' : '', completed: currentStatus >= 6, active: currentStatus === 4, description: 'Pickup photo captured' },
+    { status: 'En route to delivery', time: progress >= 45 ? '2:29 PM' : '', completed: currentStatus >= 6, active: currentStatus === 6, description: `On the way to ${dropoffAddress}` },
+    { status: 'Delivered', time: progress >= 90 ? '2:35 PM' : '', completed: currentStatus >= 7 || pinVerified, active: currentStatus === 7 && !pinVerified, description: 'Confirmed with PIN code' },
   ];
 
-  // Simulate progress
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentStatus((prev) => (prev < 7 ? prev + 1 : prev));
-    }, 8000);
-    return () => clearInterval(timer);
-  }, []);
+  const verifyPin = () => {
+    if (enteredPin === order.delivery_pin) {
+      setPinVerified(true);
+      setPinError(false);
+    } else {
+      setPinError(true);
+    }
+  };
 
   return (
     <div className={styles.page}>
@@ -91,12 +250,8 @@ function TrackingContent() {
         {/* Map Area */}
         <div className={`${styles.mapArea} ${activeTab === 'map' ? styles.mapAreaVisible : ''}`}>
           <div className={styles.mapPlaceholder}>
-            <div className={styles.mapDotPickup}>📍</div>
-            <div className={styles.mapDotRider}>🚴</div>
-            <div className={styles.mapDotDropoff}>📍</div>
-            <div className={styles.mapLabel}>
-              Live map will display here with Leaflet.js
-            </div>
+            <div id={mapId} className={styles.mapContainer} />
+            {!leafletLoaded && <div className={styles.mapLabel}>Loading live tracking map...</div>}
           </div>
 
           {/* ETA Card */}
@@ -104,10 +259,13 @@ function TrackingContent() {
             <div className={styles.etaIcon}>🚴</div>
             <div className={styles.etaInfo}>
               <div className={styles.etaStatus}>
-                {currentStatus < 4 ? 'Heading to pickup' : currentStatus < 6 ? 'At pickup / collecting' : 'Delivering to you'}
+                {progress < 25 && 'Rider heading to pickup'}
+                {progress >= 25 && progress < 45 && 'Rider collecting package'}
+                {progress >= 45 && progress < 90 && 'Rider en route to delivery'}
+                {progress >= 90 && 'Rider arrived at destination'}
               </div>
               <div className={styles.etaTime}>
-                ETA: <strong>{order.estimated_delivery}</strong>
+                Status: <strong>{order.estimated_delivery}</strong> (Simulation: {progress}%)
               </div>
             </div>
           </div>
@@ -159,31 +317,66 @@ function TrackingContent() {
             </div>
           </div>
 
-          {/* Delivery PIN */}
+          {/* Delivery PIN (Awaiting Input / Verification) */}
           <div className={styles.pinCard}>
             <div className={styles.pinHeader}>
               <span>🔑</span>
-              <strong>Delivery PIN</strong>
+              <strong>Delivery PIN Code</strong>
             </div>
-            <div className={styles.pinDigits}>
-              {order.delivery_pin.split('').map((d, i) => (
-                <div key={i} className={styles.pinDigit}>{d}</div>
-              ))}
-            </div>
-            <p className={styles.pinNote}>
-              Share this PIN with the rider to confirm delivery.
-              Funds release only after PIN is verified.
-            </p>
+            {pinVerified ? (
+              <div className="alert alert--success" style={{ margin: '12px 0' }}>
+                ✅ <strong>Delivery Confirmed!</strong> Escrow funds released to rider.
+              </div>
+            ) : (
+              <>
+                <div className={styles.pinDigits}>
+                  {order.delivery_pin.split('').map((d, i) => (
+                    <div key={i} className={styles.pinDigit}>{d}</div>
+                  ))}
+                </div>
+                {currentStatus === 7 ? (
+                  <div style={{ marginTop: '12px' }}>
+                    <p style={{ fontSize: 'var(--text-xs)', marginBottom: '8px', color: 'var(--text-primary)' }}>
+                      <strong>Rider is here!</strong> Enter PIN below to confirm delivery:
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="Enter 4-digit PIN"
+                        className="input"
+                        style={{ width: '130px', textAlign: 'center', fontSize: '14px', padding: '6px' }}
+                        value={enteredPin}
+                        onChange={(e) => setEnteredPin(e.target.value.slice(0, 4))}
+                      />
+                      <button className="btn btn--primary btn--sm" onClick={verifyPin}>
+                        Verify
+                      </button>
+                    </div>
+                    {pinError && (
+                      <p style={{ color: 'var(--color-danger-500)', fontSize: 'var(--text-xs)', marginTop: '4px' }}>
+                        Incorrect PIN. Try again.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className={styles.pinNote}>
+                    Share this PIN with the rider to confirm delivery. Funds release only after PIN is verified.
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           {/* Escrow Status */}
           {order.protection_level !== 'none' && (
-            <div className="escrow-status escrow-status--held">
+            <div className={`escrow-status ${pinVerified ? 'escrow-status--released' : 'escrow-status--held'}`}>
               <span>🛡️</span>
               <div>
-                <strong>Funds held securely</strong>
+                <strong>{pinVerified ? 'Funds Released' : 'Funds held securely'}</strong>
                 <div style={{ fontSize: 'var(--text-xs)', marginTop: '2px' }}>
-                  ${order.pricing.total.toFixed(2)} held in escrow · Releases after PIN confirmation
+                  {pinVerified
+                    ? `$${order.pricing.total.toFixed(2)} transferred to rider Takudzwa M.`
+                    : `$${order.pricing.total.toFixed(2)} held in escrow · Releases after PIN confirmation`}
                 </div>
               </div>
             </div>
@@ -196,7 +389,11 @@ function TrackingContent() {
               {timeline.map((item, i) => (
                 <div key={i} className="timeline-item">
                   <div className="timeline-marker">
-                    <div className={`timeline-dot ${item.completed ? 'timeline-dot--completed' : item.active ? 'timeline-dot--active' : ''}`} />
+                    <div
+                      className={`timeline-dot ${
+                        item.completed ? 'timeline-dot--completed' : item.active ? 'timeline-dot--active' : ''
+                      }`}
+                    />
                     {i < timeline.length - 1 && (
                       <div className={`timeline-line ${item.completed ? 'timeline-line--completed' : ''}`} />
                     )}
@@ -235,7 +432,7 @@ function TrackingContent() {
           {/* Actions */}
           <div className={styles.actions}>
             <button className="btn btn--secondary btn--full">Report issue</button>
-            <button className="btn btn--danger btn--full btn--sm">Cancel order</button>
+            {!pinVerified && <button className="btn btn--danger btn--full btn--sm">Cancel order</button>}
           </div>
         </div>
       </div>
@@ -245,7 +442,13 @@ function TrackingContent() {
 
 export default function TrackingPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center p-6"><span className="spinner spinner--lg" /></div>}>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center p-6">
+          <span className="spinner spinner--lg" />
+        </div>
+      }
+    >
       <TrackingContent />
     </Suspense>
   );
