@@ -1,0 +1,114 @@
+/* ============================================================
+   Biker Platform — Geolocation Permission Banner
+   ============================================================ */
+
+.banner {
+  background: hsla(215, 20%, 98%, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  margin-bottom: var(--space-6);
+  box-shadow: var(--shadow-md);
+  animation: slideInDown var(--duration-normal) var(--ease-spring);
+  width: 100%;
+}
+
+[data-theme='dark'] .banner {
+  background: hsla(215, 28%, 10%, 0.85);
+  border-color: hsla(215, 18%, 24%, 0.5);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+@media (min-width: 640px) {
+  .container {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+  }
+}
+
+.content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.icon {
+  font-size: var(--text-2xl);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.textGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  align-self: flex-end;
+}
+
+@media (min-width: 640px) {
+  .actions {
+    align-self: center;
+  }
+}
+
+.dismissButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  transition: color var(--duration-fast) var(--ease-out);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 50%;
+}
+
+.dismissButton:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+@keyframes slideInDown {
+  from {
+    transform: translateY(-16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

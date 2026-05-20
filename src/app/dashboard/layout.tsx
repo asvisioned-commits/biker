@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import styles from './layout.module.css';
 import { signOut } from '@/lib/auth';
 import NotificationsDropdown from '@/components/notifications';
+import LocationPermissionBanner from '@/components/LocationPermissionBanner';
 import type { UserRole } from '@/types';
 
 interface MockSession { user_id: string; full_name: string; role: UserRole; email?: string; phone?: string; }
@@ -85,7 +86,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span className={styles.mobileTitle}>Biker<span className={styles.logoDot}>.</span></span>
           <div className={styles.headerRight}><NotificationsDropdown /><div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div></div>
         </header>
-        <div className={styles.mainContent}>{children}</div>
+        <div className={styles.mainContent}>
+          <LocationPermissionBanner />
+          {children}
+        </div>
       </main>
       <nav className="bottom-nav">
         {currentNav.slice(0, 5).map((item) => <Link key={item.href} href={item.href} className={`bottom-nav-item ${pathname === item.href ? 'bottom-nav-item--active' : ''}`}><span className="bottom-nav-icon">{item.icon}</span>{item.label}</Link>)}

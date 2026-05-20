@@ -9,6 +9,16 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
+  const { pathname, searchParams } = request.nextUrl;
+  const code = searchParams.get('code');
+
+  // If we receive an OAuth code on the root or login page, redirect to auth/callback to exchange it
+  if (code && (pathname === '/' || pathname === '/login')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth/callback';
+    return NextResponse.redirect(url);
+  }
+
   // Production: Full Supabase session management
   let supabaseResponse = NextResponse.next({ request });
 
@@ -39,7 +49,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
+
 
   // Public routes that don't require authentication
   const publicRoutes = ['/', '/login', '/signup', '/auth/callback'];

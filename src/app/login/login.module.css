@@ -9,6 +9,7 @@
   min-height: 100dvh;
 }
 
+/* ---- Brand side: hidden on mobile & tablet, visible on desktop ---- */
 .brandSide {
   display: none;
   width: 50%;
@@ -93,31 +94,68 @@
   border: 1px solid hsla(0, 0%, 100%, 0.08);
 }
 
+/* ---- Form side ---- */
 .formSide {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8) var(--space-4);
+  padding: var(--space-8) var(--space-6);
   background: var(--bg-primary);
+}
+
+@media (max-width: 767px) {
+  .formSide {
+    padding: var(--space-10) var(--space-5);
+    /* Vertical centering with min-height for short content */
+    min-height: 100dvh;
+  }
 }
 
 @media (min-width: 1024px) {
   .formSide { width: 50%; }
 }
 
-.formContainer { width: 100%; max-width: 420px; }
+/* ---- Form container with entrance animation ---- */
+.formContainer {
+  width: 100%;
+  max-width: 420px;
+  animation: slideUpIn var(--duration-slow) var(--ease-spring) both;
+}
+
+@keyframes slideUpIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .formHeader { margin-bottom: var(--space-6); }
-.formTitle { font-size: var(--text-3xl); font-weight: 800; margin-bottom: var(--space-2); }
+
+.formTitle {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  margin-bottom: var(--space-2);
+}
+
+@media (min-width: 768px) {
+  .formTitle { font-size: var(--text-3xl); }
+}
+
 .formSubtitle { font-size: var(--text-base); color: var(--text-secondary); }
 
+/* ---- Google button: prominent and full-width ---- */
 .googleBtn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-3) var(--space-6);
+  padding: var(--space-4) var(--space-6);
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -127,11 +165,18 @@
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
   box-shadow: var(--shadow-sm);
+  min-height: 52px;
 }
 
-.googleBtn:hover { background: var(--bg-secondary); border-color: var(--border-hover); box-shadow: var(--shadow-md); }
+.googleBtn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
 .googleBtn:active { transform: scale(0.98); }
-.googleBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+.googleBtn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 .googleIcon { flex-shrink: 0; }
 
 .divider { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-5) 0; }
@@ -164,6 +209,8 @@
 }
 
 .form { display: flex; flex-direction: column; gap: var(--space-5); }
+
+/* ---- Phone input: large, native feel ---- */
 .phoneInput { display: flex; align-items: stretch; }
 
 .phonePrefix {
@@ -174,9 +221,24 @@
   border: 1px solid var(--border-default);
   border-right: none;
   border-radius: var(--radius-md) 0 0 var(--radius-md);
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+@media (max-width: 767px) {
+  .phoneInput input {
+    font-size: var(--text-lg);
+    padding: var(--space-4);
+    min-height: 54px;
+    letter-spacing: var(--tracking-wide);
+  }
+
+  .phonePrefix {
+    font-size: var(--text-base);
+    padding: var(--space-4);
+    min-height: 54px;
+  }
 }
 
 .error {
