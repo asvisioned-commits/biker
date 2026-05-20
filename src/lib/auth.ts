@@ -57,14 +57,39 @@ export async function signInWithGoogle() {
  */
 export async function signInWithEmail(email: string, password: string) {
   if (IS_DEV) {
-    const mockSession: BikerSession = {
-      user_id: 'mock-user-' + Date.now(),
-      full_name: 'Test User',
-      email,
-      phone: '+263771234567',
-      role: 'customer',
-      roles: ['customer'],
-    };
+    let mockSession: BikerSession | null = null;
+    
+    if (typeof window !== 'undefined') {
+      try {
+        const registryStr = localStorage.getItem('biker_mock_users_registry') || '[]';
+        const registry = JSON.parse(registryStr);
+        const found = registry.find((u: any) => u.email === email);
+        if (found) {
+          mockSession = found.session;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    if (!mockSession) {
+      // Auto-detect role from email domain/handle
+      let role = 'customer';
+      const cleanEmail = email.toLowerCase();
+      if (cleanEmail.includes('rider') || cleanEmail.includes('biker')) role = 'rider';
+      else if (cleanEmail.includes('merchant')) role = 'merchant';
+      else if (cleanEmail.includes('ops')) role = 'ops';
+      else if (cleanEmail.includes('admin')) role = 'admin';
+
+      mockSession = {
+        user_id: 'mock-user-' + Date.now(),
+        full_name: email.split('@')[0].toUpperCase(),
+        email,
+        phone: '+263771234567',
+        role: role,
+        roles: [role, 'customer'],
+      };
+    }
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
     return {
       data: {
@@ -98,13 +123,35 @@ export async function signInWithPhone(phone: string) {
  */
 export async function verifyPhoneOtp(phone: string, token: string) {
   if (IS_DEV) {
-    const mockSession: BikerSession = {
-      user_id: 'mock-user-' + Date.now(),
-      full_name: 'Test User',
-      phone: `+263${phone}`,
-      role: 'customer',
-      roles: ['customer'],
-    };
+    let mockSession: BikerSession | null = null;
+    const formattedPhone = phone.startsWith('+') ? phone : `+263${phone}`;
+    
+    if (typeof window !== 'undefined') {
+      try {
+        const registryStr = localStorage.getItem('biker_mock_users_registry') || '[]';
+        const registry = JSON.parse(registryStr);
+        const found = registry.find((u: any) => u.phone === formattedPhone || u.phone === phone);
+        if (found) {
+          mockSession = found.session;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    if (!mockSession) {
+      let role = 'customer';
+      if (phone.includes('771') || phone.includes('772') || phone.includes('biker') || phone.includes('rider')) role = 'rider';
+      else if (phone.includes('888') || phone.includes('merchant')) role = 'merchant';
+
+      mockSession = {
+        user_id: 'mock-user-' + Date.now(),
+        full_name: 'Test User',
+        phone: formattedPhone,
+        role: role,
+        roles: [role, 'customer'],
+      };
+    }
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
     return {
       data: {
@@ -133,14 +180,33 @@ export async function signUpWithEmail(
   metadata: Record<string, unknown>
 ) {
   if (IS_DEV) {
+    const role = (metadata.role as string) || 'customer';
     const mockSession: BikerSession = {
       user_id: 'mock-user-' + Date.now(),
       full_name: (metadata.full_name as string) || 'New User',
       email,
       phone: metadata.phone as string,
-      role: (metadata.role as string) || 'customer',
-      roles: [(metadata.role as string) || 'customer'],
+      role: role,
+      roles: [role, 'customer'],
     };
+    
+    // Save to registry
+    if (typeof window !== 'undefined') {
+      try {
+        const registryStr = localStorage.getItem('biker_mock_users_registry') || '[]';
+        const registry = JSON.parse(registryStr);
+        const filtered = registry.filter((u: any) => u.email !== email && u.phone !== metadata.phone);
+        filtered.push({
+          email,
+          phone: metadata.phone,
+          session: mockSession
+        });
+        localStorage.setItem('biker_mock_users_registry', JSON.stringify(filtered));
+      } catch (e) {
+        console.error('Failed to save to mock user registry', e);
+      }
+    }
+    
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
     return {
       data: {
