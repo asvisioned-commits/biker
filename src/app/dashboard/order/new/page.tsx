@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useProfile } from '@/context/ProfileContext';
+import { OrderService } from '@/lib/order-service';
 import styles from './new-order.module.css';
 import { useGeolocation } from '@/lib/geolocation';
 import { reverseGeocode } from '@/lib/geocoding';
@@ -21,6 +23,11 @@ function NewOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedType = searchParams.get('type') as ServiceType | null;
+
+  // Profile Context Session
+  const { session } = useProfile();
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Booking Flow Steps:
   // 'select_pickup' -> 'select_dropoff' -> 'enter_details'
@@ -45,6 +52,11 @@ function NewOrderContent() {
   const [dropoffAddress, setDropoffAddress] = useState('');
   const [dropoffLandmark, setDropoffLandmark] = useState('');
   const [dropoffPhone, setDropoffPhone] = useState('');
+
+  const triggerToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
   const [serviceType, setServiceType] = useState<ServiceType>(preselectedType || 'send_item');
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>('standard');
@@ -147,18 +159,16 @@ function NewOrderContent() {
     };
   }, [leafletLoaded]);
 
-  // Handle GPS blue dot rendering
+  // Track blue dot marker updates
   useEffect(() => {
     if (!leafletLoaded || !mapRef.current || !gpsCoords) return;
     const L = (window as any).L;
     if (!L) return;
 
-    // Clear previous marker
     if (gpsMarkerRef.current) {
       gpsMarkerRef.current.remove();
     }
 
-    // Create blue pulsing GPS dot
     const gpsIcon = L.divIcon({
       html: `
         <div style="
@@ -230,21 +240,58 @@ function NewOrderContent() {
     setBookingMode('enter_details');
   };
 
-  // Simulation step submit
-  const handlePlaceOrder = () => {
-    setIsScanning(true);
-    setScanStep(0);
-    
-    const timer1 = setTimeout(() => setScanStep(1), 1200);
-    const timer2 = setTimeout(() => setScanStep(2), 2400);
-    const timer3 = setTimeout(() => setScanStep(3), 3600);
-    const timer4 = setTimeout(() => {
+  // Database-integrated booking submit
+  const handlePlaceOrder = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      const customerId = session?.user_id || 'mock-customer-id';
       const pCoords = pickupCoords || [-17.7502, 31.0858];
       const dCoords = dropoffCoords || [-17.7289, 31.1345];
-      router.push(
-        `/dashboard/tracking?id=mock-new-order&pLat=${pCoords[0]}&pLng=${pCoords[1]}&dLat=${dCoords[0]}&dLng=${dCoords[1]}&pAddr=${encodeURIComponent(pickupAddress)}&dAddr=${encodeURIComponent(dropoffAddress)}&fare=${proposedFare}&service=${serviceType}`
-      );
-    }, 4800);
+
+      const orderPayload = {
+        customer_id: customerId,
+        service_type: serviceType,
+        fulfillment_mode: fulfillmentMode,
+        protection_level: 'protected',
+        pickup_address: pickupAddress,
+        pickup_lat: pCoords[0],
+        pickup_lng: pCoords[1],
+        pickup_contact_name: session?.full_name || 'Customer',
+        pickup_contact_phone: pickupPhone || session?.phone || '',
+        dropoff_address: dropoffAddress,
+        dropoff_lat: dCoords[0],
+        dropoff_lng: dCoords[1],
+        dropoff_contact_name: 'Receiver',
+        dropoff_contact_phone: dropoffPhone,
+        dropoff_gate_color: dropoffLandmark,
+        item_description: itemDescription || 'Delivery Package',
+        delivery_fee: proposedFare,
+        service_fee: 0.38,
+        protection_fee: 0.50,
+        total_amount: proposedFare + 0.38 + 0.50,
+      };
+
+      const createdOrder = await OrderService.createOrder(orderPayload);
+      triggerToast('Order submitted! Finding nearby riders...');
+
+      setIsScanning(true);
+      setScanStep(0);
+      
+      const timer1 = setTimeout(() => setScanStep(1), 1200);
+      const timer2 = setTimeout(() => setScanStep(2), 2400);
+      const timer3 = setTimeout(() => setScanStep(3), 3600);
+      const timer4 = setTimeout(() => {
+        router.push(
+          `/dashboard/tracking?id=${createdOrder.id}&pLat=${pCoords[0]}&pLng=${pCoords[1]}&dLat=${dCoords[0]}&dLng=${dCoords[1]}&pAddr=${encodeURIComponent(pickupAddress)}&dAddr=${encodeURIComponent(dropoffAddress)}&fare=${proposedFare}&service=${serviceType}`
+        );
+      }, 4800);
+    } catch (error) {
+      console.error('Failed to create order:', error);
+      triggerToast('Could not submit booking. Please check connection.');
+      setIsSubmitting(false);
+    }
   };
 
   // Radar screen renderer
@@ -299,6 +346,27 @@ function NewOrderContent() {
 
   return (
     <div className={styles.container}>
+      {toastMsg && (
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0, 0, 0, 0.85)',
+          color: 'white',
+          padding: '10px 20px',
+          borderRadius: '24px',
+          fontSize: '13px',
+          fontWeight: 600,
+          zIndex: 999,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          ✨ {toastMsg}
+        </div>
+      )}
       {/* Map Element */}
       <div className={styles.mapWrapper}>
         <div id={mapId} className={styles.map} />
@@ -370,6 +438,37 @@ function NewOrderContent() {
             </div>
 
             <div className="input-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Pickup Phone</span>
+                {session?.phone ? (
+                  <button
+                    type="button"
+                    onClick={() => { setPickupPhone(session.phone || ''); triggerToast('Filled with your number!'); }}
+                    style={{
+                      background: 'rgba(37,99,235,0.1)',
+                      color: '#2563eb',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    👤 Use my number
+                  </button>
+                ) : (
+                  <span 
+                    title="Add a phone number to your profile settings to auto-fill" 
+                    style={{ fontSize: '11px', color: 'var(--text-muted)', cursor: 'help' }}
+                  >
+                    ℹ️ Profile has no phone
+                  </span>
+                )}
+              </div>
               <input
                 type="tel"
                 placeholder="Pickup Contact Phone (Optional)"
@@ -421,6 +520,37 @@ function NewOrderContent() {
             </div>
 
             <div className="input-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Receiver Phone</span>
+                {session?.phone ? (
+                  <button
+                    type="button"
+                    onClick={() => { setDropoffPhone(session.phone || ''); triggerToast('Filled with your number!'); }}
+                    style={{
+                      background: 'rgba(37,99,235,0.1)',
+                      color: '#2563eb',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    👤 Use my number
+                  </button>
+                ) : (
+                  <span 
+                    title="Add a phone number to your profile settings to auto-fill" 
+                    style={{ fontSize: '11px', color: 'var(--text-muted)', cursor: 'help' }}
+                  >
+                    ℹ️ Profile has no phone
+                  </span>
+                )}
+              </div>
               <input
                 type="tel"
                 placeholder="Receiver Contact Phone"

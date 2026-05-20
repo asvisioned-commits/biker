@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { OrderService, BikerOrder } from '@/lib/order-service';
 import styles from './tracking.module.css';
 
 function TrackingContent() {
@@ -14,46 +15,90 @@ function TrackingContent() {
   const [pinError, setPinError] = useState(false);
   const [enteredPin, setEnteredPin] = useState('');
 
+  // Live order from database or local storage
+  const [liveOrder, setLiveOrder] = useState<BikerOrder | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const orderId = searchParams.get('id');
+
+  useEffect(() => {
+    if (!orderId) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchLiveOrder = async () => {
+      try {
+        const o = await OrderService.getOrderById(orderId);
+        if (o) {
+          setLiveOrder(o);
+          if (o.status === 'completed') {
+            setProgress(100);
+            setPinVerified(true);
+            setCurrentStatus(7);
+          } else if (o.status === 'en_route_delivery') {
+            setProgress(prev => Math.max(prev, 50));
+          } else if (o.status === 'arrived_pickup') {
+            setProgress(prev => Math.max(prev, 30));
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching live order:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLiveOrder();
+    const interval = setInterval(fetchLiveOrder, 10000);
+    return () => clearInterval(interval);
+  }, [orderId]);
+
   const mapRef = useRef<any>(null);
   const riderMarkerRef = useRef<any>(null);
   const mapId = 'leaflet-tracking-map';
 
   // Read coordinates and addresses from URL, fallback to default Harare coordinates
-  const pickupLat = parseFloat(searchParams.get('pLat') || '-17.7502');
-  const pickupLng = parseFloat(searchParams.get('pLng') || '31.0858');
-  const dropoffLat = parseFloat(searchParams.get('dLat') || '-17.7289');
-  const dropoffLng = parseFloat(searchParams.get('dLng') || '31.1345');
-  
-  const pickupAddress = searchParams.get('pAddr') || "Sam Levy's Village, Borrowdale";
-  const dropoffAddress = searchParams.get('dAddr') || "Borrowdale Brooke Golf Estate";
+  const pLatParam = parseFloat(searchParams.get('pLat') || '-17.7502');
+  const pLngParam = parseFloat(searchParams.get('pLng') || '31.0858');
+  const dLatParam = parseFloat(searchParams.get('dLat') || '-17.7289');
+  const dLngParam = parseFloat(searchParams.get('dLng') || '31.1345');
 
-  // Mock order details
+  const pickupLat = liveOrder?.pickup_lat || pLatParam;
+  const pickupLng = liveOrder?.pickup_lng || pLngParam;
+  const dropoffLat = liveOrder?.dropoff_lat || dLatParam;
+  const dropoffLng = liveOrder?.dropoff_lng || dLngParam;
+  
+  const pickupAddress = liveOrder?.pickup_address || searchParams.get('pAddr') || "Sam Levy's Village, Borrowdale";
+  const dropoffAddress = liveOrder?.dropoff_address || searchParams.get('dAddr') || "Borrowdale Brooke Golf Estate";
+
+  // Unified order details
   const order = {
-    reference_code: 'BKR-7X2K9M',
-    service_type: 'send_item' as const,
-    fulfillment_mode: 'standard' as const,
-    protection_level: 'protected' as string,
+    reference_code: liveOrder?.reference_code || searchParams.get('ref') || 'BKR-NEW',
+    service_type: (liveOrder?.service_type || searchParams.get('service') || 'send_item') as 'send_item' | 'buy_for_me',
+    fulfillment_mode: (liveOrder?.fulfillment_mode || 'standard') as 'standard' | 'jet',
+    protection_level: liveOrder?.protection_level || 'protected',
     pickup_address: pickupAddress,
     dropoff_address: dropoffAddress,
-    dropoff_gate_color: 'Brown gate',
-    delivery_pin: '4729',
+    dropoff_gate_color: liveOrder?.dropoff_gate_color || 'Brown gate',
+    delivery_pin: liveOrder?.delivery_pin || '4729',
     rider: {
-      name: 'Takudzwa M.',
+      name: liveOrder?.rider?.full_name || 'Takudzwa M.',
       rating: 4.9,
       vehicle: 'Honda CG 125',
       reg: 'AEQ 7834',
       completions: 247,
       tier: 'verified',
-      avatar: 'T',
+      avatar: (liveOrder?.rider?.full_name?.[0] || 'T').toUpperCase(),
     },
     pricing: {
-      delivery_fee: 2.50,
-      service_fee: 0.38,
-      protection_fee: 0.50,
-      total: 3.38,
+      delivery_fee: Number(liveOrder?.delivery_fee || parseFloat(searchParams.get('fare') || '5.00')),
+      service_fee: Number(liveOrder?.service_fee || 0.38),
+      protection_fee: Number(liveOrder?.protection_fee || 0.50),
+      total: Number(liveOrder?.total_amount || (parseFloat(searchParams.get('fare') || '5.00') + 0.38 + 0.50)),
     },
     estimated_delivery: progress < 25 ? '12 min' : progress < 45 ? '10 min' : progress < 90 ? '5 min' : 'Arrived',
-    created_at: '2:15 PM',
+    created_at: liveOrder ? new Date(liveOrder.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
   };
 
   // Load Leaflet dynamically
@@ -192,8 +237,23 @@ function TrackingContent() {
     if (progress % 4 === 0) {
       mapRef.current.panTo([lat, lng]);
     }
-    setCurrentStatus(status);
-  }, [progress, leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+    
+    if (status !== currentStatus) {
+      setCurrentStatus(status);
+      
+      const dbStatusMap: Record<number, string> = {
+        3: 'en_route_pickup',
+        4: 'arrived_pickup',
+        6: 'en_route_delivery',
+        7: 'completed',
+      };
+      
+      const targetDbStatus = dbStatusMap[status];
+      if (orderId && liveOrder && liveOrder.status !== targetDbStatus && !pinVerified) {
+        OrderService.updateOrderStatus(orderId, targetDbStatus);
+      }
+    }
+  }, [progress, leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng, currentStatus, orderId, liveOrder, pinVerified]);
 
   const timeline = [
     { status: 'Order placed', time: '2:15 PM', completed: true, description: 'Order confirmed and payment secured' },
@@ -205,14 +265,32 @@ function TrackingContent() {
     { status: 'Delivered', time: progress >= 90 ? '2:35 PM' : '', completed: currentStatus >= 7 || pinVerified, active: currentStatus === 7 && !pinVerified, description: 'Confirmed with PIN code' },
   ];
 
-  const verifyPin = () => {
+  const verifyPin = async () => {
     if (enteredPin === order.delivery_pin) {
       setPinVerified(true);
       setPinError(false);
+      
+      // Mark as completed in backend/local
+      if (orderId) {
+        try {
+          await OrderService.updateOrderStatus(orderId, 'completed');
+        } catch (e) {
+          console.error('Failed to mark order as completed upon PIN entry', e);
+        }
+      }
     } else {
       setPinError(true);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 min-h-[50vh]">
+        <span className="spinner spinner--lg" style={{ marginBottom: '16px' }} />
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Loading live tracking data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>

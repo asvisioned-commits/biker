@@ -61,13 +61,14 @@ export async function signInWithEmail(email: string, password: string) {
       user_id: 'mock-user-' + Date.now(),
       full_name: 'Test User',
       email,
+      phone: '+263771234567',
       role: 'customer',
       roles: ['customer'],
     };
     localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
     return {
       data: {
-        user: { id: mockSession.user_id, email: mockSession.email } as any,
+        user: { id: mockSession.user_id, email: mockSession.email, phone: mockSession.phone } as any,
         session: { access_token: 'mock-token', user: { id: mockSession.user_id } } as any,
       },
       error: null,
