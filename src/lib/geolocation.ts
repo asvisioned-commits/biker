@@ -63,45 +63,66 @@ export function useGeolocation() {
 
     setState(prev => ({ ...prev, loading: true, error: null }));
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude, accuracy } = position.coords;
-        const coords: [number, number] = [latitude, longitude];
+    const highAccuracyOptions = {
+      enableHighAccuracy: true,
+      timeout: 6000,
+      maximumAge: 0,
+    };
 
-        // Cache last location
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ lat: latitude, lng: longitude }));
+    const lowAccuracyOptions = {
+      enableHighAccuracy: false,
+      timeout: 8000,
+      maximumAge: 60000, // allow 1 minute cached value
+    };
 
-        setState(prev => ({
-          ...prev,
-          coords,
-          accuracy,
-          loading: false,
-          error: null,
-          permissionStatus: 'granted',
-        }));
-      },
-      (error) => {
-        let errorMsg = 'Failed to retrieve location';
-        if (error.code === error.PERMISSION_DENIED) {
-          errorMsg = 'Permission denied. Please enable location access in settings.';
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          errorMsg = 'Position unavailable.';
-        } else if (error.code === error.TIMEOUT) {
-          errorMsg = 'Request timed out.';
-        }
+    const handleSuccess = (position: GeolocationPosition) => {
+      const { latitude, longitude, accuracy } = position.coords;
+      const coords: [number, number] = [latitude, longitude];
 
-        setState(prev => ({
-          ...prev,
-          error: errorMsg,
-          loading: false,
-          permissionStatus: error.code === error.PERMISSION_DENIED ? 'denied' : prev.permissionStatus,
-        }));
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
+      // Cache last location
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ lat: latitude, lng: longitude }));
+
+      setState(prev => ({
+        ...prev,
+        coords,
+        accuracy,
+        loading: false,
+        error: null,
+        permissionStatus: 'granted',
+      }));
+    };
+
+    const handleFailure = (error: GeolocationPositionError) => {
+      let errorMsg = 'Failed to retrieve location';
+      if (error.code === error.PERMISSION_DENIED) {
+        errorMsg = 'Permission denied. Please enable location access in settings.';
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        errorMsg = 'Position unavailable.';
+      } else if (error.code === error.TIMEOUT) {
+        errorMsg = 'Request timed out.';
       }
+
+      setState(prev => ({
+        ...prev,
+        error: errorMsg,
+        loading: false,
+        permissionStatus: error.code === error.PERMISSION_DENIED ? 'denied' : prev.permissionStatus,
+      }));
+    };
+
+    // Try high accuracy first
+    navigator.geolocation.getCurrentPosition(
+      handleSuccess,
+      (err) => {
+        // High accuracy failed, fallback to low accuracy
+        console.warn('High accuracy geolocation failed or timed out. Retrying with low accuracy...', err);
+        navigator.geolocation.getCurrentPosition(
+          handleSuccess,
+          handleFailure,
+          lowAccuracyOptions
+        );
+      },
+      highAccuracyOptions
     );
   }, []);
 
