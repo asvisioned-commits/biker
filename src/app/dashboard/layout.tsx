@@ -30,9 +30,14 @@ export default function DashboardLayout({
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('biker_mock_session');
       if (stored) {
-        const parsed = JSON.parse(stored);
-        setSession(parsed);
-        setActiveRole(parsed.role || 'customer');
+        try {
+          const parsed = JSON.parse(stored);
+          setSession(parsed);
+          setActiveRole(parsed.role || 'customer');
+        } catch (e) {
+          console.error("Corrupted mock session, clearing.");
+          localStorage.removeItem('biker_mock_session');
+        }
       }
     }
   }, []);
