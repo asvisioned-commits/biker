@@ -52,3 +52,45 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
   // Fallback: Coordinates format
   return `Location at ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
+
+/**
+ * Forward geocodes an address query to coordinates using OpenStreetMap Nominatim.
+ * Restricts queries to Zimbabwe (countrycodes=zw) for local accuracy.
+ */
+export async function searchAddress(query: string): Promise<GeocodeResult[]> {
+  if (!query || query.trim().length < 3) return [];
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=zw&limit=5&addressdetails=1`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'BikerOG-App/1.0',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Nominatim search failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      return data.map((item: any) => {
+        // Clean up overly long search addresses
+        const parts = item.display_name.split(',');
+        const conciseAddress = parts.slice(0, 4).map((p: string) => p.trim()).join(', ');
+        return {
+          address: conciseAddress,
+          lat: parseFloat(item.lat),
+          lng: parseFloat(item.lon),
+        };
+      });
+    }
+  } catch (error) {
+    console.warn('Forward geocoding search failed:', error);
+  }
+
+  return [];
+}

@@ -57,6 +57,14 @@ export async function signInWithGoogle() {
  */
 export async function signInWithEmail(email: string, password: string) {
   if (IS_DEV) {
+    // Simulate 'Email not confirmed' for easy end-to-end developer testing
+    if (email.toLowerCase().includes('unconfirmed')) {
+      return {
+        data: { user: null, session: null },
+        error: { message: 'Email not confirmed', status: 400 } as any,
+      };
+    }
+
     let mockSession: BikerSession | null = null;
     
     if (typeof window !== 'undefined') {
@@ -244,6 +252,117 @@ export async function signOut() {
   const supabase = createClient();
   await supabase.auth.signOut();
   window.location.href = '/';
+}
+
+/**
+ * Resends a sign-up verification email for a given email address.
+ */
+export async function resendVerificationEmail(email: string) {
+  if (IS_DEV) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('biker_mock_last_verification_email', email);
+      localStorage.setItem('biker_mock_last_otp_sent', '123456'); // Simulated code
+    }
+    console.log(`[Mock Auth] Verification email resent to ${email}. Mock OTP: 123456`);
+    return { data: true, error: null };
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.resend({
+    type: 'signup',
+    email,
+    options: {
+      emailRedirectTo: `${window.location.origin}/auth/callback`,
+    },
+  });
+  return { data, error };
+}
+
+/**
+ * Verifies email signup OTP code in-app.
+ */
+export async function verifyEmailOtp(email: string, token: string) {
+  if (IS_DEV) {
+    // Standard mock verification code is "123456"
+    if (token !== '123456') {
+      return { data: null, error: { message: 'Invalid verification code' } as any };
+    }
+
+    let mockSession: BikerSession = {
+      user_id: 'mock-user-' + Date.now(),
+      full_name: email.split('@')[0].toUpperCase(),
+      email,
+      phone: '+263771234567',
+      role: 'customer',
+      roles: ['customer'],
+    };
+
+    if (typeof window !== 'undefined') {
+      try {
+        const registryStr = localStorage.getItem('biker_mock_users_registry') || '[]';
+        const registry = JSON.parse(registryStr);
+        const found = registry.find((u: any) => u.email === email);
+        if (found) {
+          mockSession = found.session;
+        } else {
+          registry.push({ email, phone: '', session: mockSession });
+          localStorage.setItem('biker_mock_users_registry', JSON.stringify(registry));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
+    return {
+      data: {
+        user: { id: mockSession.user_id, email: mockSession.email } as any,
+        session: { access_token: 'mock-token', user: { id: mockSession.user_id } } as any,
+      },
+      error: null,
+    };
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'signup',
+  });
+  return { data, error };
+}
+
+/**
+ * Sends a password recovery / reset link to an email address.
+ */
+export async function sendPasswordResetEmail(email: string) {
+  if (IS_DEV) {
+    console.log(`[Mock Auth] Password reset requested for ${email}. Simulated recovery link: ${window.location.origin}/reset-password`);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('biker_mock_last_reset_email', email);
+    }
+    return { data: true, error: null };
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  return { data, error };
+}
+
+/**
+ * Updates a logged in user's password securely (used on the recovery page).
+ */
+export async function updateUserPassword(password: string) {
+  if (IS_DEV) {
+    console.log('[Mock Auth] Password successfully updated in developer mode');
+    return { data: true, error: null };
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.updateUser({ password });
+  return { data, error };
 }
 
 /**
