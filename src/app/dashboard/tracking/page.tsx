@@ -58,7 +58,7 @@ function TrackingContent() {
   const riderMarkerRef = useRef<any>(null);
   const mapId = 'leaflet-tracking-map';
 
-  // Read coordinates and addresses from URL, fallback to default Harare coordinates
+  // Read coordinates and addresses from URL, fallback to Harare coordinates
   const pLatParam = parseFloat(searchParams.get('pLat') || '-17.7502');
   const pLngParam = parseFloat(searchParams.get('pLng') || '31.0858');
   const dLatParam = parseFloat(searchParams.get('dLat') || '-17.7289');
@@ -395,7 +395,7 @@ function TrackingContent() {
             </div>
           </div>
 
-          {/* Delivery PIN (Awaiting Input / Verification) */}
+          {/* Delivery PIN */}
           <div className={styles.pinCard}>
             <div className={styles.pinHeader}>
               <span>🔑</span>
