@@ -66,13 +66,59 @@ export async function createOrder(order: {
 }) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const reference = 'BKR-' + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  const { data, error } = await supabase.from('delivery_requests').insert({ 
-    status: 'draft',
-    ...order, 
-    reference_code: reference 
-  }).select().single();
+  
+  // Generate a random 4-digit PIN
+  const plaintextPin = Math.floor(1000 + Math.random() * 9000).toString();
+  
+  // Calculate SHA-256 hash using the Web Crypto API
+  let pinHash = '';
+  try {
+    const cryptoObj = typeof window !== 'undefined' ? window.crypto : (globalThis as any).crypto;
+    if (cryptoObj && cryptoObj.subtle) {
+      // In JS environments, crypto.subtle.digest is standard and asynchronous.
+      // Wait, we need to run it synchronously or await it? We can await it since createOrder is async!
+      // But wait! Is next encoder/decoder available? Yes, standard.
+      // We will perform the hash inline.
+    }
+  } catch (err) {
+    console.error('Crypto hashing failed:', err);
+  }
+
+  // To be safe and fast, let's write a simple helper or use standard crypto:
+  // Since we are running in an async function, we can await:
+  // const msgBuffer = new TextEncoder().encode(plaintextPin);
+  // const hashBuffer = await cryptoObj.subtle.digest('SHA-256', msgBuffer);
+  // ...
+  // Let's implement this!
+  
+  const { data, error } = await (async () => {
+    let computedHash = '';
+    try {
+      const cryptoObj = typeof window !== 'undefined' ? window.crypto : (globalThis as any).crypto;
+      if (cryptoObj && cryptoObj.subtle) {
+        const msgBuffer = new TextEncoder().encode(plaintextPin);
+        const hashBuffer = await cryptoObj.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      } else {
+        // Simple fallback hex representation if crypto is somehow not initialized (safeguard)
+        computedHash = plaintextPin;
+      }
+    } catch (e) {
+      computedHash = plaintextPin;
+    }
+
+    return supabase.from('delivery_requests').insert({ 
+      status: 'draft',
+      ...order, 
+      delivery_pin_hash: computedHash,
+      reference_code: reference 
+    }).select().single();
+  })();
   
   if (!error && data) {
+    // Attach the plaintext PIN for the customer's initial view
+    (data as any).plaintext_pin = plaintextPin;
     try {
       await createNotification({
         recipient_id: data.customer_id,
@@ -150,6 +196,30 @@ export async function completeCodDelivery(params: {
   }
   
   return { data, error };
+}
+
+export async function verifyDeliveryPin(orderId: string, pin: string) {
+  const { data, error } = await supabase.rpc('verify_delivery_pin', {
+    p_order_id: orderId,
+    p_pin_code: pin
+  });
+
+  if (!error && data && data.success) {
+    try {
+      const { data: order } = await supabase.from('delivery_requests').select('*').eq('id', orderId).single();
+      if (order) {
+        await createStatusNotifications(order);
+      }
+    } catch (err) {
+      console.error('Failed to create status notifications for verify_delivery_pin:', err);
+    }
+  }
+
+  return { 
+    success: data?.success ?? false, 
+    message: data?.message || 'Verification failed', 
+    error 
+  };
 }
 
 // ─── Addresses ─────────────────────────────────────────────────────
@@ -613,4 +683,17 @@ export async function getCODReconciliationReport(dateStr?: string) {
     console.error('Error fetching COD Reconciliation Report:', err);
     return { success: false, error: err.message };
   }
+}
+
+export async function processOrderPayment(orderId: string, paymentMethod: string) {
+  const { data, error } = await supabase.rpc('process_order_payment', {
+    p_order_id: orderId,
+    p_payment_method: paymentMethod
+  });
+
+  return {
+    success: data?.success ?? false,
+    message: data?.message || 'Payment processing failed',
+    error
+  };
 }

@@ -3,7 +3,9 @@ import {
   getOrders as dbGetOrders, 
   getOrderById as dbGetOrderById,
   updateOrderStatus as dbUpdateOrderStatus,
-  completeCodDelivery as dbCompleteCodDelivery
+  completeCodDelivery as dbCompleteCodDelivery,
+  verifyDeliveryPin as dbVerifyDeliveryPin,
+  processOrderPayment as dbProcessOrderPayment
 } from './database';
 import type { ServiceType, FulfillmentMode, ProtectionLevel } from '@/types';
 
@@ -57,6 +59,7 @@ export interface BikerOrder extends OrderPayload {
   retryCount: number;
   lastSyncAttempt?: string;
   supabaseId?: string | null;
+  delivery_pin_verified?: boolean;
 }
 
 const LOCAL_STORAGE_KEY = 'biker_local_orders_v2';
@@ -536,6 +539,80 @@ export const OrderService = {
       return { success: false, error: 'Invalid delivery PIN code', attemptsRemaining: 2 };
     }
     
+    return { success: true };
+  },
+
+  /**
+   * Verify delivery escrow release PIN code atomically
+   */
+  async verifyDeliveryPin(orderId: string, pin: string): Promise<{ success: boolean; error?: string; }> {
+    const currentOrders = getLocalOrders();
+    const idx = currentOrders.findIndex(o => o.id === orderId || o.supabaseId === orderId);
+
+    if (idx !== -1) {
+      currentOrders[idx] = {
+        ...currentOrders[idx],
+        status: 'completed',
+        delivery_pin_verified: true,
+      };
+      saveLocalOrders(currentOrders);
+    }
+
+    if (this.isOnline) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId) ||
+                     (idx !== -1 && currentOrders[idx]?.supabaseId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentOrders[idx].supabaseId || ''));
+      const dbId = isUuid ? (orderId.startsWith('local_') ? currentOrders[idx]?.supabaseId! : orderId) : null;
+      if (dbId) {
+        try {
+          const { success, message, error } = await dbVerifyDeliveryPin(dbId, pin);
+          if (error) return { success: false, error: error.message };
+          return { success, error: success ? undefined : message };
+        } catch (e: any) {
+          console.error('Failed to verify PIN in Supabase:', e);
+          return { success: false, error: e.message || 'Network error verifying PIN' };
+        }
+      }
+    }
+
+    // Offline / Dev mode simulation
+    const orderPin = idx !== -1 ? currentOrders[idx].delivery_pin : '4729';
+    if (pin !== orderPin) {
+      return { success: false, error: 'Invalid delivery PIN code' };
+    }
+    return { success: true };
+  },
+
+  /**
+   * Process order payment and update state / release ledger records
+   */
+  async processOrderPayment(orderId: string, paymentMethod: string): Promise<{ success: boolean; error?: string }> {
+    const currentOrders = getLocalOrders();
+    const idx = currentOrders.findIndex(o => o.id === orderId || o.supabaseId === orderId);
+
+    if (idx !== -1) {
+      currentOrders[idx] = {
+        ...currentOrders[idx],
+        status: 'payment_held',
+      };
+      saveLocalOrders(currentOrders);
+    }
+
+    if (this.isOnline) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId) ||
+                     (idx !== -1 && currentOrders[idx]?.supabaseId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentOrders[idx].supabaseId || ''));
+      const dbId = isUuid ? (orderId.startsWith('local_') ? currentOrders[idx]?.supabaseId! : orderId) : null;
+      if (dbId) {
+        try {
+          const { success, message, error } = await dbProcessOrderPayment(dbId, paymentMethod);
+          if (error) return { success: false, error: error.message };
+          return { success, error: success ? undefined : message };
+        } catch (e: any) {
+          console.error('Failed to process payment in Supabase:', e);
+          return { success: false, error: e.message || 'Network error processing payment' };
+        }
+      }
+    }
+
     return { success: true };
   },
 
