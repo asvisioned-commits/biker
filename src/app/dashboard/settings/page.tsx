@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from './settings.module.css';
-import { signOut, getSession, updateUserPassword } from '@/lib/auth';
+import { signOut, getSession, updateUserPassword, updateUserEmail } from '@/lib/auth';
 import { updateProfile } from '@/lib/database';
 import type { UserRole } from '@/types';
 
@@ -18,6 +18,11 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [notifications, setNotifications] = useState({ order_updates: true, promotions: false, rider_nearby: true, dispute_updates: true });
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+
+  // Email sync and validation states
+  const [initialEmail, setInitialEmail] = useState('');
+  const [emailPendingVerification, setEmailPendingVerification] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Password Security Tab States
   const [currentPw, setCurrentPw] = useState('');
@@ -82,6 +87,7 @@ export default function SettingsPage() {
         setRole((session.role as UserRole) || 'customer');
         setFullName(session.full_name || 'Test User');
         setEmail(session.email || '');
+        setInitialEmail(session.email || '');
         setPhone(session.phone?.replace('+263', '') || '');
         setIsGoogleConnected(!!session.is_google);
       }
@@ -91,7 +97,27 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError('');
+    setEmailPendingVerification(false);
+    setSaved(false);
+
     try {
+      const session = await getSession();
+      if (!session) {
+        setSaveError('No active session found.');
+        return;
+      }
+
+      const isMockUser = session.user_id.startsWith('mock-');
+      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
+      const emailChanged = email.trim() !== initialEmail.trim();
+
+      if (emailChanged && isGoogleConnected) {
+        setSaveError('Email updates are disabled for Google-connected accounts.');
+        return;
+      }
+
+      // Update local storage for mock fallback/dev compatibility
       const stored = localStorage.getItem('biker_mock_session');
       if (stored) {
         try {
@@ -102,17 +128,52 @@ export default function SettingsPage() {
           localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
         } catch (e) { /* ignore */ }
       }
-      const session = await getSession();
-      if (session) {
-        const isMockUser = session.user_id.startsWith('mock-');
-        const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
-        if (useLiveDb) {
-          await updateProfile(session.user_id, { full_name: fullName, phone: '+263' + phone });
+
+      if (useLiveDb) {
+        const profileUpdates: any = {
+          full_name: fullName,
+          phone: '+263' + phone,
+        };
+
+        // 1. If email changed, propagate email to profiles table
+        if (emailChanged) {
+          profileUpdates.email = email.trim();
+        }
+
+        const { error: profileError } = await updateProfile(session.user_id, profileUpdates);
+        if (profileError) {
+          setSaveError(profileError.message || 'Failed to update database profile.');
+          return;
+        }
+
+        // 2. If email changed, propagate email to Supabase Auth system
+        if (emailChanged) {
+          const { error: authError } = await updateUserEmail(email.trim());
+          if (authError) {
+            setSaveError(authError.message || 'Failed to update email in auth system.');
+            return;
+          }
+          if (!isMockUser) {
+            setEmailPendingVerification(true);
+          }
+          setInitialEmail(email.trim());
+        }
+      } else {
+        // Mock path email change
+        if (emailChanged) {
+          await updateUserEmail(email.trim());
+          setInitialEmail(email.trim());
         }
       }
+
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } finally { setSaving(false); }
+      setTimeout(() => setSaved(false), 5000);
+    } catch (err: any) {
+      setSaveError(err.message || 'An unexpected error occurred.');
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const tabs = [
@@ -138,9 +199,15 @@ export default function SettingsPage() {
       </div>
 
       {saved && <div className={styles.toast}>✅ Settings saved successfully</div>}
+      {emailPendingVerification && (
+        <div className={styles.toast} style={{ background: 'var(--color-warning-50)', color: 'var(--color-warning-700)', borderColor: 'var(--color-warning-200)' }}>
+          📧 Please check your new email to confirm your address.
+        </div>
+      )}
 
       {activeTab === 'profile' && (
         <div className={styles.section}>
+          {saveError && <div className={styles.errorMsg} style={{ marginBottom: 'var(--space-4)' }}>❌ {saveError}</div>}
           <div className={styles.avatarSection}>
             <div className={styles.avatar}>{fullName.charAt(0).toUpperCase()}</div>
             <div>
@@ -151,7 +218,17 @@ export default function SettingsPage() {
           </div>
           <div className={styles.formGrid}>
             <div className="input-group"><label className="input-label" htmlFor="settingsName">Full name</label><input id="settingsName" type="text" className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} /></div>
-            <div className="input-group"><label className="input-label" htmlFor="settingsEmail">Email</label><input id="settingsEmail" type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+            <div className="input-group">
+              <label className="input-label" htmlFor="settingsEmail">Email</label>
+              <input 
+                id="settingsEmail" 
+                type="email" 
+                className="input" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                disabled={isGoogleConnected} 
+              />
+            </div>
             <div className="input-group"><label className="input-label" htmlFor="settingsPhone">Phone</label><div className={styles.phoneInput}><span className={styles.phonePrefix}>+263</span><input id="settingsPhone" type="tel" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} /></div></div>
           </div>
           <div className={styles.connectedSection}>
@@ -182,152 +259,4 @@ export default function SettingsPage() {
                         } catch (e) {}
                       }
                     }}
-                  >
-                    Disconnect
-                  </button>
-                ) : (
-                  <button
-                    className="btn btn--secondary btn--sm"
-                    onClick={async () => {
-                      setIsGoogleConnected(true);
-                      const stored = localStorage.getItem('biker_mock_session');
-                      if (stored) {
-                        try {
-                          const parsed = JSON.parse(stored);
-                          parsed.is_google = true;
-                          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
-                        } catch (e) {}
-                      }
-                    }}
-                  >
-                    Connect
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className={styles.formActions}>
-            <button className="btn btn--primary" onClick={handleSave} disabled={saving}>{saving ? <><span className="spinner" /> Saving...</> : 'Save changes'}</button>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'security' && (
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Password</h3>
-          
-          {isGoogleConnected ? (
-            <div className="alert alert--warning" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
-              🔑 <strong>Google Account Connected</strong>
-              <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                Your account is authenticated via Google. Since Google manages your security and login credentials, password changing is disabled.
-              </p>
-            </div>
-          ) : (
-            <>
-              {pwError && <div className={styles.errorMsg} style={{ marginBottom: 'var(--space-3)' }}>❌ {pwError}</div>}
-              {pwSuccess && <div className={styles.successMsg} style={{ marginBottom: 'var(--space-3)' }}>✅ {pwSuccess}</div>}
-              <div className={styles.formGrid}>
-                <div className="input-group">
-                  <label className="input-label" htmlFor="currentPw">Current password</label>
-                  <input
-                    id="currentPw"
-                    type="password"
-                    className="input"
-                    placeholder="Enter current password"
-                    value={currentPw}
-                    onChange={(e) => setCurrentPw(e.target.value)}
-                  />
-                </div>
-                <div className="input-group">
-                  <label className="input-label" htmlFor="newPw">New password</label>
-                  <input
-                    id="newPw"
-                    type="password"
-                    className="input"
-                    placeholder="Enter new password"
-                    value={newPw}
-                    onChange={(e) => setNewPw(e.target.value)}
-                  />
-                </div>
-                <div className="input-group">
-                  <label className="input-label" htmlFor="confirmPw">Confirm password</label>
-                  <input
-                    id="confirmPw"
-                    type="password"
-                    className="input"
-                    placeholder="Confirm new password"
-                    value={confirmPw}
-                    onChange={(e) => setConfirmPw(e.target.value)}
-                  />
-                </div>
-              </div>
-              <button
-                className="btn btn--primary"
-                style={{ marginTop: 'var(--space-4)' }}
-                onClick={handleUpdatePassword}
-                disabled={updatingPw}
-              >
-                {updatingPw ? <><span className="spinner" /> Updating...</> : 'Update password'}
-              </button>
-            </>
-          )}
-
-          <hr className={styles.separator} />
-          <h3 className={styles.sectionTitle}>Active sessions</h3>
-          <div className={styles.sessionCard}>
-            <div className={styles.sessionIcon}>🖥️</div>
-            <div className={styles.sessionInfo}><div className={styles.sessionDevice}>Windows · Chrome</div><div className={styles.sessionMeta}>Harare, Zimbabwe · Current session</div></div>
-            <span className="badge badge--success">Active</span>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'preferences' && (
-        <div className={styles.section}>
-          <h3 className={styles.sectionTitle}>Notifications</h3>
-          <div className={styles.toggleList}>
-            {Object.entries(notifications).map(([key, value]) => (
-              <div key={key} className={styles.toggleRow}>
-                <div>
-                  <div className={styles.toggleLabel}>
-                    {key === 'order_updates' ? '📦 Order updates' : key === 'promotions' ? '🎁 Promotions' : key === 'rider_nearby' ? '🚴 Rider nearby alerts' : '⚖️ Dispute updates'}
-                  </div>
-                  <div className={styles.toggleDesc}>
-                    {key === 'order_updates' ? 'Get notified when your order status changes' : key === 'promotions' ? 'Receive promotional offers and discounts' : key === 'rider_nearby' ? 'Alert when a rider is approaching' : 'Updates on dispute resolutions'}
-                  </div>
-                </div>
-                <button className={`${styles.toggle} ${value ? styles.toggleOn : ''}`} onClick={() => setNotifications((prev) => ({ ...prev, [key]: !value }))} aria-label={`Toggle ${key}`}>
-                  <span className={styles.toggleKnob} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <hr className={styles.separator} />
-          <h3 className={styles.sectionTitle}>Display</h3>
-          <div className={styles.toggleRow}>
-            <div><div className={styles.toggleLabel}>🌙 Dark mode</div><div className={styles.toggleDesc}>Coming soon</div></div>
-            <button className={`${styles.toggle}`} disabled aria-label="Toggle dark mode"><span className={styles.toggleKnob} /></button>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'danger' && (
-        <div className={styles.section}>
-          <div className={styles.dangerZone}>
-            <h3 className={styles.dangerTitle}>⚠️ Danger Zone</h3>
-            <p className={styles.dangerDesc}>These actions are irreversible. Please be careful.</p>
-            <div className={styles.dangerCard}>
-              <div><strong>Sign out everywhere</strong><p>This will sign you out of all devices and sessions.</p></div>
-              <button className="btn btn--secondary btn--sm" onClick={() => signOut()}>Sign out all</button>
-            </div>
-            <div className={styles.dangerCard}>
-              <div><strong>Delete account</strong><p>Permanently delete your Biker account and all associated data. This cannot be undone.</p></div>
-              <button className="btn btn--danger btn--sm">Delete account</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                  >\n                    Disconnect\n                  </button>\n                ) : (\n                  <button\n                    className="btn btn--secondary btn--sm"\n                    onClick={async () => {\n                      setIsGoogleConnected(true);\n                      const stored = localStorage.getItem('biker_mock_session');\n                      if (stored) {\n                        try {\n                          const parsed = JSON.parse(stored);\n                          parsed.is_google = true;\n                          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));\n                        } catch (e) {}\n                      }\n                    }}\n                  >\n                    Connect\n                  </button>\n                )}\n              </div>\n            </div>\n          </div>\n          <div className={styles.formActions}>\n            <button className="btn btn--primary" onClick={handleSave} disabled={saving}>{saving ? <><span className="spinner" /> Saving...</> : 'Save changes'}</button>\n          </div>\n        </div>\n      )}\n\n      {activeTab === 'security' && (\n        <div className={styles.section}>\n          <h3 className={styles.sectionTitle}>Password</h3>\n          \n          {isGoogleConnected ? (\n            <div className="alert alert--warning" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>\n              🔑 <strong>Google Account Connected</strong>\n              <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>\n                Your account is authenticated via Google. Since Google manages your security and login credentials, password changing is disabled.\n              </p>\n            </div>\n          ) : (\n            <>\n              {pwError && <div className={styles.errorMsg} style={{ marginBottom: 'var(--space-3)' }}>❌ {pwError}</div>}\n              {pwSuccess && <div className={styles.successMsg} style={{ marginBottom: 'var(--space-3)' }}>✅ {pwSuccess}</div>}\n              <div className={styles.formGrid}>\n                <div className="input-group">\n                  <label className="input-label" htmlFor="currentPw">Current password</label>\n                  <input\n                    id=\"currentPw\"\n                    type=\"password\"\n                    className=\"input\"\n                    placeholder=\"Enter current password\"\n                    value={currentPw}\n                    onChange={(e) => setCurrentPw(e.target.value)}\n                  />\n                </div>\n                <div className="input-group">\n                  <label className="input-label" htmlFor=\"newPw\">New password</label>\n                  <input\n                    id=\"newPw\"\n                    type=\"password\"\n                    className=\"input\"\n                    placeholder=\"Enter new password\"\n                    value={newPw}\n                    onChange={(e) => setNewPw(e.target.value)}\n                  />\n                </div>\n                <div className="input-group">\n                  <label className="input-label" htmlFor=\"confirmPw\">Confirm password</label>\n                  <input\n                    id=\"confirmPw\"\n                    type=\"password\"\n                    className=\"input\"\n                    placeholder=\"Confirm new password\"\n                    value={confirmPw}\n                    onChange={(e) => setConfirmPw(e.target.value)}\n                  />\n                </div>\n              </div>\n              <button\n                className=\"btn btn--primary\"\n                style={{ marginTop: 'var(--space-4)' }}\n                onClick={handleUpdatePassword}\n                disabled={updatingPw}\n              >\n                {updatingPw ? <><span className="spinner" /> Updating...</> : 'Update password'}\n              </button>\n            </>\n          )}\n\n          <hr className={styles.separator} />\n          <h3 className={styles.sectionTitle}>Active sessions</h3>\n          <div className={styles.sessionCard}>\n            <div className={styles.sessionIcon}>🖥️</div>\n            <div className={styles.sessionInfo}><div className={styles.sessionDevice}>Windows · Chrome</div><div className={styles.sessionMeta}>Harare, Zimbabwe · Current session</div></div>\n            <span className=\"badge badge--success\">Active</span>\n          </div>\n        </div>\n      )}\n\n      {activeTab === 'preferences' && (\n        <div className={styles.section}>\n          <h3 className={styles.sectionTitle}>Notifications</h3>\n          <div className={styles.toggleList}>\n            {Object.entries(notifications).map(([key, value]) => (\n              <div key={key} className={styles.toggleRow}>\n                <div>\n                  <div className={styles.toggleLabel}>\n                    {key === 'order_updates' ? '📦 Order updates' : key === 'promotions' ? '🎁 Promotions' : key === 'rider_nearby' ? '🚴 Rider nearby alerts' : '⚖️ Dispute updates'}\n                  </div>\n                  <div className={styles.toggleDesc}>\n                    {key === 'order_updates' ? 'Get notified when your order status changes' : key === 'promotions' ? 'Receive promotional offers and discounts' : key === 'rider_nearby' ? 'Alert when a rider is approaching' : 'Updates on dispute resolutions'}\n                  </div>\n                </div>\n                <button className={`${styles.toggle} ${value ? styles.toggleOn : ''}`} onClick={() => setNotifications((prev) => ({ ...prev, [key]: !value }))} aria-label={`Toggle ${key}`}>\n                  <span className={styles.toggleKnob} />\n                </button>\n              </div>\n            ))}\n          </div>\n          <hr className={styles.separator} />\n          <h3 className={styles.sectionTitle}>Display</h3>\n          <div className={styles.toggleRow}>\n            <div><div className={styles.toggleLabel}>🌙 Dark mode</div><div className={styles.toggleDesc}>Coming soon</div></div>\n            <button className={`${styles.toggle}`} disabled aria-label=\"Toggle dark mode\"><span className={styles.toggleKnob} /></button>\n          </div>\n        </div>\n      )}\n\n      {activeTab === 'danger' && (\n        <div className={styles.section}>\n          <div className={styles.dangerZone}>\n            <h3 className={styles.dangerTitle}>⚠️ Danger Zone</h3>\n            <p className={styles.dangerDesc}>These actions are irreversible. Please be careful.</p>\n            <div className={styles.dangerCard}>\n              <div><strong>Sign out everywhere</strong><p>This will sign you out of all devices and sessions.</p></div>\n              <button className="btn btn--secondary btn--sm" onClick={() => signOut()}>Sign out all</button>\n            </div>\n            <div className={styles.dangerCard}>\n              <div><strong>Delete account</strong><p>Permanently delete your Biker account and all associated data. This cannot be undone.</p></div>\n              <button className="btn btn--danger btn--sm">Delete account</button>\n            </div>\n          </div>\n        </div>\n      )}\n    </div>\n  );\n}\n
