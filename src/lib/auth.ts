@@ -20,6 +20,7 @@ export interface BikerSession {
   vehicle_registration?: string;
   business_name?: string;
   is_suspended?: boolean;
+  is_google?: boolean;
 }
 
 /**
@@ -375,7 +376,9 @@ export async function getSession(): Promise<BikerSession | null> {
     const stored = localStorage.getItem('biker_mock_session');
     if (stored) {
       try {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        parsed.is_google = parsed.user_id?.startsWith('google-mock-') || parsed.is_google || false;
+        return parsed;
       } catch (e) {
         localStorage.removeItem('biker_mock_session');
         return null;
@@ -405,6 +408,9 @@ export async function getSession(): Promise<BikerSession | null> {
   const profile = profileRes.data;
   const activeRoles = rolesRes.data?.map((r: { role: string }) => r.role) || ['customer'];
 
+  // Check if signed in via Google provider
+  const isGoogle = user.app_metadata?.provider === 'google' || user.app_metadata?.providers?.includes('google') || false;
+
   return {
     user_id: user.id,
     full_name: profile?.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
@@ -415,5 +421,6 @@ export async function getSession(): Promise<BikerSession | null> {
     avatar_url: profile?.avatar_url || user.user_metadata?.avatar_url || undefined,
     trust_score: profile?.trust_score || 50,
     is_suspended: profile?.is_suspended || false,
+    is_google: isGoogle,
   };
 }

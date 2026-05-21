@@ -127,3 +127,29 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+.userInfoLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: inherit;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast) var(--ease-out);
+  cursor: pointer;
+}
+.userInfoLink:hover {
+  background: var(--bg-secondary);
+}
+.avatarLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border-radius: var(--radius-full);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.avatarLink:active {
+  transform: scale(0.92);
+}

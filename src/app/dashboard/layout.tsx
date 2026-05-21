@@ -126,7 +126,13 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
           {currentNav.map((item) => <Link key={item.href} href={item.href} className={`${styles.navItem} ${pathname === item.href ? styles.navItemActive : ''}`} onClick={() => setSidebarOpen(false)}><span className={styles.navIcon}>{item.icon}</span><span>{item.label}</span></Link>)}
         </nav>
         <div className={styles.sidebarFooter}>
-          <div className={styles.userInfo}><div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div><div className={styles.userName}><span className={styles.userFullName}>{session?.full_name || 'User'}</span><span className={styles.userRole}>{roleLabels[activeRole]}</span></div></div>
+          <Link href="/dashboard/settings" className={styles.userInfoLink} title="Profile Settings">
+            <div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div>
+            <div className={styles.userName}>
+              <span className={styles.userFullName}>{session?.full_name || 'User'}</span>
+              <span className={styles.userRole}>{roleLabels[activeRole]}</span>
+            </div>
+          </Link>
           <button className={styles.logoutBtn} onClick={() => signOut()}>↗ Logout</button>
         </div>
       </aside>
@@ -135,7 +141,12 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         <header className={styles.mobileHeader}>
           <button className={styles.hamburger} onClick={() => setSidebarOpen(true)}>☰</button>
           <span className={styles.mobileTitle}>Biker<span className={styles.logoDot}>.</span></span>
-          <div className={styles.headerRight}><NotificationsDropdown /><div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div></div>
+          <div className={styles.headerRight}>
+            <NotificationsDropdown />
+            <Link href="/dashboard/settings" className={styles.avatarLink} title="Profile Settings">
+              <div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div>
+            </Link>
+          </div>
         </header>
         <div className={styles.mainContent}>
           <LocationPermissionBanner />
