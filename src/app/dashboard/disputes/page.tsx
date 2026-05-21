@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import styles from './disputes.module.css';
 import { useProfile } from '@/context/ProfileContext';
-import { getDisputes } from '@/lib/database';
+import { OrderService } from '@/lib/order-service';
 import { ListSkeleton, StatsSkeleton } from '@/components/skeletons';
 
 const MOCK_DISPUTES = [
@@ -112,30 +112,51 @@ export default function DisputesPage() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // Phase 3 States
+  const [activeTab, setActiveTab] = useState<'my-disputes' | 'ops-console'>('my-disputes');
+  const [showEvidenceInput, setShowEvidenceInput] = useState<string | null>(null);
+  const [evidenceUrl, setEvidenceUrl] = useState('');
+  const [opsNotes, setOpsNotes] = useState<{ [key: string]: string }>({});
+  const [submittingAction, setSubmittingAction] = useState(false);
+
   const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
-  const loadDisputes = async () => {
-    if (!userId) {
-      if (isDevMode) {
-        setDisputes(MOCK_DISPUTES);
-        setLoading(false);
-      } else {
-        setDisputes([]);
-        setLoading(false);
-      }
-      return;
-    }
+  // Check roles
+  const userRole = session?.role || '';
+  const userRoles = session?.roles || [];
+  const isOpsOrAdmin = userRole === 'ops' || userRole === 'admin' || userRoles.includes('ops') || userRoles.includes('admin');
 
+  const loadDisputes = async () => {
     try {
       setLoading(true);
       setError(null);
-      const { data, error: dbError } = await getDisputes(userId);
-      if (dbError) throw dbError;
       
-      setDisputes(data || []);
+      if (activeTab === 'ops-console') {
+        const data = await OrderService.getAllDisputes();
+        if ((!data || data.length === 0) && isDevMode) {
+          setDisputes(MOCK_DISPUTES);
+        } else {
+          setDisputes(data || []);
+        }
+      } else {
+        if (!userId) {
+          if (isDevMode) {
+            setDisputes(MOCK_DISPUTES);
+          } else {
+            setDisputes([]);
+          }
+          return;
+        }
+        const data = await OrderService.getDisputes(userId);
+        if ((!data || data.length === 0) && isDevMode) {
+          setDisputes(MOCK_DISPUTES);
+        } else {
+          setDisputes(data || []);
+        }
+      }
     } catch (err: any) {
       console.error('Failed to load disputes:', err);
-      setError('Could not retrieve live disputes. Showing local simulation.');
+      setError('Could not retrieve disputes. Showing local simulation.');
       if (isDevMode) {
         setDisputes(MOCK_DISPUTES);
       }
@@ -146,7 +167,89 @@ export default function DisputesPage() {
 
   useEffect(() => {
     loadDisputes();
-  }, [userId]);
+  }, [userId, activeTab]);
+
+  const handleWithdrawDispute = async (disputeId: string) => {
+    if (!confirm('Are you sure you want to withdraw this dispute? This will restore the order to its original status.')) {
+      return;
+    }
+    
+    try {
+      setSubmittingAction(true);
+      const success = await OrderService.withdrawDispute(disputeId);
+      if (success) {
+        alert('Dispute withdrawn successfully.');
+        loadDisputes();
+      } else {
+        alert('Failed to withdraw dispute. Please try again.');
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert('Error: ' + e.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleAddEvidence = async (disputeId: string) => {
+    if (!evidenceUrl.trim()) return;
+    
+    try {
+      setSubmittingAction(true);
+      const success = await OrderService.addDisputeEvidence(disputeId, evidenceUrl.trim());
+      if (success) {
+        alert('Evidence added successfully.');
+        setEvidenceUrl('');
+        setShowEvidenceInput(null);
+        loadDisputes();
+      } else {
+        alert('Failed to add evidence.');
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert('Error: ' + e.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleResolveDispute = async (disputeId: string, action: 'approve' | 'deny') => {
+    const notes = opsNotes[disputeId] || '';
+    if (!notes.trim()) {
+      alert('Please provide resolution notes explaining the decision.');
+      return;
+    }
+    
+    if (!confirm(`Are you sure you want to ${action} this dispute?`)) {
+      return;
+    }
+    
+    try {
+      setSubmittingAction(true);
+      const success = await OrderService.resolveDispute(
+        disputeId,
+        action,
+        session?.full_name || 'Ops Agent',
+        notes.trim()
+      );
+      if (success) {
+        alert(`Dispute ${action === 'approve' ? 'approved' : 'denied'} successfully.`);
+        setOpsNotes(prev => {
+          const next = { ...prev };
+          delete next[disputeId];
+          return next;
+        });
+        loadDisputes();
+      } else {
+        alert(`Failed to ${action} dispute.`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert('Error: ' + e.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
 
   // Aggregate statistics dynamically
   const openCount = disputes.filter(d => d.status === 'open' || d.status === 'evidence_requested').length;
@@ -170,6 +273,23 @@ export default function DisputesPage() {
           Manage and track your order disputes. Our protection policies ensure fair resolution.
         </p>
       </div>
+
+      {isOpsOrAdmin && (
+        <div className={styles.tabContainer}>
+          <button
+            className={`${styles.tabButton} ${activeTab === 'my-disputes' ? styles.tabButtonActive : ''}`}
+            onClick={() => setActiveTab('my-disputes')}
+          >
+            My Disputes
+          </button>
+          <button
+            className={`${styles.tabButton} ${activeTab === 'ops-console' ? styles.tabButtonActive : ''}`}
+            onClick={() => setActiveTab('ops-console')}
+          >
+            Ops Review Console
+          </button>
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: 'var(--space-3)', background: 'var(--color-warning-50)', color: 'var(--color-warning-600)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
@@ -283,6 +403,10 @@ export default function DisputesPage() {
 
                     <div className={styles.disputeDetails}>
                       <div className={styles.detailRow}>
+                        <span className={styles.detailLabel}>Filed By</span>
+                        <span>{dispute.initiated_by === 'customer' ? '👤 Customer' : dispute.initiated_by === 'rider' ? '🚴 Rider' : dispute.initiated_by}</span>
+                      </div>
+                      <div className={styles.detailRow}>
                         <span className={styles.detailLabel}>Against</span>
                         <span>{againstRole === 'rider' ? `🚴 ${opponentName}` : '🏢 Platform'}</span>
                       </div>
@@ -313,11 +437,78 @@ export default function DisputesPage() {
                       )}
                     </div>
 
-                    {dispute.status === 'open' && (
-                      <div className={styles.disputeActions}>
-                        <button className="btn btn--secondary btn--sm" onClick={() => alert('Feature coming soon under Phase 3!')}>Add evidence</button>
-                        <button className="btn btn--ghost btn--sm" onClick={() => alert('Feature coming soon under Phase 3!')}>Withdraw dispute</button>
-                      </div>
+                    {activeTab === 'ops-console' ? (
+                      (dispute.status === 'open' || dispute.status === 'evidence_requested' || dispute.status === 'investigating' || dispute.status === 'escalated') && (
+                        <div className={styles.opsControls}>
+                          <span className={styles.opsNotesLabel}>Ops Resolution Notes</span>
+                          <textarea
+                            className={styles.opsNotesTextarea}
+                            placeholder="Enter notes about investigation, wallet adjustments, or reasons for denial..."
+                            value={opsNotes[dispute.id] || ''}
+                            onChange={(e) => setOpsNotes(prev => ({ ...prev, [dispute.id]: e.target.value }))}
+                          />
+                          <div className={styles.opsActions}>
+                            <button
+                              className="btn btn--success btn--sm"
+                              onClick={() => handleResolveDispute(dispute.id, 'approve')}
+                              disabled={submittingAction}
+                            >
+                              Approve Dispute (Refund Wallet)
+                            </button>
+                            <button
+                              className="btn btn--danger btn--sm"
+                              onClick={() => handleResolveDispute(dispute.id, 'deny')}
+                              disabled={submittingAction}
+                            >
+                              Deny Dispute (Revert Order)
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      (dispute.status === 'open' || dispute.status === 'evidence_requested') && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                          <div className={styles.disputeActions}>
+                            <button
+                              className="btn btn--secondary btn--sm"
+                              onClick={() => setShowEvidenceInput(showEvidenceInput === dispute.id ? null : dispute.id)}
+                            >
+                              {showEvidenceInput === dispute.id ? 'Cancel' : 'Add evidence'}
+                            </button>
+                            <button
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => handleWithdrawDispute(dispute.id)}
+                              disabled={submittingAction}
+                            >
+                              Withdraw dispute
+                            </button>
+                          </div>
+
+                          {showEvidenceInput === dispute.id && (
+                            <div className={styles.evidenceForm}>
+                              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                                Add Evidence File URL or Description
+                              </span>
+                              <div className={styles.evidenceInputRow}>
+                                <input
+                                  type="text"
+                                  className={styles.evidenceInput}
+                                  placeholder="e.g. https://example.com/receipt.jpg or description"
+                                  value={evidenceUrl}
+                                  onChange={(e) => setEvidenceUrl(e.target.value)}
+                                />
+                                <button
+                                  className="btn btn--primary btn--sm"
+                                  onClick={() => handleAddEvidence(dispute.id)}
+                                  disabled={!evidenceUrl.trim() || submittingAction}
+                                >
+                                  Submit
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
                     )}
                   </div>
                 )}

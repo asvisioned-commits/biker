@@ -16,7 +16,7 @@ export default function NewOrderPage() {
   // Form states
   const [serviceType, setServiceType] = useState<'send_item' | 'buy_for_me'>('send_item');
   const [fulfillmentMode, setFulfillmentMode] = useState<'standard' | 'jet' | 'scheduled_saver'>('standard');
-  const [protectionLevel, setProtectionLevel] = useState<'protected' | 'none'>('none');
+  const [protectionLevel, setProtectionLevel] = useState<'protected' | 'none' | 'premium_secure'>('none');
   
   const [pickupAddress, setPickupAddress] = useState('');
   const [pickupPhone, setPickupPhone] = useState('');
@@ -206,25 +206,37 @@ export default function NewOrderPage() {
             </div>
 
             <div>
-              <label className="label">🛡️ Biker Protect Insurance</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  type="button" 
-                  className={`btn btn--full ${protectionLevel === 'protected' ? 'btn--primary' : 'btn--secondary'}`}
-                  onClick={() => setProtectionLevel('protected')}
-                >
-                  Enable Biker Protect ($0.50 cover)
-                </button>
+              <label className="label">🛡️ Biker Protect Insurance Tiers</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button 
                   type="button" 
                   className={`btn btn--full ${protectionLevel === 'none' ? 'btn--primary' : 'btn--secondary'}`}
+                  style={{ flex: '1 1 30%' }}
                   onClick={() => setProtectionLevel('none')}
                 >
-                  No protection
+                  ❌ None ($0.00)
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn btn--full ${protectionLevel === 'protected' ? 'btn--primary' : 'btn--secondary'}`}
+                  style={{ flex: '1 1 30%' }}
+                  onClick={() => setProtectionLevel('protected')}
+                >
+                  🛡️ Protect ($0.50)
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn btn--full ${protectionLevel === 'premium_secure' ? 'btn--primary' : 'btn--secondary'}`}
+                  style={{ flex: '1 1 30%' }}
+                  onClick={() => setProtectionLevel('premium_secure')}
+                >
+                  ✨ Protect+ ($1.50)
                 </button>
               </div>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                *Biker Protect covers transit damage and losses up to $100. Recommended for high-value items.
+                {protectionLevel === 'none' && '* No transit protection. Biker is not liable for damages.'}
+                {protectionLevel === 'protected' && '* Standard Protect covers transit damage and losses up to $100.'}
+                {protectionLevel === 'premium_secure' && '* Premium Protect+ (Secure) covers up to $500 + Priority Ops/Admin Resolution.'}
               </p>
             </div>
           </div>

@@ -6,6 +6,10 @@ import { OrderService, BikerOrder } from '@/lib/order-service';
 import { getProfile } from '@/lib/database';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { useProfile } from '@/context/ProfileContext';
+import { CallSimulator } from '@/components/CallSimulator';
+import { ChatDrawer } from '@/components/ChatDrawer';
+
 
 export default function ActiveOrderRiderPage() {
   const router = useRouter();
@@ -23,6 +27,79 @@ export default function ActiveOrderRiderPage() {
   const [pinSuccess, setPinSuccess] = useState(false);
   const [submittingPin, setSubmittingPin] = useState(false);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+
+  // Safety & Secure Communication
+  const { session } = useProfile();
+  const [showCallSimulator, setShowCallSimulator] = useState(false);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [showTransitCheckinTimer, setShowTransitCheckinTimer] = useState(false);
+  const [checkinCountdown, setCheckinCountdown] = useState(10);
+  const [hasPromptedCheckin, setHasPromptedCheckin] = useState(false);
+
+  // Transit check-in trigger
+  useEffect(() => {
+    if (order?.status === 'en_route_delivery' && !hasPromptedCheckin) {
+      setShowTransitCheckinTimer(true);
+      setCheckinCountdown(10);
+      setHasPromptedCheckin(true);
+    } else if (order?.status !== 'en_route_delivery') {
+      setHasPromptedCheckin(false);
+    }
+  }, [order?.status, hasPromptedCheckin]);
+
+  // Transit check-in countdown timer
+  useEffect(() => {
+    if (!showTransitCheckinTimer) return;
+    if (checkinCountdown <= 0) {
+      handleMissedCheckin();
+      setShowTransitCheckinTimer(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      setCheckinCountdown((c) => c - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [showTransitCheckinTimer, checkinCountdown]);
+
+  const handleMissedCheckin = async () => {
+    if (!order) return;
+    try {
+      await OrderService.createSafetyAlert({
+        order_id: order.id,
+        user_id: riderId || 'rider',
+        type: 'missed_checkin',
+        gps_lat: order.pickup_lat || -17.8292,
+        gps_lng: order.pickup_lng || 31.0522
+      });
+      alert('⚠️ Missed Transit Check-in: Safety Alert has been flagged to Biker Operations.');
+    } catch (e) {
+      console.error('Failed to log missed check-in:', e);
+    }
+  };
+
+  const handleCheckinOk = () => {
+    setShowTransitCheckinTimer(false);
+  };
+
+  const handleRiderSos = async () => {
+    if (!order) return;
+    if (!confirm('🚨 EMERGENCY WARNING: Are you sure you want to trigger a Red SOS Distress Alert? Biker Operations will be dispatched immediately.')) {
+      return;
+    }
+    try {
+      await OrderService.createSafetyAlert({
+        order_id: order.id,
+        user_id: riderId || 'rider',
+        type: 'sos_alert',
+        gps_lat: order.pickup_lat || -17.8292,
+        gps_lng: order.pickup_lng || 31.0522
+      });
+      alert('🆘 SOS Emergency Triggered! Active security dispatched.');
+    } catch (e) {
+      console.error('Failed to trigger Rider SOS:', e);
+    }
+  };
+
 
   useEffect(() => {
     async function init() {
@@ -151,7 +228,19 @@ export default function ActiveOrderRiderPage() {
     <div className="container max-w-2xl p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="title">Active Delivery</h1>
-        <span className="badge badge--primary font-mono">{order.reference_code}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {order.status !== 'completed' && order.status !== 'cancelled' && (
+            <button 
+              type="button" 
+              className="btn btn--danger font-bold btn--sm"
+              onClick={handleRiderSos}
+              style={{ background: '#dc2626', color: '#ffffff', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)' }}
+            >
+              🆘 SOS
+            </button>
+          )}
+          <span className="badge badge--primary font-mono">{order.reference_code}</span>
+        </div>
       </div>
 
       <div className="card p-6 mb-6">
@@ -199,6 +288,24 @@ export default function ActiveOrderRiderPage() {
         <div className="flex justify-between" style={{ fontSize: '14px', marginTop: '4px' }}>
           <span>Total Delivery Fee:</span>
           <span style={{ fontWeight: 700 }}>${order.total_amount?.toFixed(2)}</span>
+        </div>
+        
+        <div className="divider" style={{ margin: '16px 0' }} />
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button 
+            type="button" 
+            className="btn btn--secondary btn--full btn--sm"
+            onClick={() => setShowCallSimulator(true)}
+          >
+            📞 Call Customer (Masked)
+          </button>
+          <button 
+            type="button" 
+            className="btn btn--secondary btn--full btn--sm"
+            onClick={() => setShowChatDrawer(true)}
+          >
+            💬 Message Customer
+          </button>
         </div>
       </div>
 
@@ -313,6 +420,49 @@ export default function ActiveOrderRiderPage() {
             Verification succeeded and payout has been released to your wallet ledger.
           </p>
         </div>
+      )}
+
+      {showTransitCheckinTimer && (
+        <div className="modal-overlay" style={{ zIndex: 1200, background: 'rgba(15, 23, 42, 0.95)' }}>
+          <div className="modal modal--glass" style={{ maxWidth: '360px', padding: '32px 24px', textAlign: 'center', borderRadius: '24px' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚨</div>
+            <h2 className="title" style={{ color: '#ffffff', marginBottom: '8px' }}>Are you OK?</h2>
+            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '24px' }}>
+              Transit check-in active. Please confirm you are safe.
+            </p>
+            <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#f59e0b', marginBottom: '32px', fontFamily: 'var(--font-mono)' }}>
+              {checkinCountdown}s
+            </div>
+            <button 
+              type="button"
+              className="btn btn--success btn--full btn--lg font-bold"
+              onClick={handleCheckinOk}
+              style={{ height: '56px', borderRadius: '16px', fontSize: '16px' }}
+            >
+              Yes, I am Safe 👍
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCallSimulator && (
+        <CallSimulator
+          orderId={order.id}
+          callerId={riderId || 'rider'}
+          callerRole="rider"
+          receiverName={order.pickup_contact_name || 'Customer'}
+          receiverPhone={order.pickup_contact_phone || '+263 77 123 4567'}
+          onClose={() => setShowCallSimulator(false)}
+        />
+      )}
+
+      {showChatDrawer && (
+        <ChatDrawer
+          orderId={order.id}
+          senderId={riderId || 'rider'}
+          senderName="Rider"
+          onClose={() => setShowChatDrawer(false)}
+        />
       )}
     </div>
   );
