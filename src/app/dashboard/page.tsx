@@ -3,59 +3,16 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import styles from './dashboard.module.css';
+import { useProfile } from '@/context/ProfileContext';
+import { OrderService, BikerOrder } from '@/lib/order-service';
 import type { UserRole } from '@/types';
-
-// Mock data
-const MOCK_RECENT_ORDERS = [
-  {
-    id: '1',
-    reference_code: 'BKR-7X2K9M',
-    service_type: 'send_item',
-    status: 'completed',
-    dropoff_address: 'Borrowdale Brooke',
-    created_at: '2 hours ago',
-    total: 4.50,
-    protection_level: 'protected',
-  },
-  {
-    id: '2',
-    reference_code: 'BKR-A3F7B2',
-    service_type: 'buy_for_me',
-    status: 'en_route_delivery',
-    dropoff_address: 'Sam Levy\'s Village',
-    created_at: '35 min ago',
-    total: 12.80,
-    protection_level: 'protected',
-  },
-  {
-    id: '3',
-    reference_code: 'BKR-D9K1P4',
-    service_type: 'pickup_order',
-    status: 'rider_assigned',
-    dropoff_address: 'Avondale Shops',
-    created_at: '5 min ago',
-    total: 3.00,
-    protection_level: 'none',
-  },
-];
-
-const MOCK_RIDER_STATS = {
-  todayEarnings: 28.50,
-  weeklyEarnings: 142.00,
-  completedToday: 8,
-  rating: 4.9,
-  completionRate: 97,
-  tier: 'verified',
-  isOnline: true,
-};
-
-const MOCK_MERCHANT_STATS = {
-  todayDeliveries: 12,
-  pendingDeliveries: 3,
-  deliveryLinks: 5,
-  avgRating: 4.8,
-  onTimeRate: 96,
-};
+import { createClient } from '@/lib/supabase/client';
+import { 
+  getRiderDashboardStats, 
+  getMerchantDashboardStats, 
+  getOpsDashboardStats, 
+  toggleRiderOnline 
+} from '@/lib/database';
 
 const SERVICE_ICONS: Record<string, string> = {
   send_item: '📦',
@@ -83,45 +40,18 @@ const STATUS_LABELS: Record<string, { label: string; variant: string }> = {
 };
 
 export default function DashboardPage() {
-  const [role, setRole] = useState<UserRole>('customer');
-  const [userName, setUserName] = useState('User');
+  const { session, loading } = useProfile();
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('biker_mock_session');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setRole(parsed.role || 'customer');
-        setUserName(parsed.full_name || 'User');
-      }
-    }
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
+        <span className="spinner" />
+      </div>
+    );
+  }
 
-    // Listen for role changes
-    const handler = () => {
-      const stored = localStorage.getItem('biker_mock_session');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setRole(parsed.role || 'customer');
-      }
-    };
-    window.addEventListener('storage', handler);
-    
-    // Check periodically for role changes (since storage event doesn't fire on same tab)
-    const interval = setInterval(() => {
-      const stored = localStorage.getItem('biker_mock_session');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.role !== role) {
-          setRole(parsed.role);
-        }
-      }
-    }, 500);
-
-    return () => {
-      window.removeEventListener('storage', handler);
-      clearInterval(interval);
-    };
-  }, [role]);
+  const role = (session?.role as UserRole) || 'customer';
+  const userName = session?.full_name || 'User';
 
   if (role === 'rider') return <RiderDashboard />;
   if (role === 'merchant') return <MerchantDashboard />;
@@ -133,6 +63,46 @@ export default function DashboardPage() {
 // CUSTOMER DASHBOARD
 // ============================================================
 function CustomerDashboard({ userName }: { userName: string }) {
+  const { session } = useProfile();
+  const userId = session?.user_id || 'mock-customer-id';
+  
+  const [orders, setOrders] = useState<BikerOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        const list = await OrderService.getOrders(userId, 'customer');
+        setOrders(list);
+      } catch (err) {
+        console.error('Failed to get dashboard orders:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 8000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  const formatOrderTime = (timeStr: string) => {
+    if (!timeStr) return '';
+    const date = new Date(timeStr);
+    if (isNaN(date.getTime())) return timeStr;
+    
+    const diffMs = Date.now() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} hr${diffHr > 1 ? 's' : ''} ago`;
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const activeOrders = orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled');
+  const completedOrders = orders.filter(o => o.status === 'completed');
+
   return (
     <div className={styles.dashboard}>
       {/* Welcome */}
@@ -182,8 +152,19 @@ function CustomerDashboard({ userName }: { userName: string }) {
           <Link href="/dashboard/orders" className={styles.sectionLink}>View all →</Link>
         </div>
         <div className={styles.ordersList}>
-          {MOCK_RECENT_ORDERS.filter(o => o.status !== 'completed').map((order) => {
+          {loading && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+              <span className="spinner spinner--sm" />
+            </div>
+          )}
+          {!loading && activeOrders.length === 0 && (
+            <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
+              No active orders at the moment.
+            </p>
+          )}
+          {!loading && activeOrders.map((order) => {
             const statusInfo = STATUS_LABELS[order.status] || STATUS_LABELS.draft;
+            const fare = order.delivery_fee ?? 5.00;
             return (
               <Link
                 key={order.id}
@@ -192,19 +173,19 @@ function CustomerDashboard({ userName }: { userName: string }) {
               >
                 <div className={styles.orderCardLeft}>
                   <span className={styles.orderIcon}>
-                    {SERVICE_ICONS[order.service_type] || '📦'}
+                    {SERVICE_ICONS[order.service_type || ''] || '📦'}
                   </span>
                   <div>
                     <div className={styles.orderRef}>{order.reference_code}</div>
                     <div className={styles.orderAddress}>{order.dropoff_address}</div>
-                    <div className={styles.orderTime}>{order.created_at}</div>
+                    <div className={styles.orderTime}>{formatOrderTime(order.created_at)}</div>
                   </div>
                 </div>
                 <div className={styles.orderCardRight}>
                   <span className={`badge badge--${statusInfo.variant}`}>
                     {statusInfo.label}
                   </span>
-                  <div className={styles.orderAmount}>${order.total.toFixed(2)}</div>
+                  <div className={styles.orderAmount}>${fare.toFixed(2)}</div>
                   {order.protection_level !== 'none' && (
                     <span className="trust-badge trust-badge--protected">🛡️</span>
                   )}
@@ -221,24 +202,37 @@ function CustomerDashboard({ userName }: { userName: string }) {
           <h2 className={styles.sectionTitle}>Recently completed</h2>
         </div>
         <div className={styles.ordersList}>
-          {MOCK_RECENT_ORDERS.filter(o => o.status === 'completed').map((order) => (
-            <div key={order.id} className={styles.orderCard}>
-              <div className={styles.orderCardLeft}>
-                <span className={styles.orderIcon}>
-                  {SERVICE_ICONS[order.service_type] || '📦'}
-                </span>
-                <div>
-                  <div className={styles.orderRef}>{order.reference_code}</div>
-                  <div className={styles.orderAddress}>{order.dropoff_address}</div>
-                  <div className={styles.orderTime}>{order.created_at}</div>
-                </div>
-              </div>
-              <div className={styles.orderCardRight}>
-                <span className="badge badge--success">✓ Completed</span>
-                <div className={styles.orderAmount}>${order.total.toFixed(2)}</div>
-              </div>
+          {loading && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+              <span className="spinner spinner--sm" />
             </div>
-          ))}
+          )}
+          {!loading && completedOrders.length === 0 && (
+            <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
+              No recently completed orders.
+            </p>
+          )}
+          {!loading && completedOrders.map((order) => {
+            const fare = order.delivery_fee ?? 5.00;
+            return (
+              <Link key={order.id} href={`/dashboard/tracking?id=${order.id}`} className={styles.orderCard}>
+                <div className={styles.orderCardLeft}>
+                  <span className={styles.orderIcon}>
+                    {SERVICE_ICONS[order.service_type || ''] || '📦'}
+                  </span>
+                  <div>
+                    <div className={styles.orderRef}>{order.reference_code}</div>
+                    <div className={styles.orderAddress}>{order.dropoff_address}</div>
+                    <div className={styles.orderTime}>{formatOrderTime(order.created_at)}</div>
+                  </div>
+                </div>
+                <div className={styles.orderCardRight}>
+                  <span className="badge badge--success">✓ Completed</span>
+                  <div className={styles.orderAmount}>${fare.toFixed(2)}</div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -249,7 +243,119 @@ function CustomerDashboard({ userName }: { userName: string }) {
 // RIDER DASHBOARD
 // ============================================================
 function RiderDashboard() {
-  const [isOnline, setIsOnline] = useState(MOCK_RIDER_STATS.isOnline);
+  const { session } = useProfile();
+  const userId = session?.user_id;
+  
+  const [stats, setStats] = useState<{
+    isOnline: boolean;
+    todayEarnings: number;
+    completedToday: number;
+    rating: number;
+    tier: string;
+    subscription: any;
+  } | null>(null);
+  
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
+  const [togglePending, setTogglePending] = useState(false);
+  const [acceptingJobId, setAcceptingJobId] = useState<string | null>(null);
+
+  const fetchRiderData = async () => {
+    if (!userId) return;
+    try {
+      const statsData = await getRiderDashboardStats(userId);
+      setStats(statsData);
+      setIsOnline(statsData.isOnline);
+
+      // Fetch available jobs preview if online
+      if (statsData.isOnline) {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('delivery_requests')
+          .select('*')
+          .is('assigned_rider_id', null)
+          .eq('status', 'payment_held')
+          .order('created_at', { ascending: false })
+          .limit(2);
+        setJobs(data || []);
+      } else {
+        setJobs([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch rider dashboard data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRiderData();
+    const interval = setInterval(fetchRiderData, 10000);
+    return () => clearInterval(interval);
+  }, [userId, isOnline]);
+
+  const handleToggleOnline = async () => {
+    if (!userId || togglePending) return;
+    const targetStatus = !isOnline;
+    
+    // Optimistic UI update
+    setIsOnline(targetStatus);
+    setTogglePending(true);
+
+    try {
+      const { error } = await toggleRiderOnline(userId, targetStatus);
+      if (error) throw error;
+      
+      setStats(prev => prev ? { ...prev, isOnline: targetStatus } : null);
+    } catch (err) {
+      // Revert on error
+      setIsOnline(!targetStatus);
+      alert('Failed to update status. Please try again.');
+    } finally {
+      setTogglePending(false);
+    }
+  };
+
+  const handleAcceptJob = async (jobId: string) => {
+    if (!userId) return;
+    setAcceptingJobId(jobId);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('delivery_requests')
+        .update({
+          assigned_rider_id: userId,
+          status: 'rider_assigned',
+          accepted_at: new Date().toISOString()
+        })
+        .eq('id', jobId)
+        .is('assigned_rider_id', null)
+        .eq('status', 'payment_held')
+        .select();
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        alert('This job was just accepted by another rider.');
+        fetchRiderData();
+        return;
+      }
+
+      alert('Job successfully accepted! Navigate to pickup.');
+      fetchRiderData();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to accept job. Please try again.');
+    } finally {
+      setAcceptingJobId(null);
+    }
+  };
+
+  const todayEarnings = stats?.todayEarnings ?? 0.00;
+  const completedToday = stats?.completedToday ?? 0;
+  const rating = stats?.rating ?? 0.0;
+  const tier = stats?.tier ?? 'starter';
 
   return (
     <div className={styles.dashboard}>
@@ -257,8 +363,8 @@ function RiderDashboard() {
       <div className={styles.riderHeader}>
         <div
           className={`rider-status-indicator ${isOnline ? 'rider-status-indicator--online' : 'rider-status-indicator--offline'}`}
-          onClick={() => setIsOnline(!isOnline)}
-          style={{ cursor: 'pointer' }}
+          onClick={handleToggleOnline}
+          style={{ cursor: togglePending ? 'not-allowed' : 'pointer', opacity: togglePending ? 0.7 : 1 }}
         >
           <div className={`toggle ${isOnline ? 'toggle--active' : ''}`}>
             <div className="toggle-knob" />
@@ -270,50 +376,53 @@ function RiderDashboard() {
       {/* Stats */}
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>${MOCK_RIDER_STATS.todayEarnings.toFixed(2)}</div>
+          <div className={styles.statValue}>${todayEarnings.toFixed(2)}</div>
           <div className={styles.statLabel}>Today&apos;s earnings</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>{MOCK_RIDER_STATS.completedToday}</div>
+          <div className={styles.statValue}>{completedToday}</div>
           <div className={styles.statLabel}>Deliveries today</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>⭐ {MOCK_RIDER_STATS.rating}</div>
+          <div className={styles.statValue}>⭐ {rating.toFixed(1)}</div>
           <div className={styles.statLabel}>Rating</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>{MOCK_RIDER_STATS.completionRate}%</div>
-          <div className={styles.statLabel}>Completion rate</div>
+          <div className={styles.statValue}>{tier.toUpperCase()}</div>
+          <div className={styles.statLabel}>Rider tier</div>
         </div>
       </div>
 
-      {/* Tier */}
+      {/* Tier Progress */}
       <div className={styles.tierCard}>
         <div className={styles.tierInfo}>
-          <span className="trust-badge trust-badge--verified">✓ Verified Rider</span>
+          <span className="trust-badge trust-badge--verified">✓ {tier.toUpperCase()} Rider</span>
           <p className={styles.tierDesc}>
-            Complete 50 more deliveries to unlock <strong>Pro</strong> tier.
+            {stats?.subscription ? (
+              <>
+                Subscription Active. Limit: <strong>${stats.subscription.earningCap.toFixed(2)}</strong> · Current: <strong>${stats.subscription.currentEarnings.toFixed(2)}</strong>
+              </>
+            ) : (
+              <>Complete deliveries and maintain high ratings to unlock elite tiers.</>
+            )}
           </p>
         </div>
         <div className={styles.tierProgress}>
           <div className={styles.tierProgressBar}>
-            <div className={styles.tierProgressFill} style={{ width: '60%' }} />
+            <div 
+              className={styles.tierProgressFill} 
+              style={{ 
+                width: stats?.subscription 
+                  ? `${Math.min(100, (stats.subscription.currentEarnings / stats.subscription.earningCap) * 100)}%` 
+                  : '30%' 
+              }} 
+            />
           </div>
-          <span className={styles.tierProgressLabel}>30 / 50</span>
-        </div>
-      </div>
-
-      {/* Weekly Earnings */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2 className={styles.sectionTitle}>This week</h2>
-          <Link href="/dashboard/earnings" className={styles.sectionLink}>Details →</Link>
-        </div>
-        <div className={styles.weekSummary}>
-          <div className={styles.weekTotal}>
-            <span className={styles.weekTotalLabel}>Total earned</span>
-            <span className={styles.weekTotalValue}>${MOCK_RIDER_STATS.weeklyEarnings.toFixed(2)}</span>
-          </div>
+          <span className={styles.tierProgressLabel}>
+            {stats?.subscription 
+              ? `$${stats.subscription.currentEarnings.toFixed(0)} / $${stats.subscription.earningCap.toFixed(0)}` 
+              : 'Active'}
+          </span>
         </div>
       </div>
 
@@ -325,38 +434,36 @@ function RiderDashboard() {
             <Link href="/dashboard/jobs" className={styles.sectionLink}>View all →</Link>
           </div>
           <div className={styles.jobsList}>
-            <div className={styles.jobCard}>
-              <div className={styles.jobCardTop}>
-                <span className="badge badge--jet">⚡ Biker Jet</span>
-                <span className={styles.jobPayout}>$4.80</span>
+            {loading && <p className={styles.emptyText}>Loading jobs...</p>}
+            {!loading && jobs.length === 0 && (
+              <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
+                You&apos;re all caught up! New jobs appear here instantly.
+              </p>
+            )}
+            {!loading && jobs.map((job) => (
+              <div key={job.id} className={styles.jobCard}>
+                <div className={styles.jobCardTop}>
+                  <span className="badge badge--jet">{job.fulfillment_mode?.toUpperCase() || 'STANDARD'}</span>
+                  <span className={styles.jobPayout}>${Number(job.rider_payout || job.delivery_fee * 0.8).toFixed(2)}</span>
+                </div>
+                <div className={styles.jobRoute}>
+                  {job.pickup_address.split(',')[0]} → {job.dropoff_address.split(',')[0]} {job.estimated_distance_km ? `· ${job.estimated_distance_km} km` : ''}
+                </div>
+                <div className={styles.jobMeta}>
+                  📦 {job.service_type?.replace('_', ' ') || 'Send Item'} {job.estimated_duration_minutes ? `· ${job.estimated_duration_minutes} mins` : ''}
+                </div>
+                <div className={styles.jobActions}>
+                  <button 
+                    className="btn btn--primary" 
+                    style={{ flex: 1 }} 
+                    disabled={acceptingJobId === job.id}
+                    onClick={() => handleAcceptJob(job.id)}
+                  >
+                    {acceptingJobId === job.id ? 'Accepting...' : 'Accept'}
+                  </button>
+                </div>
               </div>
-              <div className={styles.jobRoute}>
-                CBD → Mount Pleasant · 5.2 km
-              </div>
-              <div className={styles.jobMeta}>
-                📦 Send Item · 1.2 km to pickup
-              </div>
-              <div className={styles.jobActions}>
-                <button className="btn btn--primary" style={{ flex: 1 }}>Accept</button>
-                <button className="btn btn--ghost">Decline</button>
-              </div>
-            </div>
-            <div className={styles.jobCard}>
-              <div className={styles.jobCardTop}>
-                <span className="badge badge--primary">Standard</span>
-                <span className={styles.jobPayout}>$3.20</span>
-              </div>
-              <div className={styles.jobRoute}>
-                Avondale → Eastlea · 3.8 km
-              </div>
-              <div className={styles.jobMeta}>
-                🛒 Buy For Me · 0.8 km to pickup
-              </div>
-              <div className={styles.jobActions}>
-                <button className="btn btn--primary" style={{ flex: 1 }}>Accept</button>
-                <button className="btn btn--ghost">Decline</button>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       )}
@@ -368,11 +475,68 @@ function RiderDashboard() {
 // MERCHANT DASHBOARD
 // ============================================================
 function MerchantDashboard() {
+  const { session } = useProfile();
+  const userId = session?.user_id;
+
+  const [stats, setStats] = useState<{
+    businessName: string;
+    rating: number;
+    totalDeliveries: number;
+    activeOrdersCount: number;
+    todayOrdersCount: number;
+    activeLinksCount: number;
+  } | null>(null);
+
+  const [links, setLinks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchMerchantData = async () => {
+    if (!userId) return;
+    try {
+      const statsData = await getMerchantDashboardStats(userId);
+      setStats(statsData);
+
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('delivery_links')
+        .select('*')
+        .eq('merchant_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(3);
+      
+      setLinks(data || []);
+    } catch (err) {
+      console.error('Failed to load merchant stats:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMerchantData();
+    const interval = setInterval(fetchMerchantData, 10000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  const activeOrdersCount = stats?.activeOrdersCount ?? 0;
+  const todayOrdersCount = stats?.todayOrdersCount ?? 0;
+  const rating = stats?.rating ?? 0.0;
+  const activeLinksCount = stats?.activeLinksCount ?? 0;
+  const businessName = stats?.businessName || 'Merchant';
+
+  const formatExpires = (expiryStr: string) => {
+    const diff = new Date(expiryStr).getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+    const hours = Math.ceil(diff / (1000 * 60 * 60));
+    return `Expires in ${hours}h`;
+  };
+
   return (
     <div className={styles.dashboard}>
       <div className={styles.welcome}>
         <div>
-          <h1 className={styles.welcomeTitle}>Good afternoon 🏪</h1>
+          <h1 className={styles.welcomeTitle}>Good afternoon, {businessName} 🏪</h1>
           <p className={styles.welcomeSubtitle}>
             Here&apos;s your delivery overview for today.
           </p>
@@ -385,20 +549,20 @@ function MerchantDashboard() {
       {/* Stats */}
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>{MOCK_MERCHANT_STATS.todayDeliveries}</div>
+          <div className={styles.statValue}>{todayOrdersCount}</div>
           <div className={styles.statLabel}>Deliveries today</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>{MOCK_MERCHANT_STATS.pendingDeliveries}</div>
+          <div className={styles.statValue}>{activeOrdersCount}</div>
           <div className={styles.statLabel}>Pending</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>⭐ {MOCK_MERCHANT_STATS.avgRating}</div>
+          <div className={styles.statValue}>⭐ {rating.toFixed(1)}</div>
           <div className={styles.statLabel}>Avg rating</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>{MOCK_MERCHANT_STATS.onTimeRate}%</div>
-          <div className={styles.statLabel}>On-time rate</div>
+          <div className={styles.statValue}>{activeLinksCount}</div>
+          <div className={styles.statLabel}>Active links</div>
         </div>
       </div>
 
@@ -409,30 +573,30 @@ function MerchantDashboard() {
           <Link href="/dashboard/links" className={styles.sectionLink}>Manage →</Link>
         </div>
         <div className={styles.deliveryLinks}>
-          <div className={styles.linkCard}>
-            <div className={styles.linkCardTop}>
-              <span className={styles.linkSlug}>biker.co.zw/d/sisi-001</span>
-              <span className="badge badge--success">Active</span>
+          {loading && <p className={styles.emptyText}>Loading delivery links...</p>}
+          {!loading && links.length === 0 && (
+            <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
+              No active delivery links yet. Create one above!
+            </p>
+          )}
+          {!loading && links.map((link) => (
+            <div key={link.id} className={styles.linkCard}>
+              <div className={styles.linkCardTop}>
+                <span className={styles.linkSlug}>biker.co.zw/d/{link.slug}</span>
+                <span className="badge badge--success">Active</span>
+              </div>
+              <div className={styles.linkCustomer}>
+                Customer: {link.customer_name || 'Guest'} · Items: {
+                  Array.isArray(link.items) 
+                    ? link.items.map((i: any) => i.name || i.item_description || 'item').join(', ')
+                    : 'Preset order'
+                }
+              </div>
+              <div className={styles.linkMeta}>
+                Created {new Date(link.created_at).toLocaleDateString()} · {formatExpires(link.expires_at)}
+              </div>
             </div>
-            <div className={styles.linkCustomer}>
-              Customer: Agnes M. · Items: 3 dresses
-            </div>
-            <div className={styles.linkMeta}>
-              Created 2h ago · Expires in 46h
-            </div>
-          </div>
-          <div className={styles.linkCard}>
-            <div className={styles.linkCardTop}>
-              <span className={styles.linkSlug}>biker.co.zw/d/sisi-002</span>
-              <span className="badge badge--warning">Awaiting pickup</span>
-            </div>
-            <div className={styles.linkCustomer}>
-              Customer: Tendai K. · Items: 1 phone case
-            </div>
-            <div className={styles.linkMeta}>
-              Created 5h ago · Rider assigned
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>
@@ -443,6 +607,65 @@ function MerchantDashboard() {
 // OPS DASHBOARD
 // ============================================================
 function OpsDashboard() {
+  const [stats, setStats] = useState<{
+    activeOrdersCount: number;
+    onlineRidersCount: number;
+    openDisputesCount: number;
+    pendingVerificationsCount: number;
+  } | null>(null);
+
+  const [disputes, setDisputes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchOpsData = async () => {
+    try {
+      const statsData = await getOpsDashboardStats();
+      setStats(statsData);
+
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('disputes')
+        .select(`
+          id,
+          dispute_type,
+          description,
+          created_at,
+          status,
+          initiator:profiles!disputes_initiated_by_fkey(full_name)
+        `)
+        .eq('status', 'open')
+        .order('created_at', { ascending: false })
+        .limit(3);
+      
+      setDisputes(data || []);
+    } catch (err) {
+      console.error('Failed to fetch ops data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOpsData();
+    const interval = setInterval(fetchOpsData, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const activeOrdersCount = stats?.activeOrdersCount ?? 0;
+  const onlineRidersCount = stats?.onlineRidersCount ?? 0;
+  const openDisputesCount = stats?.openDisputesCount ?? 0;
+  const pendingVerificationsCount = stats?.pendingVerificationsCount ?? 0;
+
+  const formatTime = (timeStr: string) => {
+    const diff = Date.now() - new Date(timeStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return new Date(timeStr).toLocaleDateString();
+  };
+
   return (
     <div className={styles.dashboard}>
       <div className={styles.welcome}>
@@ -452,23 +675,28 @@ function OpsDashboard() {
             Real-time overview of all active operations.
           </p>
         </div>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <Link href="/dashboard/ops/cod" className="btn btn--secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
+            💵 Cash Reconciliation
+          </Link>
+        </div>
       </div>
 
       <div className={styles.statsGrid}>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>24</div>
+          <div className={styles.statValue}>{activeOrdersCount}</div>
           <div className={styles.statLabel}>Active orders</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>18</div>
+          <div className={styles.statValue}>{onlineRidersCount}</div>
           <div className={styles.statLabel}>Online riders</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>3</div>
+          <div className={styles.statValue}>{openDisputesCount}</div>
           <div className={styles.statLabel}>Open disputes</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statValue}>2</div>
+          <div className={styles.statValue}>{pendingVerificationsCount}</div>
           <div className={styles.statLabel}>Pending verifications</div>
         </div>
       </div>
@@ -479,19 +707,29 @@ function OpsDashboard() {
           <Link href="/dashboard/disputes" className={styles.sectionLink}>View all →</Link>
         </div>
         <div className={styles.ordersList}>
-          <div className={styles.orderCard}>
-            <div className={styles.orderCardLeft}>
-              <span className={styles.orderIcon}>⚖️</span>
-              <div>
-                <div className={styles.orderRef}>DSP-001</div>
-                <div className={styles.orderAddress}>Wrong item delivered</div>
-                <div className={styles.orderTime}>Filed 45 min ago</div>
+          {loading && <p className={styles.emptyText}>Loading disputes...</p>}
+          {!loading && disputes.length === 0 && (
+            <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
+              No open disputes at the moment. Good job!
+            </p>
+          )}
+          {!loading && disputes.map((dispute) => (
+            <div key={dispute.id} className={styles.orderCard}>
+              <div className={styles.orderCardLeft}>
+                <span className={styles.orderIcon}>⚖️</span>
+                <div>
+                  <div className={styles.orderRef}>DSP-{dispute.id.slice(0, 6).toUpperCase()}</div>
+                  <div className={styles.orderAddress}>{dispute.description}</div>
+                  <div className={styles.orderTime}>
+                    Filed by {dispute.initiator?.full_name || 'User'} · {formatTime(dispute.created_at)}
+                  </div>
+                </div>
+              </div>
+              <div className={styles.orderCardRight}>
+                <span className="badge badge--danger">Open</span>
               </div>
             </div>
-            <div className={styles.orderCardRight}>
-              <span className="badge badge--danger">Open</span>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

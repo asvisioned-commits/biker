@@ -158,7 +158,6 @@ function NewOrderContent() {
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
-        mapRef.current = null;
       }
     };
   }, [leafletLoaded]);
