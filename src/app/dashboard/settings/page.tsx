@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from './settings.module.css';
-import { signOut, getSession } from '@/lib/auth';
+import { signOut, getSession, updateUserPassword } from '@/lib/auth';
 import { updateProfile } from '@/lib/database';
 import type { UserRole } from '@/types';
 
@@ -18,6 +18,62 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [notifications, setNotifications] = useState({ order_updates: true, promotions: false, rider_nearby: true, dispute_updates: true });
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+
+  // Password Security Tab States
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [updatingPw, setUpdatingPw] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+
+  const handleUpdatePassword = async () => {
+    setPwError('');
+    setPwSuccess('');
+
+    if (isGoogleConnected) {
+      setPwError('Password changes are not permitted for Google-connected accounts.');
+      return;
+    }
+
+    if (!currentPw) {
+      setPwError('Please enter your current password.');
+      return;
+    }
+
+    if (!newPw) {
+      setPwError('Please enter a new password.');
+      return;
+    }
+
+    if (newPw.length < 6) {
+      setPwError('New password must be at least 6 characters long.');
+      return;
+    }
+
+    if (newPw !== confirmPw) {
+      setPwError('New passwords do not match.');
+      return;
+    }
+
+    setUpdatingPw(true);
+    try {
+      const { data, error } = await updateUserPassword(newPw);
+      if (error) {
+        setPwError(error.message || 'Failed to update password.');
+      } else {
+        setPwSuccess('Password successfully updated!');
+        setCurrentPw('');
+        setNewPw('');
+        setConfirmPw('');
+      }
+    } catch (err) {
+      setPwError('An unexpected error occurred.');
+      console.error(err);
+    } finally {
+      setUpdatingPw(false);
+    }
+  };
 
   useEffect(() => {
     async function loadProfile() {
@@ -46,9 +102,13 @@ export default function SettingsPage() {
           localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
         } catch (e) { /* ignore */ }
       }
-      if (!IS_DEV) {
-        const session = await getSession();
-        if (session) { await updateProfile(session.user_id, { full_name: fullName, phone: '+263' + phone }); }
+      const session = await getSession();
+      if (session) {
+        const isMockUser = session.user_id.startsWith('mock-');
+        const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
+        if (useLiveDb) {
+          await updateProfile(session.user_id, { full_name: fullName, phone: '+263' + phone });
+        }
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -155,12 +215,64 @@ export default function SettingsPage() {
       {activeTab === 'security' && (
         <div className={styles.section}>
           <h3 className={styles.sectionTitle}>Password</h3>
-          <div className={styles.formGrid}>
-            <div className="input-group"><label className="input-label" htmlFor="currentPw">Current password</label><input id="currentPw" type="password" className="input" placeholder="Enter current password" /></div>
-            <div className="input-group"><label className="input-label" htmlFor="newPw">New password</label><input id="newPw" type="password" className="input" placeholder="Enter new password" /></div>
-            <div className="input-group"><label className="input-label" htmlFor="confirmPw">Confirm password</label><input id="confirmPw" type="password" className="input" placeholder="Confirm new password" /></div>
-          </div>
-          <button className="btn btn--primary" style={{ marginTop: 'var(--space-4)' }}>Update password</button>
+          
+          {isGoogleConnected ? (
+            <div className="alert alert--warning" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
+              🔑 <strong>Google Account Connected</strong>
+              <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                Your account is authenticated via Google. Since Google manages your security and login credentials, password changing is disabled.
+              </p>
+            </div>
+          ) : (
+            <>
+              {pwError && <div className={styles.errorMsg} style={{ marginBottom: 'var(--space-3)' }}>❌ {pwError}</div>}
+              {pwSuccess && <div className={styles.successMsg} style={{ marginBottom: 'var(--space-3)' }}>✅ {pwSuccess}</div>}
+              <div className={styles.formGrid}>
+                <div className="input-group">
+                  <label className="input-label" htmlFor="currentPw">Current password</label>
+                  <input
+                    id="currentPw"
+                    type="password"
+                    className="input"
+                    placeholder="Enter current password"
+                    value={currentPw}
+                    onChange={(e) => setCurrentPw(e.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label" htmlFor="newPw">New password</label>
+                  <input
+                    id="newPw"
+                    type="password"
+                    className="input"
+                    placeholder="Enter new password"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  <label className="input-label" htmlFor="confirmPw">Confirm password</label>
+                  <input
+                    id="confirmPw"
+                    type="password"
+                    className="input"
+                    placeholder="Confirm new password"
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                  />
+                </div>
+              </div>
+              <button
+                className="btn btn--primary"
+                style={{ marginTop: 'var(--space-4)' }}
+                onClick={handleUpdatePassword}
+                disabled={updatingPw}
+              >
+                {updatingPw ? <><span className="spinner" /> Updating...</> : 'Update password'}
+              </button>
+            </>
+          )}
+
           <hr className={styles.separator} />
           <h3 className={styles.sectionTitle}>Active sessions</h3>
           <div className={styles.sessionCard}>

@@ -121,10 +121,11 @@
 
 /* Route visualization */
 .orderRoute {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-3) 32px;
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-4);
@@ -132,13 +133,16 @@
 }
 
 .routePoint {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  position: relative;
   color: var(--text-primary);
+  line-height: 1.4;
+  min-height: 18px;
 }
 
 .routeDot {
+  position: absolute;
+  left: -20px;
+  top: 5px;
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -154,10 +158,31 @@
 }
 
 .routeLine {
+  position: absolute;
+  left: 17px;
+  top: 22px;
+  bottom: 22px;
   width: 2px;
-  height: 16px;
-  margin-left: 4px;
   background: var(--border-default);
+}
+
+@media (max-width: 479px) {
+  .orderCard {
+    padding: var(--space-4) var(--space-3);
+  }
+  .orderRoute {
+    padding: var(--space-3) var(--space-3) var(--space-3) 26px;
+    gap: var(--space-3);
+  }
+  .routeDot {
+    left: -16px;
+    top: 4px;
+  }
+  .routeLine {
+    left: 14px;
+    top: 20px;
+    bottom: 20px;
+  }
 }
 
 /* Footer */

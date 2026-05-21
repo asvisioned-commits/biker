@@ -71,7 +71,8 @@ export default function NotificationsDropdown() {
       }
       setUserId(session.user_id);
 
-      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true';
+      const isMockUser = session.user_id.startsWith('mock-');
+      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
       if (!useLiveDb) {
         setNotifications(MOCK_NOTIFICATIONS);
         return;
@@ -89,7 +90,9 @@ export default function NotificationsDropdown() {
 
   // Realtime subscription for new notifications
   useEffect(() => {
-    if (!userId || IS_DEV) return;
+    const isMockUser = userId?.startsWith('mock-');
+    const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || (userId && !isMockUser);
+    if (!userId || !useLiveDb) return;
 
     const supabase = createClient();
     const channel = supabase
@@ -116,8 +119,12 @@ export default function NotificationsDropdown() {
 
   const markAllRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    if (!IS_DEV && userId) {
-      await markAllNotificationsRead(userId);
+    if (userId) {
+      const isMockUser = userId.startsWith('mock-');
+      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
+      if (useLiveDb) {
+        await markAllNotificationsRead(userId);
+      }
     }
   }, [userId]);
 
@@ -125,10 +132,14 @@ export default function NotificationsDropdown() {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
-    if (!IS_DEV) {
-      await markNotificationRead(id);
+    if (userId) {
+      const isMockUser = userId.startsWith('mock-');
+      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
+      if (useLiveDb) {
+        await markNotificationRead(id);
+      }
     }
-  }, []);
+  }, [userId]);
 
   return (
     <div className={styles.wrapper}>

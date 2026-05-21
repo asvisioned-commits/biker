@@ -153,3 +153,10 @@
 .avatarLink:active {
   transform: scale(0.92);
 }
+
+@media (max-width: 479px) {
+  .mainContent {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
+}

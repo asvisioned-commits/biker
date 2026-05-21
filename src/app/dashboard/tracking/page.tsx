@@ -339,9 +339,9 @@ function TrackingContent() {
 
   const timeline = [
     { status: 'Order placed', time: '2:15 PM', completed: true, description: 'Order confirmed and payment secured' },
-    { status: 'Rider assigned', time: '2:16 PM', completed: true, description: 'Takudzwa M. accepted your delivery' },
-    { status: 'En route to pickup', time: '2:18 PM', completed: true, description: 'Rider is heading to pickup location' },
-    { status: 'At pickup', time: progress >= 25 ? '2:25 PM' : '', completed: currentStatus >= 4, active: currentStatus === 3, description: 'Rider arrived at pickup point' },
+    { status: 'Rider assigned', time: '2:16 PM', completed: true, description: `${order.rider.name} accepted your delivery` },
+    { status: 'En route to pickup', time: '2:18 PM', completed: true, description: `${order.rider.name} is heading to pickup location` },
+    { status: 'At pickup', time: progress >= 25 ? '2:25 PM' : '', completed: currentStatus >= 4, active: currentStatus === 3, description: `${order.rider.name} arrived at pickup point` },
     { status: 'Proof uploaded', time: (progress >= 45 || hasProof) ? '2:28 PM' : '', completed: currentStatus >= 6 || hasProof, active: currentStatus === 4 && !hasProof, description: 'Pickup photo captured' },
     { status: 'En route to delivery', time: progress >= 45 ? '2:29 PM' : '', completed: currentStatus >= 6, active: currentStatus === 6, description: `On the way to ${dropoffAddress}` },
     { status: 'Delivered', time: progress >= 90 ? '2:35 PM' : '', completed: currentStatus >= 7 || pinVerified, active: currentStatus === 7 && !pinVerified, description: 'Confirmed with PIN code' },
