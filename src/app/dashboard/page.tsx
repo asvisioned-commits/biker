@@ -416,7 +416,8 @@ function RiderDashboard() {
             <div 
               className={styles.tierProgressFill} 
               style={{ 
-                width: stats?.subscription \n                  ? `${Math.min(100, (stats.subscription.currentEarnings / stats.subscription.earningCap) * 100)}%` 
+                width: stats?.subscription 
+                  ? `${Math.min(100, (stats.subscription.currentEarnings / stats.subscription.earningCap) * 100)}%` 
                   : '30%' 
               }} 
             />
