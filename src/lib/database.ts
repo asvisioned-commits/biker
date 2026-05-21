@@ -53,10 +53,24 @@ export async function createOrder(order: {
   special_instructions?: string;
   shopping_list?: Record<string, unknown>[];
   estimated_item_cost?: number;
+  delivery_fee?: number;
+  service_fee?: number;
+  protection_fee?: number;
+  total_amount?: number;
+  delivery_pin_hash?: string;
+  estimated_distance_km?: number;
+  estimated_duration_minutes?: number;
+  payment_method?: string;
+  cod_amount_expected?: number;
+  status?: string;
 }) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const reference = 'BKR-' + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  const { data, error } = await supabase.from('delivery_requests').insert({ ...order, reference_code: reference, status: 'draft' }).select().single();
+  const { data, error } = await supabase.from('delivery_requests').insert({ 
+    status: 'draft',
+    ...order, 
+    reference_code: reference 
+  }).select().single();
   return { data, error };
 }
 
@@ -84,6 +98,23 @@ export async function getOrderById(orderId: string) {
 export async function updateOrderStatus(orderId: string, status: string, notes?: string) {
   const { data, error } = await supabase.from('delivery_requests').update({ status }).eq('id', orderId).select().single();
   if (!error) { await supabase.from('delivery_status_log').insert({ request_id: orderId, to_status: status, notes }); }
+  return { data, error };
+}
+
+export async function completeCodDelivery(params: {
+  orderId: string;
+  riderId: string;
+  pin: string;
+  cashCollected: number;
+  hasDiscrepancy: boolean;
+}) {
+  const { data, error } = await supabase.rpc('complete_cod_delivery', {
+    p_order_id: params.orderId,
+    p_rider_id: params.riderId,
+    p_pin: params.pin,
+    p_cash_collected: params.cashCollected,
+    p_has_discrepancy: params.hasDiscrepancy,
+  });
   return { data, error };
 }
 
@@ -270,4 +301,193 @@ export async function insertLocationCheckpoint(checkpoint: {
 }) {
   const { data, error } = await supabase.from('rider_location_checkpoints').insert(checkpoint).select().single();
   return { data, error };
+}
+
+// ─── Dashboard Stats Aggregations ────────────────────────────────────
+
+export async function getRiderDashboardStats(riderId: string) {
+  const startToday = new Date();
+  startToday.setHours(0, 0, 0, 0);
+  const startTodayStr = startToday.toISOString();
+
+  const [profileRes, earningsRes, completedRes, subscriptionRes] = await Promise.all([
+    supabase.from('rider_profiles').select('*').eq('user_id', riderId).single(),
+    supabase.from('rider_earnings_log').select('amount, type').eq('rider_id', riderId).gte('created_at', startTodayStr),
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('assigned_rider_id', riderId).eq('status', 'completed').gte('completed_at', startTodayStr),
+    supabase.from('rider_subscriptions').select('*').eq('rider_id', riderId).single()
+  ]);
+
+  const profile = profileRes.data;
+  const earningsLogs = earningsRes.data || [];
+  const completedCount = completedRes.count || 0;
+  const subscription = subscriptionRes.data;
+
+  // Calculate today's earnings
+  const todayEarnings = earningsLogs
+    .filter(log => log.type === 'delivery')
+    .reduce((sum, log) => sum + Number(log.amount), 0);
+
+  return {
+    isOnline: profile?.is_available ?? false,
+    todayEarnings,
+    completedToday: completedCount,
+    rating: profile?.avg_rating ? Number(profile.avg_rating) : 0.0,
+    tier: profile?.tier ?? 'starter',
+    subscription: subscription ? {
+      status: subscription.status,
+      earningCap: Number(subscription.earning_cap),
+      currentEarnings: Number(subscription.current_earnings),
+      emergencyCreditUsed: Number(subscription.emergency_credit_used),
+      expiresAt: subscription.subscription_expires_at
+    } : null
+  };
+}
+
+export async function getMerchantDashboardStats(merchantId: string) {
+  const startToday = new Date();
+  startToday.setHours(0, 0, 0, 0);
+  const startTodayStr = startToday.toISOString();
+
+  const [profileRes, activeOrdersRes, todayOrdersRes, activeLinksRes] = await Promise.all([
+    supabase.from('merchant_profiles').select('*').eq('user_id', merchantId).single(),
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('merchant_id', merchantId).not('status', 'in', '("completed","cancelled","disputed")'),
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('merchant_id', merchantId).gte('created_at', startTodayStr),
+    supabase.from('delivery_links').select('id', { count: 'exact' }).eq('merchant_id', merchantId).eq('status', 'active')
+  ]);
+
+  const profile = profileRes.data;
+
+  return {
+    businessName: profile?.business_name ?? '',
+    rating: profile?.avg_delivery_rating ? Number(profile.avg_delivery_rating) : 0.0,
+    totalDeliveries: profile?.total_deliveries ?? 0,
+    activeOrdersCount: activeOrdersRes.count || 0,
+    todayOrdersCount: todayOrdersRes.count || 0,
+    activeLinksCount: activeLinksRes.count || 0,
+  };
+}
+
+export async function getOpsDashboardStats() {
+  const [activeOrdersRes, onlineRidersRes, openDisputesRes, pendingProofsRes] = await Promise.all([
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).not('status', 'in', '("completed","cancelled","disputed")'),
+    supabase.from('rider_profiles').select('id', { count: 'exact' }).eq('is_available', true),
+    supabase.from('disputes').select('id', { count: 'exact' }).eq('status', 'open'),
+    supabase.from('rider_payment_proofs').select('id', { count: 'exact' }).eq('status', 'pending')
+  ]);
+
+  return {
+    activeOrdersCount: activeOrdersRes.count || 0,
+    onlineRidersCount: onlineRidersRes.count || 0,
+    openDisputesCount: openDisputesRes.count || 0,
+    pendingVerificationsCount: pendingProofsRes.count || 0
+  };
+}
+
+export async function getCODReconciliationReport(dateStr?: string) {
+  const devMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true';
+  
+  if (!useLiveDb || devMode) {
+    // Offline simulation / Developer mock data
+    return {
+      success: true,
+      data: {
+        totalCODOrders: 8,
+        totalCashExpected: 180.50,
+        totalCashCollected: 178.50,
+        discrepancies: [
+          { orderId: 'mock-cod-1', reference: 'BKR-COD88', riderName: 'John Doe', expected: 20.00, collected: 18.00, difference: 2.00, flaggedAt: new Date(Date.now() - 3600000).toISOString() }
+        ],
+        outstandingRiderBalances: [
+          { riderId: 'mock-rider-1', riderName: 'John Doe', balance: 35.00, limit: 50.00 },
+          { riderId: 'mock-rider-2', riderName: 'Tinashe M.', balance: 12.50, limit: 50.00 }
+        ]
+      }
+    };
+  }
+
+  try {
+    // Query live COD orders
+    const { data: orders, error: ordersError } = await supabase
+      .from('delivery_requests')
+      .select('id, reference_code, cod_amount_expected, cod_amount_collected, cod_discrepancy_flag, cod_collection_confirmed_at, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name)')
+      .eq('payment_method', 'cash')
+      .eq('status', 'completed');
+      
+    if (ordersError) throw ordersError;
+
+    // Query active outstanding balances per rider from ledger
+    const { data: ledger, error: ledgerError } = await supabase
+      .from('rider_cash_ledger')
+      .select('rider_id, amount, type, status, rider:profiles!rider_cash_ledger_rider_id_fkey(full_name)');
+      
+    if (ledgerError) throw ledgerError;
+
+    // Calculate aggregations
+    let totalCODOrders = orders?.length || 0;
+    let totalCashExpected = 0;
+    let totalCashCollected = 0;
+    const discrepancies: any[] = [];
+
+    orders?.forEach(o => {
+      const expected = Number(o.cod_amount_expected || 0);
+      const collected = Number(o.cod_amount_collected || 0);
+      totalCashExpected += expected;
+      totalCashCollected += collected;
+
+      if (o.cod_discrepancy_flag || Math.abs(expected - collected) > 0.01) {
+        discrepancies.push({
+          orderId: o.id,
+          reference: o.reference_code,
+          riderName: (o.rider as any)?.full_name || 'Unknown Rider',
+          expected,
+          collected,
+          difference: Math.abs(expected - collected),
+          flaggedAt: o.cod_collection_confirmed_at
+        });
+      }
+    });
+
+    // Calculate rider ledger outstanding balances
+    const riderBalancesMap = new Map<string, { riderName: string; balance: number; }>();
+    ledger?.forEach(item => {
+      const riderId = item.rider_id;
+      const riderName = (item.rider as any)?.full_name || 'Rider';
+      const amount = Number(item.amount || 0);
+      
+      let balanceChange = 0;
+      if (item.type === 'collected') {
+        balanceChange = amount;
+      } else if (item.type === 'remitted') {
+        balanceChange = -amount;
+      }
+      
+      const current = riderBalancesMap.get(riderId) || { riderName, balance: 0 };
+      if (item.status === 'outstanding') {
+        current.balance += balanceChange;
+      }
+      riderBalancesMap.set(riderId, current);
+    });
+
+    const outstandingRiderBalances = Array.from(riderBalancesMap.entries()).map(([riderId, info]) => ({
+      riderId,
+      riderName: info.riderName,
+      balance: info.balance,
+      limit: 50.00 // Standard limit
+    })).filter(b => b.balance > 0);
+
+    return {
+      success: true,
+      data: {
+        totalCODOrders,
+        totalCashExpected,
+        totalCashCollected,
+        discrepancies,
+        outstandingRiderBalances
+      }
+    };
+  } catch (err: any) {
+    console.error('Error fetching COD Reconciliation Report:', err);
+    return { success: false, error: err.message };
+  }
 }

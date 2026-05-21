@@ -2,7 +2,8 @@ import {
   createOrder as dbCreateOrder, 
   getOrders as dbGetOrders, 
   getOrderById as dbGetOrderById,
-  updateOrderStatus as dbUpdateOrderStatus
+  updateOrderStatus as dbUpdateOrderStatus,
+  completeCodDelivery as dbCompleteCodDelivery
 } from './database';
 import type { ServiceType, FulfillmentMode, ProtectionLevel } from '@/types';
 
@@ -28,6 +29,11 @@ export interface OrderPayload {
   protection_fee?: number;
   total_amount?: number;
   delivery_pin?: string;
+  payment_method?: string;
+  cod_amount_expected?: number;
+  cod_amount_collected?: number;
+  cod_collection_confirmed_at?: string;
+  cod_discrepancy_flag?: boolean;
 }
 
 export interface BikerOrder extends OrderPayload {
@@ -141,18 +147,22 @@ export const OrderService = {
     const protectionFee = payload.protection_fee ?? (payload.protection_level === 'protected' ? 0.5 : 0.0);
     const totalAmount = payload.total_amount ?? (deliveryFee + serviceFee + protectionFee);
     const deliveryPin = payload.delivery_pin ?? Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)).join('');
+    
+    const isCOD = payload.payment_method === 'cash';
 
     const newOrder: BikerOrder = {
       ...payload,
       id: localId,
       reference_code: reference,
-      status: 'rider_assigned', // Default simulation status
+      status: isCOD ? 'payment_held' : 'rider_assigned', // Default simulation status
       created_at: new Date().toISOString(),
       delivery_fee: deliveryFee,
       service_fee: serviceFee,
       protection_fee: protectionFee,
       total_amount: totalAmount,
       delivery_pin: deliveryPin,
+      payment_method: payload.payment_method || 'ecocash',
+      cod_amount_expected: isCOD ? totalAmount : undefined,
       syncStatus: 'pending',
       retryCount: 0,
       supabaseId: null,
@@ -187,7 +197,10 @@ export const OrderService = {
           service_fee: serviceFee,
           protection_fee: protectionFee,
           total_amount: totalAmount,
-          delivery_pin_hash: deliveryPin, // We can store the plain pin or hash, let's store it
+          delivery_pin_hash: deliveryPin,
+          payment_method: payload.payment_method || 'ecocash',
+          cod_amount_expected: isCOD ? totalAmount : undefined,
+          status: isCOD ? 'payment_held' : 'payment_pending',
         };
 
         const { data, error } = await dbCreateOrder(dbPayload);
@@ -458,6 +471,75 @@ export const OrderService = {
   },
 
   /**
+   * Complete Cash on Delivery order atomically (with PIN and Cash confirmation)
+   */
+  async completeCodDelivery(params: {
+    orderId: string;
+    riderId: string;
+    pin: string;
+    cashCollected: number;
+    hasDiscrepancy: boolean;
+    expectedAmount: number;
+  }): Promise<{ success: boolean; error?: string; attemptsRemaining?: number; }> {
+    const currentOrders = getLocalOrders();
+    const idx = currentOrders.findIndex(o => o.id === params.orderId || o.supabaseId === params.orderId);
+    
+    if (idx !== -1) {
+      currentOrders[idx] = {
+        ...currentOrders[idx],
+        status: 'completed',
+        cod_amount_collected: params.cashCollected,
+        cod_collection_confirmed_at: new Date().toISOString(),
+        cod_discrepancy_flag: params.hasDiscrepancy,
+      };
+      saveLocalOrders(currentOrders);
+    }
+
+    if (this.isOnline) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.orderId) ||
+                     (idx !== -1 && currentOrders[idx]?.supabaseId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentOrders[idx].supabaseId || ''));
+      const dbId = isUuid ? (params.orderId.startsWith('local_') ? currentOrders[idx]?.supabaseId! : params.orderId) : null;
+      if (dbId) {
+        try {
+          const { data, error } = await dbCompleteCodDelivery({
+            orderId: dbId,
+            riderId: params.riderId,
+            pin: params.pin,
+            cashCollected: params.cashCollected,
+            hasDiscrepancy: params.hasDiscrepancy
+          });
+          
+          if (error) {
+            return { success: false, error: error.message };
+          }
+          
+          if (data && !data.success) {
+            return {
+              success: false,
+              error: data.error,
+              attemptsRemaining: data.attempts_remaining
+            };
+          }
+          
+          return { success: true };
+        } catch (e: any) {
+          console.error('Failed to complete COD delivery in Supabase', e);
+          return { success: false, error: e.message || 'Network error completing delivery' };
+        }
+      }
+    }
+    
+    // Offline / Dev mode simulation
+    // PIN simulation: verify pin is correct
+    const orderPin = idx !== -1 ? currentOrders[idx].delivery_pin : '4729';
+    if (params.pin !== orderPin) {
+      return { success: false, error: 'Invalid delivery PIN code', attemptsRemaining: 2 };
+    }
+    
+    return { success: true };
+  },
+
+  /**
    * Synchronize pending/failed local orders to Supabase
    */
   async syncPendingOrders(): Promise<void> {
@@ -487,6 +569,7 @@ export const OrderService = {
       }
 
       try {
+        const isCOD = order.payment_method === 'cash';
         const dbPayload = {
           customer_id: order.customer_id,
           service_type: order.service_type as any,
@@ -509,6 +592,9 @@ export const OrderService = {
           protection_fee: order.protection_fee,
           total_amount: order.total_amount,
           delivery_pin_hash: order.delivery_pin,
+          payment_method: order.payment_method || 'ecocash',
+          cod_amount_expected: isCOD ? order.total_amount : undefined,
+          status: isCOD ? 'payment_held' : 'payment_pending',
         };
 
         const { data, error } = await dbCreateOrder(dbPayload);
