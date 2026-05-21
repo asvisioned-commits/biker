@@ -6,7 +6,7 @@ import { getSession, type BikerSession } from '@/lib/auth';
 interface ProfileContextType {
   session: BikerSession | null;
   loading: boolean;
-  refreshSession: () => Promise<void>;
+  refreshSession: (showLoading?: boolean) => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -15,9 +15,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<BikerSession | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshSession = async () => {
+  const refreshSession = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading || !session) {
+        setLoading(true);
+      }
       const sess = await getSession();
       setSession(sess);
     } catch (e) {

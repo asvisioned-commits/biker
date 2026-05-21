@@ -1,5 +1,5 @@
 /* ============================================================
-   BIKER â€” "Calm Trust" Design System
+   BIKER — "Calm Trust" Design System
    Zimbabwe's trust operating system for last-mile logistics
    ============================================================ */
 
@@ -10,7 +10,7 @@
    DESIGN TOKENS
    ============================================================ */
 :root {
-  /* ---- Primary â€” Deep Ocean Blue ---- */
+  /* ---- Primary — Deep Ocean Blue ---- */
   --color-primary-50: hsl(215, 100%, 97%);
   --color-primary-100: hsl(215, 95%, 93%);
   --color-primary-200: hsl(215, 90%, 85%);
@@ -22,7 +22,7 @@
   --color-primary-800: hsl(215, 85%, 23%);
   --color-primary-900: hsl(215, 90%, 16%);
 
-  /* ---- Success â€” Emerald ---- */
+  /* ---- Success — Emerald ---- */
   --color-success-50: hsl(152, 75%, 96%);
   --color-success-100: hsl(152, 70%, 90%);
   --color-success-200: hsl(152, 65%, 78%);
@@ -32,7 +32,7 @@
   --color-success-600: hsl(152, 75%, 28%);
   --color-success-700: hsl(152, 80%, 20%);
 
-  /* ---- Warning â€” Amber ---- */
+  /* ---- Warning — Amber ---- */
   --color-warning-50: hsl(38, 100%, 97%);
   --color-warning-100: hsl(38, 95%, 90%);
   --color-warning-200: hsl(38, 90%, 78%);
@@ -41,7 +41,7 @@
   --color-warning-500: hsl(38, 90%, 48%);
   --color-warning-600: hsl(38, 85%, 38%);
 
-  /* ---- Danger â€” Rose ---- */
+  /* ---- Danger — Rose ---- */
   --color-danger-50: hsl(350, 100%, 97%);
   --color-danger-100: hsl(350, 90%, 92%);
   --color-danger-200: hsl(350, 85%, 82%);
@@ -50,22 +50,22 @@
   --color-danger-500: hsl(350, 85%, 48%);
   --color-danger-600: hsl(350, 85%, 38%);
 
-  /* ---- Jet â€” Speed Orange ---- */
+  /* ---- Jet — Speed Orange ---- */
   --color-jet: hsl(24, 95%, 55%);
   --color-jet-light: hsl(24, 95%, 65%);
   --color-jet-dark: hsl(24, 90%, 42%);
 
-  /* ---- Protect â€” Shield Gold ---- */
+  /* ---- Protect — Shield Gold ---- */
   --color-protect: hsl(45, 90%, 50%);
   --color-protect-light: hsl(45, 90%, 62%);
   --color-protect-dark: hsl(45, 85%, 38%);
 
-  /* ---- Saver â€” Fresh Teal ---- */
+  /* ---- Saver — Fresh Teal ---- */
   --color-saver: hsl(175, 70%, 42%);
   --color-saver-light: hsl(175, 65%, 55%);
   --color-saver-dark: hsl(175, 75%, 30%);
 
-  /* ---- Neutrals â€” Slate ---- */
+  /* ---- Neutrals — Slate ---- */
   --color-neutral-50: hsl(210, 20%, 98%);
   --color-neutral-100: hsl(210, 18%, 95%);
   --color-neutral-200: hsl(210, 15%, 90%);
@@ -146,7 +146,7 @@
   --radius-2xl: 1.5rem;
   --radius-full: 9999px;
 
-  /* ---- Shadows â€” Layered for depth ---- */
+  /* ---- Shadows — Layered for depth ---- */
   --shadow-xs: 0 1px 2px hsla(215, 20%, 0%, 0.04);
   --shadow-sm: 0 1px 3px hsla(215, 20%, 0%, 0.06), 0 1px 2px hsla(215, 20%, 0%, 0.04);
   --shadow-md: 0 4px 6px hsla(215, 20%, 0%, 0.06), 0 2px 4px hsla(215, 20%, 0%, 0.04);
@@ -1427,4 +1427,17 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   max-width: 360px;
+}
+
+/* Enforce 16px font-size for input elements on mobile to prevent iOS Safari auto-zooming */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea,
+  .input,
+  select:focus,
+  input:focus,
+  textarea:focus {
+    font-size: 16px !important;
+  }
 }
