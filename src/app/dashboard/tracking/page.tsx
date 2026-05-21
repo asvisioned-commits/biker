@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { OrderService, BikerOrder } from '@/lib/order-service';
 import { EcoCashService, EcoCashTransaction } from '@/lib/ecocash';
 import { createClient } from '@/lib/supabase/client';
@@ -14,7 +15,7 @@ function TrackingContent() {
   const launchEcoCash = searchParams.get('pay') === 'ecocash';
   const ecocashPhoneParam = searchParams.get('phone') || '';
 
-  const [order, setOrder] = useState<BikerOrder | null>(null);
+  const [initialOrder, setInitialOrder] = useState<BikerOrder | null>(null);
   const [liveOrder, setLiveOrder] = useState<BikerOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,14 +56,16 @@ function TrackingContent() {
       return;
     }
 
+    const currentOrderId = orderId as string;
+
     async function loadOrder() {
       try {
-        const o = await OrderService.getOrderById(orderId);
+        const o = await OrderService.getOrderById(currentOrderId);
         if (!o) {
           // If not found in DB or LocalStorage, try to load simulated mocks for visualization
-          if (orderId.startsWith('mock-')) {
+          if (currentOrderId.startsWith('mock-')) {
             const mockO: BikerOrder = {
-              id: orderId,
+              id: currentOrderId,
               reference_code: 'BKR-MOCK-99',
               customer_id: 'mock-cust-123',
               service_type: 'send_item',
@@ -80,7 +83,7 @@ function TrackingContent() {
               syncStatus: 'synced',
               retryCount: 0
             };
-            setOrder(mockO);
+            setInitialOrder(mockO);
             setLiveOrder(mockO);
             setLoading(false);
             return;
@@ -90,7 +93,7 @@ function TrackingContent() {
           return;
         }
 
-        setOrder(o);
+        setInitialOrder(o);
         setLiveOrder(o);
         
         if (o.status === 'completed' || o.delivery_pin_verified) {
@@ -295,13 +298,13 @@ function TrackingContent() {
   const handleEcoCashTimeout = async () => {
     setEcocashError('USSD push transaction timed out. Please try booking again.');
     addSimulationLog('❌ EcoCash Error: Awaiting customer PIN authorization timed out.');
-    if (activeTxId && order) {
-      await EcoCashService.cancelPayment(order.id, activeTxId);
+    if (activeTxId && initialOrder) {
+      await EcoCashService.cancelPayment(initialOrder.id, activeTxId);
     }
   };
 
   const handleApprovePayment = async () => {
-    if (!order || !activeTxId) return;
+    if (!initialOrder || !activeTxId) return;
     setIsProcessingEcoCash(true);
     setEcocashError('');
     
@@ -310,12 +313,12 @@ function TrackingContent() {
     // Add 1.5s delay to make ledger writing visual
     setTimeout(async () => {
       try {
-        const res = await EcoCashService.confirmPayment(order.id, activeTxId);
+        const res = await EcoCashService.confirmPayment(initialOrder.id, activeTxId);
         if (res.success) {
           addSimulationLog('💸 Double-Entry Ledger updated: debited central gateway, credited customer escrow.');
           addSimulationLog('🔒 Payment Held: Funds secured in multi-sig escrow wallet.');
           
-          const fresh = await OrderService.getOrderById(order.id);
+          const fresh = await OrderService.getOrderById(initialOrder.id);
           setLiveOrder(fresh);
           setShowEcoCashOverlay(false);
         } else {
@@ -331,16 +334,16 @@ function TrackingContent() {
   };
 
   const handleDeclinePayment = async () => {
-    if (!order || !activeTxId) return;
+    if (!initialOrder || !activeTxId) return;
     setIsProcessingEcoCash(true);
     
     addSimulationLog('❌ Simulated Customer USSD PIN declined.');
     
     try {
-      await EcoCashService.cancelPayment(order.id, activeTxId);
-      await OrderService.updateOrderStatus(order.id, 'cancelled', 'EcoCash USSD payment declined by customer');
+      await EcoCashService.cancelPayment(initialOrder.id, activeTxId);
+      await OrderService.updateOrderStatus(initialOrder.id, 'cancelled', 'EcoCash USSD payment declined by customer');
       
-      const fresh = await OrderService.getOrderById(order.id);
+      const fresh = await OrderService.getOrderById(initialOrder.id);
       setLiveOrder(fresh);
       setShowEcoCashOverlay(false);
     } catch (err) {
@@ -399,11 +402,11 @@ function TrackingContent() {
     );
   }
 
-  const order = liveOrder;
+  const order = liveOrder as BikerOrder;
 
   // Compute Timeline Items based on current status
   const getTimeline = () => {
-    const steps = [
+    const steps: { status: string; description: string; completed: boolean; time?: string }[] = [
       { status: 'booked', description: 'Order created', completed: true },
       { status: 'payment_held', description: 'EcoCash Escrow secured', completed: ['payment_held', 'rider_assigned', 'rider_en_route_pickup', 'at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
       { status: 'rider_assigned', description: 'Biker matched', completed: ['rider_assigned', 'rider_en_route_pickup', 'at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
@@ -612,7 +615,7 @@ function TrackingContent() {
           {order.assigned_rider_id && (
             <div className={styles.riderCard}>
               <div className={styles.riderInfo}>
-                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'var(--color-primary-100)', display: 'flex', alignItems: 'center', justify: 'center', fontSize: '1.2rem' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'var(--color-primary-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
                   🚴
                 </div>
                 <div>
@@ -696,20 +699,20 @@ function TrackingContent() {
           <div className={styles.priceSummary}>
             <div className={styles.priceRow}>
               <span>Delivery fee</span>
-              <span>${order.pricing.delivery_fee.toFixed(2)}</span>
+              <span>${(order.delivery_fee ?? 0).toFixed(2)}</span>
             </div>
             <div className={styles.priceRow}>
               <span>Service fee</span>
-              <span>${order.pricing.service_fee.toFixed(2)}</span>
+              <span>${(order.service_fee ?? 0).toFixed(2)}</span>
             </div>
             <div className={styles.priceRow}>
               <span>🛡️ Protection fee</span>
-              <span>${order.pricing.protection_fee.toFixed(2)}</span>
+              <span>${(order.protection_fee ?? 0).toFixed(2)}</span>
             </div>
             <hr className="divider" />
             <div className={`${styles.priceRow} ${styles.priceTotal}`}>
               <span>Total</span>
-              <span>${order.pricing.total.toFixed(2)}</span>
+              <span>${(order.total_amount ?? 0).toFixed(2)}</span>
             </div>
           </div>
 
@@ -761,7 +764,7 @@ function TrackingContent() {
                 </div>
                 <div className={styles.ecocashDetailRow}>
                   <span className={styles.ecocashDetailLabel}>Amount Due:</span>
-                  <span className={styles.ecocashDetailValue}>${order.pricing.total.toFixed(2)} USD</span>
+                  <span className={styles.ecocashDetailValue}>${(order.total_amount ?? 0).toFixed(2)} USD</span>
                 </div>
                 <div className={styles.ecocashDetailRow}>
                   <span className={styles.ecocashDetailLabel}>Reference Code:</span>
