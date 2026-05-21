@@ -19,12 +19,15 @@ function MockGoogleChooser() {
     
     // Simulate Google OAuth delay
     setTimeout(() => {
+      const storedSignupRole = typeof window !== 'undefined' ? localStorage.getItem('biker_signup_role') : null;
+      const role = storedSignupRole || 'customer';
+
       const mockSession: BikerSession = {
         user_id: 'google-mock-' + Date.now(),
         full_name: name,
         email: email,
-        role: 'customer',
-        roles: ['customer'],
+        role: role,
+        roles: [role],
       };
       
       localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));

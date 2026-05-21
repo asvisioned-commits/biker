@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './signup.module.css';
-import { signInWithGoogle, signUpWithEmail } from '@/lib/auth';
+import { signInWithGoogle, signUpWithEmail, getSession, type BikerSession } from '@/lib/auth';
 import type { UserRole, VehicleType } from '@/types';
+import { updateProfile, createRiderProfile, createMerchantProfile, setActiveRole } from '@/lib/database';
 
 function SignupContent() {
   const router = useRouter();
@@ -17,6 +18,9 @@ function SignupContent() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // Auth state if user is already logged in (Google OAuth fallback onboarding)
+  const [currentUser, setCurrentUser] = useState<BikerSession | null>(null);
 
   // Common fields
   const [fullName, setFullName] = useState('');
@@ -36,6 +40,43 @@ function SignupContent() {
   const [businessType, setBusinessType] = useState('general');
   const [whatsapp, setWhatsapp] = useState('');
 
+  // Auto-fill and check for existing Google session on mount
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const sess = await getSession();
+        setCurrentUser(sess);
+        
+        if (sess) {
+          // Pre-fill basic fields
+          setFullName(sess.full_name || '');
+          setEmail(sess.email || '');
+          
+          if (sess.phone) {
+            // Strip Zimbabwe prefix for visual editing
+            setPhone(sess.phone.replace(/^\+263/, ''));
+          }
+
+          // Check if Google OAuth onboarding is requested
+          const isGoogleOnboarding = searchParams.get('google_onboarding') === '1';
+          const storedRole = localStorage.getItem('biker_signup_role') as UserRole | null;
+
+          if (isGoogleOnboarding && storedRole && storedRole !== 'customer') {
+            setSelectedRole(storedRole);
+            if (storedRole === 'rider') {
+              setStep('rider_kyc');
+            } else if (storedRole === 'merchant') {
+              setStep('merchant_details');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to resolve authenticated session:', err);
+      }
+    }
+    checkAuth();
+  }, [searchParams]);
+
   const roles = [
     {
       role: 'customer' as UserRole,
@@ -46,8 +87,8 @@ function SignupContent() {
     {
       role: 'rider' as UserRole,
       icon: '🚴',
-      title: 'Rider',
-      description: 'Earn by delivering. Set your schedule. Build your reputation.',
+      title: 'Biker',
+      description: 'Earn by delivering. Drive your bike. Manage your own earnings.',
     },
     {
       role: 'merchant' as UserRole,
@@ -61,6 +102,7 @@ function SignupContent() {
     setGoogleLoading(true);
     setError('');
     try {
+      localStorage.setItem('biker_signup_role', selectedRole);
       await signInWithGoogle();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Google sign-up failed');
@@ -86,7 +128,78 @@ function SignupContent() {
   const handleFinalSubmit = async () => {
     setLoading(true);
     setError('');
+    const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
+    // Flow A: Existing session profile update (Google Onboarding)
+    if (currentUser) {
+      try {
+        if (IS_DEV) {
+          const stored = localStorage.getItem('biker_mock_session');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.role = selectedRole;
+            parsed.roles = [selectedRole];
+            parsed.full_name = fullName || parsed.full_name;
+            parsed.phone = phone ? '+263' + phone : parsed.phone;
+
+            if (selectedRole === 'rider') {
+              parsed.vehicle_type = vehicleType;
+              parsed.vehicle_registration = vehicleType === 'bicycle' ? 'N/A' : vehicleReg;
+              parsed.license_number = vehicleType === 'bicycle' ? 'N/A' : licenseNumber;
+              parsed.national_id = nationalId;
+              parsed.operating_zone = operatingZone;
+            } else if (selectedRole === 'merchant') {
+              parsed.business_name = businessName;
+              parsed.business_type = businessType;
+              parsed.whatsapp = whatsapp ? '+263' + whatsapp : null;
+            }
+            localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
+          }
+        } else {
+          // Live Supabase update
+          if (phone || fullName) {
+            const { error: profileErr } = await updateProfile(currentUser.user_id, {
+              phone: phone ? '+263' + phone : undefined,
+              full_name: fullName || undefined,
+            });
+            if (profileErr) throw profileErr;
+          }
+
+          if (selectedRole === 'rider') {
+            const { error: riderErr } = await createRiderProfile({
+              user_id: currentUser.user_id,
+              vehicle_type: vehicleType,
+              vehicle_registration: vehicleType === 'bicycle' ? 'N/A' : vehicleReg,
+              license_number: vehicleType === 'bicycle' ? 'N/A' : licenseNumber,
+              operating_zone: operatingZone,
+            });
+            if (riderErr) throw riderErr;
+          } else if (selectedRole === 'merchant') {
+            const { error: merchErr } = await createMerchantProfile({
+              user_id: currentUser.user_id,
+              business_name: businessName,
+              business_type: businessType as any,
+              whatsapp_number: whatsapp ? '+263' + whatsapp : undefined,
+            });
+            if (merchErr) throw merchErr;
+          }
+
+          const { error: roleErr } = await setActiveRole(currentUser.user_id, selectedRole);
+          if (roleErr) throw roleErr;
+        }
+
+        localStorage.removeItem('biker_signup_role');
+        
+        // Push to dashboard and trigger hard reload to refresh navbar contexts
+        window.location.href = '/dashboard';
+      } catch (err: any) {
+        setError(err?.message || 'Failed to complete profile onboarding. Please try again.');
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Flow B: Standard Email Signup
     const metadata: Record<string, unknown> = {
       full_name: fullName,
       phone: '+263' + phone,
@@ -95,8 +208,8 @@ function SignupContent() {
 
     if (selectedRole === 'rider') {
       metadata.vehicle_type = vehicleType;
-      metadata.vehicle_registration = vehicleReg;
-      metadata.license_number = licenseNumber;
+      metadata.vehicle_registration = vehicleType === 'bicycle' ? 'N/A' : vehicleReg;
+      metadata.license_number = vehicleType === 'bicycle' ? 'N/A' : licenseNumber;
       metadata.national_id = nationalId;
       metadata.operating_zone = operatingZone;
     } else if (selectedRole === 'merchant') {
@@ -105,7 +218,7 @@ function SignupContent() {
       metadata.whatsapp = whatsapp ? '+263' + whatsapp : null;
     }
 
-    const { error: signUpError } = await signUpWithEmail(
+    const { data: signUpData, error: signUpError } = await signUpWithEmail(
       email || `${phone}@biker.co.zw`,
       password,
       metadata
@@ -117,7 +230,44 @@ function SignupContent() {
       return;
     }
 
-    router.push('/dashboard');
+    // App-Side Provisioning Fallback (Dual Protection)
+    const newUser = signUpData?.user;
+    if (newUser && !IS_DEV) {
+      try {
+        if (phone || fullName) {
+          await updateProfile(newUser.id, {
+            phone: phone ? '+263' + phone : undefined,
+            full_name: fullName || undefined,
+          });
+        }
+
+        if (selectedRole === 'rider') {
+          await createRiderProfile({
+            user_id: newUser.id,
+            vehicle_type: vehicleType,
+            vehicle_registration: vehicleType === 'bicycle' ? 'N/A' : vehicleReg,
+            license_number: vehicleType === 'bicycle' ? 'N/A' : licenseNumber,
+            operating_zone: operatingZone,
+          });
+        } else if (selectedRole === 'merchant') {
+          await createMerchantProfile({
+            user_id: newUser.id,
+            business_name: businessName,
+            business_type: businessType as any,
+            whatsapp_number: whatsapp ? '+263' + whatsapp : undefined,
+          });
+        }
+
+        await setActiveRole(newUser.id, selectedRole);
+      } catch (provError) {
+        console.warn('App-side provisioning caught error (database trigger handle_new_user should complete this):', provError);
+      }
+    }
+
+    localStorage.removeItem('biker_signup_role');
+    
+    // Success — force hard reload to pick up new role context
+    window.location.href = '/dashboard';
     setLoading(false);
   };
 
@@ -218,7 +368,7 @@ function SignupContent() {
                   className="btn btn--primary btn--lg btn--full"
                   onClick={handleRoleSelect}
                 >
-                  Continue as {selectedRole}
+                  Continue as {selectedRole === 'rider' ? 'Biker' : selectedRole === 'merchant' ? 'Merchant' : 'Customer'}
                 </button>
               </div>
             )}
@@ -299,7 +449,7 @@ function SignupContent() {
             {/* Step 3a: Rider KYC */}
             {step === 'rider_kyc' && (
               <div className={styles.stepContent}>
-                <h1 className={styles.formTitle}>Rider verification</h1>
+                <h1 className={styles.formTitle}>Biker verification</h1>
                 <p className={styles.formSubtitle}>
                   We need to verify your identity and vehicle. This keeps customers safe and builds your trust score.
                 </p>
@@ -331,19 +481,21 @@ function SignupContent() {
                       <option value="van">🚐 Van</option>
                     </select>
                   </div>
-                  <div className="input-group">
-                    <label className="input-label input-label--required" htmlFor="vehicleReg">Vehicle registration number</label>
-                    <input
-                      id="vehicleReg"
-                      type="text"
-                      className="input"
-                      placeholder="e.g. AEQ 1234"
-                      value={vehicleReg}
-                      onChange={(e) => setVehicleReg(e.target.value.toUpperCase())}
-                      required
-                    />
-                    <span className="input-hint">As shown on your vehicle plate</span>
-                  </div>
+                  {vehicleType !== 'bicycle' && (
+                    <div className="input-group">
+                      <label className="input-label input-label--required" htmlFor="vehicleReg">Vehicle registration number</label>
+                      <input
+                        id="vehicleReg"
+                        type="text"
+                        className="input"
+                        placeholder="e.g. AEQ 1234"
+                        value={vehicleReg}
+                        onChange={(e) => setVehicleReg(e.target.value.toUpperCase())}
+                        required
+                      />
+                      <span className="input-hint">As shown on your vehicle plate</span>
+                    </div>
+                  )}
                   {(vehicleType === 'motorcycle' || vehicleType === 'car' || vehicleType === 'van') && (
                     <div className="input-group">
                       <label className="input-label" htmlFor="licenseNum">License number</label>
@@ -396,7 +548,7 @@ function SignupContent() {
                     className="btn btn--primary btn--lg"
                     style={{ flex: 1 }}
                     onClick={handleFinalSubmit}
-                    disabled={loading || !vehicleReg || !nationalId || !operatingZone}
+                    disabled={loading || !nationalId || !operatingZone || (vehicleType !== 'bicycle' && !vehicleReg)}
                   >
                     {loading ? <span className="spinner" /> : 'Submit for verification'}
                   </button>
