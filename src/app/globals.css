@@ -1441,3 +1441,52 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 16px !important;
   }
 }
+
+/* ---- Shimmer Skeleton ---- */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary) 25%,
+    var(--border-default) 37%,
+    var(--bg-secondary) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  width: 100%;
+}
+
+.skeleton--circle {
+  border-radius: var(--radius-full);
+}
+
+.skeleton--text {
+  height: 12px;
+  margin-bottom: 8px;
+}
+
+.skeleton--title {
+  height: 18px;
+  margin-bottom: 12px;
+  width: 60%;
+}
+
+.skeleton--button {
+  height: 44px;
+  border-radius: var(--radius-md);
+}
+
+.skeleton--card {
+  height: 180px;
+  border-radius: var(--radius-xl);
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
