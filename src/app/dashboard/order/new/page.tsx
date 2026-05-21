@@ -6,7 +6,7 @@ import { useProfile } from '@/context/ProfileContext';
 import { OrderService } from '@/lib/order-service';
 import styles from './new-order.module.css';
 import { useGeolocation } from '@/lib/geolocation';
-import { reverseGeocode } from '@/lib/geocoding';
+import { reverseGeocode, searchAddress, type GeocodeResult } from '@/lib/geocoding';
 import type { ServiceType, FulfillmentMode } from '@/types';
 import { GlassCard } from '@/components/primitives/GlassCard';
 import { SegmentedControl } from '@/components/primitives/SegmentedControl';
@@ -44,6 +44,17 @@ function NewOrderContent() {
   const [resolvedAddress, setResolvedAddress] = useState('Loading location...');
   const [isDragging, setIsDragging] = useState(false);
 
+  // Address search autocomplete states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Clear search on tab switch
+  useEffect(() => {
+    setSearchQuery('');
+    setSuggestions([]);
+  }, [bookingMode]);
+
   // Form selections
   const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
   const [pickupAddress, setPickupAddress] = useState('');
@@ -70,6 +81,13 @@ function NewOrderContent() {
   const gpsMarkerRef = useRef<any>(null);
   const mapId = 'indrive-booking-map';
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const bookingModeRef = useRef(bookingMode);
+  useEffect(() => {
+    bookingModeRef.current = bookingMode;
+  }, [bookingMode]);
+
+  const searchDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Dynamic Leaflet loader
   useEffect(() => {
@@ -148,11 +166,23 @@ function NewOrderContent() {
       debounceTimerRef.current = setTimeout(async () => {
         const address = await reverseGeocode(center.lat, center.lng);
         setResolvedAddress(address);
+        if (bookingModeRef.current === 'select_pickup') {
+          setPickupAddress(address);
+        } else if (bookingModeRef.current === 'select_dropoff') {
+          setDropoffAddress(address);
+        }
       }, 500);
     });
 
     // Initial reverse geocode
-    reverseGeocode(initialCenter[0], initialCenter[1]).then(setResolvedAddress);
+    reverseGeocode(initialCenter[0], initialCenter[1]).then((address) => {
+      setResolvedAddress(address);
+      if (bookingModeRef.current === 'select_pickup') {
+        setPickupAddress(address);
+      } else if (bookingModeRef.current === 'select_dropoff') {
+        setDropoffAddress(address);
+      }
+    });
 
     return () => {
       if (mapRef.current) {
@@ -217,6 +247,39 @@ function NewOrderContent() {
     if (mapRef.current) {
       mapRef.current.flyTo([lat, lng], 15, { animate: true, duration: 1.2 });
     }
+  };
+
+  // Handle search input changes with debounce
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    setIsSearching(true);
+    if (searchDebounceTimerRef.current) clearTimeout(searchDebounceTimerRef.current);
+    
+    searchDebounceTimerRef.current = setTimeout(async () => {
+      const results = await searchAddress(query);
+      setSuggestions(results);
+      setIsSearching(false);
+    }, 400);
+  };
+
+  // Handle autocomplete suggestion click
+  const handleSelectSuggestion = (sug: GeocodeResult) => {
+    flyToCoords(sug.lat, sug.lng);
+    setMapCenter([sug.lat, sug.lng]);
+    setResolvedAddress(sug.address);
+    if (bookingMode === 'select_pickup') {
+      setPickupCoords([sug.lat, sug.lng]);
+      setPickupAddress(sug.address);
+    } else {
+      setDropoffCoords([sug.lat, sug.lng]);
+      setDropoffAddress(sug.address);
+    }
+    setSuggestions([]);
+    setSearchQuery('');
   };
 
   // Step A Confirmation
@@ -416,11 +479,42 @@ function NewOrderContent() {
               <span className={styles.sheetStep}>Pickup</span>
             </div>
 
+            {/* Address search box */}
+            <div className={styles.searchContainer}>
+              <input
+                type="text"
+                placeholder="🔍 Search pickup address (e.g. Sam Levy's, CBD)..."
+                className={styles.searchInput}
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+              />
+              {isSearching && <span className={styles.searchSpinner}>⏳</span>}
+              {suggestions.length > 0 && (
+                <div className={styles.searchSuggestions}>
+                  {suggestions.map((sug, idx) => (
+                    <button
+                      key={idx}
+                      className={styles.suggestionItem}
+                      onClick={() => handleSelectSuggestion(sug)}
+                    >
+                      📍 {sug.address}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className={styles.addressDisplayBox}>
               <span className={styles.addressIcon}>📍</span>
               <div className={styles.addressTextGroup}>
-                <span className={styles.addressLabel}>Select location on map</span>
-                <span className={styles.addressValue}>{resolvedAddress}</span>
+                <span className={styles.addressLabel}>Adjust pickup address manually if needed</span>
+                <textarea
+                  className={styles.editableAddressText}
+                  value={pickupAddress || resolvedAddress}
+                  onChange={(e) => setPickupAddress(e.target.value)}
+                  rows={2}
+                  placeholder="Street name, house number, etc."
+                />
                 <input
                   type="text"
                   placeholder="Add gate color, apartment no. or notes"
@@ -436,7 +530,13 @@ function NewOrderContent() {
                 <button
                   key={loc.name}
                   className={styles.chip}
-                  onClick={() => flyToCoords(loc.lat, loc.lng)}
+                  onClick={() => {
+                    flyToCoords(loc.lat, loc.lng);
+                    setMapCenter([loc.lat, loc.lng]);
+                    setResolvedAddress(loc.name);
+                    setPickupCoords([loc.lat, loc.lng]);
+                    setPickupAddress(loc.name);
+                  }}
                 >
                   🏫 {loc.name.split(',')[0]}
                 </button>
@@ -498,11 +598,42 @@ function NewOrderContent() {
               <span className={styles.sheetStep}>Destination</span>
             </div>
 
+            {/* Address search box */}
+            <div className={styles.searchContainer}>
+              <input
+                type="text"
+                placeholder="🔍 Search dropoff address (e.g. Avondale, Eastgate)..."
+                className={styles.searchInput}
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+              />
+              {isSearching && <span className={styles.searchSpinner}>⏳</span>}
+              {suggestions.length > 0 && (
+                <div className={styles.searchSuggestions}>
+                  {suggestions.map((sug, idx) => (
+                    <button
+                      key={idx}
+                      className={styles.suggestionItem}
+                      onClick={() => handleSelectSuggestion(sug)}
+                    >
+                      📍 {sug.address}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className={styles.addressDisplayBox}>
               <span className={styles.addressIcon}>🏁</span>
               <div className={styles.addressTextGroup}>
-                <span className={styles.addressLabel}>Select destination on map</span>
-                <span className={styles.addressValue}>{resolvedAddress}</span>
+                <span className={styles.addressLabel}>Adjust destination address manually if needed</span>
+                <textarea
+                  className={styles.editableAddressText}
+                  value={dropoffAddress || resolvedAddress}
+                  onChange={(e) => setDropoffAddress(e.target.value)}
+                  rows={2}
+                  placeholder="Street name, house number, etc."
+                />
                 <input
                   type="text"
                   placeholder="Gate instructions, color or note"
@@ -518,7 +649,13 @@ function NewOrderContent() {
                 <button
                   key={loc.name}
                   className={styles.chip}
-                  onClick={() => flyToCoords(loc.lat, loc.lng)}
+                  onClick={() => {
+                    flyToCoords(loc.lat, loc.lng);
+                    setMapCenter([loc.lat, loc.lng]);
+                    setResolvedAddress(loc.name);
+                    setDropoffCoords([loc.lat, loc.lng]);
+                    setDropoffAddress(loc.name);
+                  }}
                 >
                   🏫 {loc.name.split(',')[0]}
                 </button>

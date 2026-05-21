@@ -661,3 +661,116 @@
   from { transform: scale(0.92); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* ============================================================
+   Location Autocomplete & Address Correction Enhancements
+   ============================================================ */
+
+.searchContainer {
+  position: relative;
+  width: 100%;
+  margin-bottom: var(--space-1);
+  z-index: 15;
+}
+
+.searchInput {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  padding-right: 40px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+  transition: all var(--duration-fast) var(--ease-out);
+  box-shadow: var(--shadow-sm);
+}
+
+.searchInput:focus {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  background: var(--bg-card);
+}
+
+.searchSpinner {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.searchSuggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: hsla(0, 0%, 100%, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 99;
+  padding: var(--space-1) 0;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-theme='dark'] .searchSuggestions {
+  background: hsla(215, 28%, 10%, 0.95);
+}
+
+.suggestionItem {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.suggestionItem:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--color-primary-600);
+  padding-left: calc(var(--space-4) + 4px);
+}
+
+.editableAddressText {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: var(--space-1) 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  line-height: var(--leading-snug);
+  border-bottom: 1px dashed var(--border-default);
+  padding-bottom: var(--space-2);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.editableAddressText:focus {
+  border-bottom-style: solid;
+  border-bottom-color: var(--color-primary-500);
+}
