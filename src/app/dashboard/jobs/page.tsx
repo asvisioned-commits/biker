@@ -2,12 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getRiderSubscription, requestEmergencyCredit, RiderSubscription } from '../earnings/actions';
+import { 
+  getRiderSubscription, 
+  requestEmergencyCredit, 
+  RiderSubscription,
+  getRiderDashboardStats,
+  completeRiderSafetyQuiz,
+  createCounterOffer,
+  updateRiderOnlineStatus
+} from '../earnings/actions';
 import styles from './jobs.module.css';
 import { useProfile } from '@/context/ProfileContext';
 import { createClient } from '@/lib/supabase/client';
 import { FLAGS } from '@/lib/flags';
-import { toggleRiderOnline } from '@/lib/database';
 
 const MOCK_JOBS = [
   {
@@ -95,6 +102,73 @@ const SERVICE_LABELS: Record<string, string> = {
   multi_stop: 'Multi-Stop',
 };
 
+const QUIZ_SLIDES = [
+  {
+    type: 'tutorial',
+    title: 'Platform Policy: Outstanding Cash limit',
+    text: 'To maintain platform trust and cashflow in Zimbabwe, riders are subject to a cash float limit. Under the Cash on Delivery (COD) ledger policy, if your outstanding collected cash exceeds $50.00, you will be blocked from accepting new COD orders. You can still accept non-COD orders. Settling your float balance with the platform immediately restores full COD capabilities.'
+  },
+  {
+    type: 'tutorial',
+    title: 'Security Policy: Escrow & Biker Protect',
+    text: 'All deliveries are secured using Biker Protect escrow. The customer\'s payout is held in a secure vault. You must only release the escrow and validate the job completion after you have successfully delivered the package, and the customer has inspected it and provided you with their correct 4-digit verification PIN. Never guess PINs or ask the customer to share their PIN prior to inspection.'
+  },
+  {
+    type: 'tutorial',
+    title: 'Safety Policy: Secure Package Transport',
+    text: 'Safety is our absolute priority. When transporting items, always secure them inside a waterproof, padded compartment or backpack using straps. For documents, ensure they are placed flat in a protective sleeve. Prior to departure, double-check that your cargo is balanced and secured to avoid accidents.'
+  },
+  {
+    type: 'tutorial',
+    title: 'Billing Policy: Emergency Credit Buffer',
+    text: 'If you reach your subscription earnings cap mid-run, you don\'t have to stop immediately. You can request an Emergency Credit advance of $2.50. This extends your earning capacity temporarily (giving you a grace period buffer), and will be automatically deducted and settled upon your next subscription plan renewal.'
+  },
+  {
+    type: 'question',
+    question: 'When must you remit collected COD cash to platform operations?',
+    options: [
+      'A) At the end of the month',
+      'B) Only when you feel like it',
+      'C) Immediately when outstanding COD float exceeds $50.00',
+      'D) Never'
+    ],
+    correctAnswer: 'C'
+  },
+  {
+    type: 'question',
+    question: 'When should you validate the 4-digit PIN to release the escrow payout?',
+    options: [
+      'A) As soon as you pick up the package',
+      'B) Only after the customer inspects the package and provides the correct 4-digit PIN',
+      'C) Before you start the trip',
+      'D) When you arrive at the pickup location'
+    ],
+    correctAnswer: 'B'
+  },
+  {
+    type: 'question',
+    question: 'What is the required policy for package safety during transit?',
+    options: [
+      'A) Place it anywhere on the motorcycle',
+      'B) Always secure the item inside a waterproof, padded bag using straps',
+      'C) Hold it in one hand while riding',
+      'D) Only secure it if the package is expensive'
+    ],
+    correctAnswer: 'B'
+  },
+  {
+    type: 'question',
+    question: 'Which of the following is true about Emergency Credit?',
+    options: [
+      'A) It is a free gift and never has to be repaid',
+      'B) It extends your earnings cap limit temporarily by $30 and must be settled on your next subscription renewal',
+      'C) It allows you to buy food for yourself',
+      'D) It can be requested multiple times per cycle without settling the previous debt'
+    ],
+    correctAnswer: 'B'
+  }
+];
+
 export default function JobsPage() {
   const { session, loading: profileLoading } = useProfile();
   const userId = session?.user_id;
@@ -111,6 +185,21 @@ export default function JobsPage() {
   // Guard Modal State
   const [showGuardModal, setShowGuardModal] = useState(false);
   const [pendingJobId, setPendingJobId] = useState<string | null>(null);
+
+  // Safety Quiz State
+  const [safetyQuizCompleted, setSafetyQuizCompleted] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizStep, setQuizStep] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedbackType, setFeedbackType] = useState<'success' | 'error' | null>(null);
+
+  // Bidding Modal State
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [biddingJob, setBiddingJob] = useState<any>(null);
+  const [bidAmount, setBidAmount] = useState<string>('');
+  const [submittingBid, setSubmittingBid] = useState(false);
+  const [activeBids, setActiveBids] = useState<Record<string, number>>({});
 
   const formatOrderTime = (timeStr: string) => {
     if (!timeStr) return 'Just now';
@@ -148,25 +237,38 @@ export default function JobsPage() {
   const fetchStatus = async () => {
     const riderId = userId || 'mock-rider';
     try {
-      const activeSub = await getRiderSubscription(riderId);
-      setSub(activeSub);
+      const stats = await getRiderDashboardStats(riderId);
+      setSub(stats.subscription as any);
+      setIsOnline(stats.isOnline);
+      setSafetyQuizCompleted(stats.safetyQuizCompleted);
       
       if (FLAGS.useLiveDb && userId) {
         const supabase = createClient();
-        const [profileRes, ledgerRes] = await Promise.all([
-          supabase.from('rider_profiles').select('is_available').eq('user_id', userId).single(),
-          supabase.from('rider_cash_ledger').select('amount').eq('rider_id', userId).eq('status', 'outstanding')
-        ]);
+        const { data: ledgerRes } = await supabase
+          .from('rider_cash_ledger')
+          .select('amount')
+          .eq('rider_id', userId)
+          .eq('status', 'outstanding');
         
-        if (profileRes.data) {
-          setIsOnline(profileRes.data.is_available);
-        }
-        if (ledgerRes.data) {
-          const sum = ledgerRes.data.reduce((acc, row) => acc + Number(row.amount), 0);
+        if (ledgerRes) {
+          const sum = ledgerRes.reduce((acc, row) => acc + Number(row.amount), 0);
           setCashBalance(sum);
         }
-      } else {
-        setIsOnline(true);
+
+        // Fetch active bids by this rider
+        const { data: activeOffers } = await supabase
+          .from('order_offers')
+          .select('order_id, counter_offer_amount')
+          .eq('rider_id', userId)
+          .eq('status', 'counter_offered')
+          .gt('expires_at', new Date().toISOString());
+        if (activeOffers) {
+          const bidsMap: Record<string, number> = {};
+          activeOffers.forEach(o => {
+            bidsMap[o.order_id] = Number(o.counter_offer_amount);
+          });
+          setActiveBids(bidsMap);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -266,13 +368,21 @@ export default function JobsPage() {
 
   const handleToggleOnline = async () => {
     if (togglePending) return;
+    if (!safetyQuizCompleted) {
+      setShowQuiz(true);
+      setQuizStep(0);
+      setSelectedOption(null);
+      setFeedbackMessage(null);
+      setFeedbackType(null);
+      return;
+    }
     const targetStatus = !isOnline;
     setIsOnline(targetStatus);
     setTogglePending(true);
     
     if (FLAGS.useLiveDb && userId) {
       try {
-        const { error } = await toggleRiderOnline(userId, targetStatus);
+        const { error } = await updateRiderOnlineStatus(userId, targetStatus);
         if (error) throw error;
       } catch (err) {
         console.error(err);
@@ -288,6 +398,15 @@ export default function JobsPage() {
 
   const handleAcceptJob = (jobId: string) => {
     if (!sub) return;
+
+    if (!safetyQuizCompleted) {
+      setShowQuiz(true);
+      setQuizStep(0);
+      setSelectedOption(null);
+      setFeedbackMessage(null);
+      setFeedbackType(null);
+      return;
+    }
 
     if (sub.status === 'suspended' || sub.status === 'closed') {
       alert('Your account is currently suspended/closed. Please renew your subscription to accept jobs.');
@@ -447,8 +566,7 @@ export default function JobsPage() {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px'
-                  }}>
-                    {sub.status === 'active' 
+                  }}>\n                    {sub.status === 'active' 
                       ? `🔓 Unlocked (~${estJobsLeft} deliveries left)`
                       : `⏳ Grace Period Active`
                     }
@@ -517,8 +635,7 @@ export default function JobsPage() {
                       color: '#34d399',
                       marginBottom: '0.75rem',
                       boxShadow: '0 0 15px rgba(16, 185, 129, 0.1)'
-                    }}>
-                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
+                    }}>\n                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
                     </div>
                   )}
 
@@ -568,27 +685,48 @@ export default function JobsPage() {
                       color: '#f87171',
                       lineHeight: '1.4',
                       textAlign: 'left'
-                    }}>
-                      ⚠️ <strong>Cash Collection Limit Warning</strong>
+                    }}>\n                      ⚠️ <strong>Cash Collection Limit Warning</strong>
                       <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
                         You are near your cash collection limit (${cashBalance.toFixed(2)}/${cashLimit.toFixed(2)}). 
                         Please remit collected cash to platform operations before accepting more COD orders.
                       </p>
                     </div>
                   ) : (
-                    <button
-                      className={`btn btn--primary btn--lg btn--full ${styles.acceptBtn}`}
-                      onClick={() => handleAcceptJob(job.id)}
-                      disabled={accepting === job.id}
-                    >
-                      {accepting === job.id ? (
-                        <>
-                          <span className="spinner" /> Accepting...
-                        </>
-                      ) : (
-                        `Accept — $${job.payout.toFixed(2)}`
-                      )}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '0.75rem' }}>
+                      <button
+                        className={`btn btn--primary btn--lg ${styles.acceptBtn}`}
+                        style={{ flex: 2 }}
+                        onClick={() => handleAcceptJob(job.id)}
+                        disabled={accepting === job.id || activeBids[job.id] !== undefined}
+                      >
+                        {accepting === job.id ? (
+                          <>
+                            <span className="spinner" /> Accepting...\n                          </>
+                        ) : (
+                          `Accept — $${job.payout.toFixed(2)}`
+                        )}
+                      </button>
+                      <button
+                        className="btn btn--secondary btn--lg"
+                        style={{ flex: 1 }}
+                        onClick={() => {
+                          if (!safetyQuizCompleted) {
+                            setShowQuiz(true);
+                            setQuizStep(0);
+                            setSelectedOption(null);
+                            setFeedbackMessage(null);
+                            setFeedbackType(null);
+                            return;
+                          }
+                          setBiddingJob(job);
+                          setBidAmount((job.payout * 1.15).toFixed(2));
+                          setShowBidModal(true);
+                        }}
+                        disabled={accepting === job.id || activeBids[job.id] !== undefined}
+                      >
+                        {activeBids[job.id] !== undefined ? `Bid: $${activeBids[job.id].toFixed(2)}` : 'Bid Higher'}
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -630,6 +768,264 @@ export default function JobsPage() {
                   Renew Plan
                 </Link>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Safety Quiz Wizard Modal */}
+      {showQuiz && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.quizCard}>
+            <div className={styles.quizProgressBar}>
+              <div
+                className={styles.quizProgressFill}
+                style={{ width: `${((quizStep + 1) / QUIZ_SLIDES.length) * 100}%` }}
+              />
+            </div>
+            <div className={styles.quizSlide}>
+              {QUIZ_SLIDES[quizStep].type === 'tutorial' ? (
+                <>
+                  <h3>{QUIZ_SLIDES[quizStep].title}</h3>
+                  <p>{QUIZ_SLIDES[quizStep].text}</p>
+                  <div className={styles.quizNav}>
+                    <button
+                      className="btn btn--secondary btn--md"
+                      disabled={quizStep === 0}
+                      onClick={() => {
+                        setQuizStep(prev => prev - 1);
+                        setSelectedOption(null);
+                        setFeedbackMessage(null);
+                        setFeedbackType(null);
+                      }}
+                    >
+                      Back
+                    </button>
+                    <button
+                      className="btn btn--primary btn--md"
+                      onClick={() => {
+                        setQuizStep(prev => prev + 1);
+                        setSelectedOption(null);
+                        setFeedbackMessage(null);
+                        setFeedbackType(null);
+                      }}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3>Question {quizStep - 3} of 4</h3>
+                  <p>{QUIZ_SLIDES[quizStep].question}</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '16px 0' }}>
+                    {QUIZ_SLIDES[quizStep].options?.map((opt: string) => {
+                      const letter = opt[0];
+                      const isSelected = selectedOption === letter;
+                      const isCorrect = feedbackType === 'success' && isSelected;
+                      const isIncorrect = feedbackType === 'error' && isSelected;
+                      let optionClass = styles.quizOption;
+                      if (isSelected) optionClass += ` ${styles.quizOptionSelected}`;
+                      if (isCorrect) optionClass += ` ${styles.quizOptionCorrect}`;
+                      if (isIncorrect) optionClass += ` ${styles.quizOptionIncorrect}`;
+                      return (
+                        <button
+                          key={opt}
+                          className={optionClass}
+                          style={{ margin: 0 }}
+                          onClick={() => {
+                            if (feedbackType !== 'success') {
+                              setSelectedOption(letter);
+                              setFeedbackMessage(null);
+                              setFeedbackType(null);
+                            }
+                          }}
+                          disabled={feedbackType === 'success'}
+                        >
+                          {opt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {feedbackMessage && (
+                    <div style={{
+                      fontSize: '0.875rem',
+                      color: feedbackType === 'success' ? '#34d399' : '#f87171',
+                      marginTop: '0.5rem',
+                      marginBottom: '1rem',
+                      fontWeight: 600
+                    }}>\n                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
+                    </div>
+                  )}
+                  <div className={styles.quizNav}>
+                    <button
+                      className="btn btn--secondary btn--md"
+                      onClick={() => {
+                        setQuizStep(prev => prev - 1);
+                        setSelectedOption(null);
+                        setFeedbackMessage(null);
+                        setFeedbackType(null);
+                      }}
+                      disabled={feedbackType === 'success'}
+                    >
+                      Back
+                    </button>
+                    {feedbackType === 'success' ? (
+                      <button
+                        className="btn btn--primary btn--md"
+                        onClick={async () => {
+                          if (quizStep === QUIZ_SLIDES.length - 1) {
+                            const riderId = userId || 'mock-rider';
+                            try {
+                              const res = await completeRiderSafetyQuiz(riderId);
+                              if (res.success) {
+                                setSafetyQuizCompleted(true);
+                                setShowQuiz(false);
+                                // Toggle online automatically
+                                setIsOnline(true);
+                                if (FLAGS.useLiveDb && userId) {
+                                  await updateRiderOnlineStatus(userId, true);
+                                }
+                              } else {
+                                alert('Error saving safety quiz completion: ' + (res.error?.message || 'Unknown error'));
+                              }
+                            } catch (err) {
+                              console.error(err);
+                              alert('Error saving safety quiz completion.');
+                            }
+                          } else {
+                            setQuizStep(prev => prev + 1);
+                            setSelectedOption(null);
+                            setFeedbackMessage(null);
+                            setFeedbackType(null);
+                          }
+                        }}
+                      >
+                        {quizStep === QUIZ_SLIDES.length - 1 ? 'Finish & Go Online' : 'Next'}
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn--primary btn--md"
+                        disabled={!selectedOption}
+                        onClick={() => {
+                          const correctLetter = QUIZ_SLIDES[quizStep].correctAnswer;
+                          if (selectedOption === correctLetter) {
+                            setFeedbackType('success');
+                            setFeedbackMessage('Correct! You can proceed to the next slide.');
+                          } else {
+                            setFeedbackType('error');
+                            setFeedbackMessage('Incorrect answer. Please review the platform policy and try again.');
+                          }
+                        }}
+                      >
+                        Submit Answer
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bid Higher (Counter Offer) Modal */}
+      {showBidModal && biddingJob && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent} style={{ maxWidth: '400px' }}>
+            <div className={styles.modalHeader}>
+              <h2>Submit Counter Offer</h2>
+              <button onClick={() => setShowBidModal(false)} className={styles.modalClose}>×</button>
+            </div>
+            <div className={styles.modalBody} style={{ textAlign: 'left' }}>
+              <p style={{ textAlign: 'left', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                Propose a higher payout for delivery <strong>{biddingJob.reference_code}</strong>. Payouts are capped at 1.5x of the base fee.
+              </p>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Base Payout:</span>
+                <span style={{ fontWeight: 700 }}>${biddingJob.payout.toFixed(2)}</span>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Max Allowed Bid (1.5x):</span>
+                <span style={{ fontWeight: 700, color: '#f59e0b' }}>
+                  ${(biddingJob.payout * 1.5).toFixed(2)}
+                </span>
+              </div>
+
+              <div className={styles.bidInputGroup}>
+                <span className={styles.bidInputPrefix}>$</span>
+                <input
+                  type="number"
+                  step="0.10"
+                  className={styles.bidInputField}
+                  value={bidAmount}
+                  onChange={(e) => setBidAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Preset buttons */}
+              <div className={styles.bidPresets}>
+                <button
+                  className={styles.presetBtn}
+                  onClick={() => setBidAmount((biddingJob.payout * 1.1).toFixed(2))}
+                >
+                  +10% (${(biddingJob.payout * 1.1).toFixed(2)})
+                </button>
+                <button
+                  className={styles.presetBtn}
+                  onClick={() => setBidAmount((biddingJob.payout * 1.25).toFixed(2))}
+                >
+                  +25% (${(biddingJob.payout * 1.25).toFixed(2)})
+                </button>
+                <button
+                  className={styles.presetBtn}
+                  onClick={() => setBidAmount((biddingJob.payout * 1.5).toFixed(2))}
+                >
+                  +50% (Max) (${(biddingJob.payout * 1.5).toFixed(2)})
+                </button>
+              </div>
+
+              {/* Error message */}
+              {bidAmount && (Number(bidAmount) <= biddingJob.payout || Number(bidAmount) > biddingJob.payout * 1.5) && (
+                <div style={{ color: '#f87171', fontSize: '0.75rem', marginBottom: '1rem', fontWeight: 600 }}>
+                  ⚠️ Bid must be between ${biddingJob.payout.toFixed(2)} and ${(biddingJob.payout * 1.5).toFixed(2)}.
+                </div>
+              )}
+
+              <button
+                className="btn btn--primary btn--lg btn--full"
+                disabled={
+                  submittingBid ||
+                  !bidAmount ||
+                  Number(bidAmount) <= biddingJob.payout ||
+                  Number(bidAmount) > biddingJob.payout * 1.5
+                }
+                onClick={async () => {
+                  setSubmittingBid(true);
+                  const amount = Number(bidAmount);
+                  const riderId = userId || 'mock-rider';
+                  try {
+                    const res = await createCounterOffer(biddingJob.id, riderId, amount);
+                    if (res.success) {
+                      setActiveBids(prev => ({ ...prev, [biddingJob.id]: amount }));
+                      setShowBidModal(false);
+                      alert(`Counter offer of $${amount.toFixed(2)} submitted successfully!`);
+                    } else {
+                      alert(res.message || 'Failed to submit counter offer.');
+                    }
+                  } catch (err) {
+                    console.error(err);
+                    alert('Failed to submit counter offer.');
+                  } finally {
+                    setSubmittingBid(false);
+                  }
+                }}
+              >
+                {submittingBid ? 'Submitting Bid...' : 'Submit Counter Offer'}
+              </button>
             </div>
           </div>
         </div>

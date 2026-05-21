@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { OrderService, BikerOrder } from '@/lib/order-service';
 import { EcoCashService, EcoCashTransaction } from '@/lib/ecocash';
 import { createClient } from '@/lib/supabase/client';
+import { getCounterOffersForOrder, respondToCounterOffer } from '../earnings/actions';
+import { FLAGS } from '@/lib/flags';
 import styles from './tracking.module.css';
 
 function TrackingContent() {
@@ -36,6 +38,10 @@ function TrackingContent() {
   const [pinVerified, setPinVerified] = useState(false);
   const [pinError, setPinError] = useState('');
   const [submittingPin, setSubmittingPin] = useState(false);
+
+  // Counter Offers State
+  const [counterOffers, setCounterOffers] = useState<any[]>([]);
+  const [respondingToOfferId, setRespondingToOfferId] = useState<string | null>(null);
 
   // Simulation controls
   const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
@@ -117,6 +123,14 @@ function TrackingContent() {
             lng: o.pickup_lng || 31.0522
           });
         }
+
+        // Load active counter offers if order is in payment_held status
+        if (o.status === 'payment_held' || o.status === 'draft') {
+          const res = await getCounterOffersForOrder(currentOrderId);
+          if (res.success) {
+            setCounterOffers(res.data);
+          }
+        }
       } catch (err: any) {
         setError(err.message || 'Error loading order');
       } finally {
@@ -181,12 +195,36 @@ function TrackingContent() {
         .subscribe();
     }
 
+    // Listen to new counter offers
+    const offersChannel = supabase
+      .channel(`order-offers-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'order_offers',
+          filter: `order_id=eq.${orderId}`
+        },
+        async () => {
+          const res = await getCounterOffersForOrder(orderId);
+          if (res.success) {
+            setCounterOffers(res.data);
+          }
+          addSimulationLog(`⚡ Realtime DB Update: Counter offers updated`);
+        }
+      )
+      .subscribe();
+
     return () => {
       if (subscriptionRef.current) {
         supabase.removeChannel(subscriptionRef.current);
       }
       if (locationChannel) {
         supabase.removeChannel(locationChannel);
+      }
+      if (offersChannel) {
+        supabase.removeChannel(offersChannel);
       }
     };
   }, [orderId, liveOrder?.assigned_rider_id]);
@@ -253,6 +291,79 @@ function TrackingContent() {
       ...prev.slice(0, 19)
     ]);
   };
+
+  const handleRespondToOffer = async (offerId: string, action: 'accept' | 'decline') => {
+    setRespondingToOfferId(offerId);
+    try {
+      const res = await respondToCounterOffer(offerId, action);
+      if (res.success) {
+        addSimulationLog(`Offer ${action}ed successfully!`);
+        // Refresh order
+        const fresh = await OrderService.getOrderById(orderId as string);
+        if (fresh) {
+          setLiveOrder(fresh);
+        }
+        // Refresh counter offers
+        const offersRes = await getCounterOffersForOrder(orderId as string);
+        if (offersRes.success) {
+          setCounterOffers(offersRes.data);
+        }
+      } else {
+        alert(res.message || `Failed to ${action} offer.`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to ${action} offer.`);
+    } finally {
+      setRespondingToOfferId(null);
+    }
+  };
+
+  const handleSimulateCounterOffer = async () => {
+    addSimulationLog('🚴 Simulating rider counter offer...');
+    const key = `biker_order_offers_${orderId}`;
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(key);
+      const offers = stored ? JSON.parse(stored) : [];
+      const newOffer = {
+        id: `offer-${Date.now()}`,
+        order_id: orderId,
+        rider_id: 'mock-rider-tinashe',
+        status: 'counter_offered',
+        counter_offer_amount: Number(order.delivery_fee || 5.0) * 1.3,
+        estimated_rider_payout: Number(order.delivery_fee || 5.0) * 1.3,
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 120 * 1000).toISOString(),
+        rider_name: 'Tinashe M. (Simulated Bid)',
+        rider_rating: 4.9,
+        rider_avatar: ''
+      };
+      offers.push(newOffer);
+      localStorage.setItem(key, JSON.stringify(offers));
+      
+      // Update local state
+      const res = await getCounterOffersForOrder(orderId as string);
+      if (res.success) {
+        setCounterOffers(res.data);
+      }
+    }
+  };
+
+  // Poll counter offers in offline mode
+  useEffect(() => {
+    if (!orderId || OrderService.isOnline) return;
+    
+    const interval = setInterval(async () => {
+      if (liveOrder?.status === 'payment_held') {
+        const res = await getCounterOffersForOrder(orderId as string);
+        if (res.success) {
+          setCounterOffers(res.data);
+        }
+      }
+    }, 3000);
+    
+    return () => clearInterval(interval);
+  }, [orderId, liveOrder?.status]);
 
   // ECO-CASH USSD PUSH INITIATION FLOW
   const triggerEcoCashUSSDPush = async (ord: BikerOrder, phone: string) => {
@@ -510,7 +621,7 @@ function TrackingContent() {
 
           {/* Real-time simulation log ticker for transparency */}
           <div className="card p-4" style={{ marginTop: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <h4 style={{ fontWeight: 800, fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
                 Developer Console Log
               </h4>
@@ -608,6 +719,90 @@ function TrackingContent() {
                   {submittingPin ? 'Releasing Escrow...' : 'Release Escrow Funds'}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Counter Offers Panel */}
+          {order.status === 'payment_held' && (
+            <div className="card p-5" style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.03))',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: '16px',
+              marginBottom: '16px',
+              boxShadow: '0 8px 32px rgba(245, 158, 11, 0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '1.25rem' }}>🤝</span>
+                <h3 style={{ fontSize: '0.9375rem', fontWeight: 800, margin: 0, color: '#f59e0b' }}>
+                  Incoming Counter Bids ({counterOffers.length})
+                </h3>
+              </div>
+              
+              {counterOffers.length === 0 ? (
+                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px 0' }}>
+                  Awaiting counter-offers from nearby riders...
+                  {!OrderService.isOnline && (
+                    <button
+                      className="btn btn--secondary btn--xs btn--full"
+                      style={{ marginTop: '8px' }}
+                      onClick={handleSimulateCounterOffer}
+                    >
+                      💡 Simulate Rider Bid
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {counterOffers.map((offer) => (
+                    <div key={offer.id} style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: '12px',
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--color-primary-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary-700)' }}>
+                            {offer.rider_name ? offer.rider_name[0] : 'R'}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 700 }}>{offer.rider_name || 'Rider'}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>⭐ {offer.rider_rating || '4.8'} rating</div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.9375rem', fontWeight: 800, color: 'var(--color-success-400)' }}>
+                            ${Number(offer.counter_offer_amount).toFixed(2)}
+                          </div>
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>payout</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button
+                          className="btn btn--success btn--sm btn--full"
+                          style={{ fontSize: '0.75rem', padding: '6px' }}
+                          disabled={respondingToOfferId !== null}
+                          onClick={() => handleRespondToOffer(offer.id, 'accept')}
+                        >
+                          {respondingToOfferId === offer.id ? 'Accepting...' : 'Accept Bid'}
+                        </button>
+                        <button
+                          className="btn btn--secondary btn--sm"
+                          style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                          disabled={respondingToOfferId !== null}
+                          onClick={() => handleRespondToOffer(offer.id, 'decline')}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -814,7 +1009,6 @@ function TrackingContent() {
         </div>
       )}
     </div>
-
   );
 }
 

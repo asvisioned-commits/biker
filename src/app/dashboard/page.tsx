@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { OrderService, BikerOrder } from '@/lib/order-service';
 import Link from 'next/link';
+import { getRiderDashboardStats, updateRiderOnlineStatus } from './earnings/actions';
 
 export default function DashboardHome() {
   const router = useRouter();
@@ -13,9 +14,10 @@ export default function DashboardHome() {
   const [orders, setOrders] = useState<BikerOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Rider/Merchant specific metrics
+  // Rider specific metrics
   const [riderOnline, setRiderOnline] = useState(false);
   const [updatingOnlineStatus, setUpdatingOnlineStatus] = useState(false);
+  const [riderStats, setRiderStats] = useState<any>(null);
 
   useEffect(() => {
     async function loadDashboard() {
@@ -39,12 +41,11 @@ export default function DashboardHome() {
       const userOrders = await OrderService.getOrders(user.id, activeRole);
       setOrders(userOrders);
 
-      // If Rider, check available status
+      // If Rider, check available status and load metrics
       if (activeRole === 'rider') {
-        const { data: rp } = await supabase.from('rider_profiles').select('is_available').eq('user_id', user.id).single();
-        if (rp) {
-          setRiderOnline(rp.is_available);
-        }
+        const stats = await getRiderDashboardStats(user.id);
+        setRiderStats(stats);
+        setRiderOnline(stats.isOnline);
       }
 
       setLoading(false);
@@ -56,16 +57,13 @@ export default function DashboardHome() {
   const toggleRiderAvailability = async () => {
     if (!profile) return;
     setUpdatingOnlineStatus(true);
-    const supabase = createClient();
     
     const nextVal = !riderOnline;
-    const { error } = await supabase
-      .from('rider_profiles')
-      .update({ is_available: nextVal })
-      .eq('user_id', profile.id);
+    const { success } = await updateRiderOnlineStatus(profile.id, nextVal);
 
-    if (!error) {
+    if (success) {
       setRiderOnline(nextVal);
+      setRiderStats((prev: any) => prev ? { ...prev, isOnline: nextVal } : null);
     }
     setUpdatingOnlineStatus(false);
   };
@@ -138,39 +136,103 @@ export default function DashboardHome() {
       )}
 
       {role === 'rider' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="card p-6 md:col-span-2 display-flex flex-column justify-between">
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="title title--sm mb-2">Rider Work Console</h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                  Go online to receive matches and immediate delivery assignments nearby.
-                </p>
+        <div className="flex flex-col gap-6 mb-8">
+          {/* Quick Metrics (Online status + active console link) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="card p-6 md:col-span-2 flex flex-col justify-between" style={{ minHeight: '160px' }}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="title title--sm mb-2">Rider Work Console</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    Go online to receive matches and immediate delivery assignments nearby.
+                  </p>
+                </div>
+
+                <button 
+                  className={`btn ${riderOnline ? 'btn--success' : 'btn--secondary'} btn--sm`}
+                  onClick={toggleRiderAvailability}
+                  disabled={updatingOnlineStatus}
+                >
+                  {updatingOnlineStatus ? 'Updating...' : riderOnline ? '🟢 Online' : '🔴 Offline'}
+                </button>
               </div>
 
-              <button 
-                className={`btn ${riderOnline ? 'btn--success' : 'btn--secondary'} btn--sm`}
-                onClick={toggleRiderAvailability}
-                disabled={updatingOnlineStatus}
-              >
-                {updatingOnlineStatus ? 'Updating...' : riderOnline ? '🟢 Online' : '🔴 Offline'}
-              </button>
+              <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
+                <Link href="/dashboard/jobs" className="btn btn--primary btn--full text-center">
+                  🚴 Available Jobs list
+                </Link>
+                <Link href="/dashboard/active" className="btn btn--secondary btn--full text-center">
+                  🛠️ Active Job Console
+                </Link>
+              </div>
             </div>
 
-            <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
-              <Link href="/dashboard/active" className="btn btn--primary btn--full text-center">
-                🚴 Open Active Job Console
-              </Link>
+            {/* Wallet & Subscription Details */}
+            <div className="card p-6 flex flex-col justify-between" style={{ minHeight: '160px' }}>
+              <div>
+                <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Rider Wallet balance</div>
+                <div style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  ${(riderStats?.subscription?.currentEarnings ?? 0).toFixed(2)}
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Earning cap: ${(riderStats?.subscription?.earningCap ?? 60).toFixed(2)} | Status: <span style={{ fontWeight: 700, color: 'var(--color-primary-500)' }}>{riderStats?.subscription?.status ?? 'active'}</span>
+              </div>
             </div>
           </div>
 
-          <div className="card p-6 display-flex flex-column justify-between">
-            <div>
-              <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Rider Wallet balance</div>
-              <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>$42.50</div>
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Payouts are released immediately upon PIN validation.
+          {/* Rolling Earnings, Trust Score, and Tier Badge */}
+          <div className="card p-6" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01))' }}>
+            <h3 className="title title--sm mb-4">Performance & Earnings Metrics</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Today Earnings */}
+              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Today's Earnings</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
+                  ${(riderStats?.todayEarnings ?? 0).toFixed(2)}
+                </div>
+              </div>
+
+              {/* Week Earnings */}
+              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Weekly Earnings</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#3b82f6', marginTop: '4px' }}>
+                  ${(riderStats?.weekEarnings ?? 0).toFixed(2)}
+                </div>
+              </div>
+
+              {/* Month Earnings */}
+              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Monthly Earnings</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8b5cf6', marginTop: '4px' }}>
+                  ${(riderStats?.monthEarnings ?? 0).toFixed(2)}
+                </div>
+              </div>
+
+              {/* Trust Score & Tier status */}
+              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Trust Score & Tier</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f59e0b' }}>
+                    {riderStats?.trustScore ?? 95}%
+                  </span>
+                  <span style={{ 
+                    fontSize: '10px', 
+                    fontWeight: 700, 
+                    padding: '2px 6px', 
+                    borderRadius: '4px',
+                    backgroundColor: riderStats?.tier === 'pro' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                    color: riderStats?.tier === 'pro' ? '#60a5fa' : '#fbbf24',
+                    border: '1px solid currentColor',
+                    textTransform: 'uppercase'
+                  }}>
+                    {riderStats?.tier ?? 'starter'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  Rating: ⭐ {(riderStats?.rating ?? 4.8).toFixed(1)}
+                </div>
+              </div>
             </div>
           </div>
         </div>
