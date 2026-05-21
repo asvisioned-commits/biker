@@ -329,6 +329,11 @@ export interface Order {
   template_name: string | null;
   parent_template_id: string | null;
   batch_id: string | null;
+  payment_method?: PaymentMethod;
+  cod_amount_expected?: number | null;
+  cod_amount_collected?: number | null;
+  cod_collection_confirmed_at?: string | null;
+  cod_discrepancy_flag?: boolean;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

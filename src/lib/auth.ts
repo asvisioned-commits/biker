@@ -188,6 +188,8 @@ export async function signUpWithEmail(
       phone: metadata.phone as string,
       role: role,
       roles: [role, 'customer'],
+      vehicle_registration: metadata.vehicle_registration as string || undefined,
+      business_name: metadata.business_name as string || undefined,
     };
     
     // Save to registry
