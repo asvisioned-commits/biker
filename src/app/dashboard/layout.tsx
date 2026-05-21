@@ -9,23 +9,70 @@ import NotificationsDropdown from '@/components/notifications';
 import LocationPermissionBanner from '@/components/LocationPermissionBanner';
 import type { UserRole } from '@/types';
 
-interface MockSession { user_id: string; full_name: string; role: UserRole; email?: string; phone?: string; }
+import { ProfileProvider, useProfile } from '@/context/ProfileContext';
+import { setActiveRole as dbSetActiveRole } from '@/lib/database';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ProfileProvider>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </ProfileProvider>
+  );
+}
+
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [session, setSession] = useState<MockSession | null>(null);
-  const [activeRole, setActiveRole] = useState<UserRole>('customer');
+  const { session, loading, refreshSession } = useProfile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Safeguard: Redirect Google sign-up users to the KYC wizard if role-metadata is pending
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('biker_mock_session');
-      if (stored) {
-        try { const parsed = JSON.parse(stored); setSession(parsed); setActiveRole(parsed.role || 'customer'); }
-        catch (e) { console.error("Corrupted mock session, clearing."); localStorage.removeItem('biker_mock_session'); }
+    if (!loading && session) {
+      const storedSignupRole = localStorage.getItem('biker_signup_role');
+      if (storedSignupRole === 'rider' || storedSignupRole === 'merchant') {
+        window.location.href = `/signup?google_onboarding=1`;
       }
     }
-  }, []);
+  }, [session, loading]);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-app)' }}>
+        <span className="spinner" />
+      </div>
+    );
+  }
+
+  const activeRole = (session?.role as UserRole) || 'customer';
+
+  const handleRoleChange = async (newRole: UserRole) => {
+    if (process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' && session?.user_id) {
+      try {
+        await dbSetActiveRole(session.user_id, newRole);
+      } catch (err) {
+        console.error('Failed to update live role in database:', err);
+      }
+    }
+
+    // Update local storage for mock fallback/dev compatibility
+    const stored = localStorage.getItem('biker_mock_session');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        parsed.role = newRole;
+        localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
+      } catch (e) {
+        console.error(e);
+      }
+    } else if (session) {
+      localStorage.setItem('biker_mock_session', JSON.stringify({
+        ...session,
+        role: newRole
+      }));
+    }
+
+    await refreshSession();
+  };
 
   const navItems: Record<UserRole, { label: string; href: string; icon: string }[]> = {
     customer: [
@@ -67,8 +114,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button className={styles.sidebarClose} onClick={() => setSidebarOpen(false)}>✕</button>
         </div>
         <div className={styles.roleSwitcher}>
-          <select className={styles.roleSelect} value={activeRole} onChange={(e) => { const newRole = e.target.value as UserRole; setActiveRole(newRole); if (session) { const updated = { ...session, role: newRole }; localStorage.setItem('biker_mock_session', JSON.stringify(updated)); } }}>
-            <option value="customer">📦 Customer</option><option value="rider">🚴 Rider</option><option value="merchant">🏪 Merchant</option><option value="ops">🔧 Ops</option><option value="admin">👑 Admin</option>
+          <select className={styles.roleSelect} value={activeRole} onChange={(e) => handleRoleChange(e.target.value as UserRole)}>
+            <option value="customer">📦 Customer</option>
+            <option value="rider">🚴 Rider</option>
+            <option value="merchant">🏪 Merchant</option>
+            <option value="ops">🔧 Ops</option>
+            <option value="admin">👑 Admin</option>
           </select>
         </div>
         <nav className={styles.nav}>
