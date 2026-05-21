@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { OrderService, BikerOrder } from '@/lib/order-service';
 import { useOrderTracking } from '@/lib/realtime';
 import styles from './tracking.module.css';
+import { ListSkeleton } from '@/components/skeletons';
 
 function TrackingContent() {
   const searchParams = useSearchParams();
@@ -24,6 +25,8 @@ function TrackingContent() {
 
   // Determine if we are in simulation mode
   const isSimulationMode = !orderId || orderId.startsWith('mock-') || (liveOrder && liveOrder.id.startsWith('mock-')) || !OrderService.isOnline;
+
+  const hasRider = isSimulationMode || !!(liveOrder?.assigned_rider_id || liveOrder?.rider);
 
   // Fetch real-time status updates and coordinates if we are in database-backed mode
   const { status: realtimeStatus, riderLocation } = useOrderTracking(isSimulationMode ? null : orderId);
@@ -152,7 +155,7 @@ function TrackingContent() {
       protection_fee: Number(liveOrder?.protection_fee || 0.50),
       total: Number(liveOrder?.total_amount || (parseFloat(searchParams.get('fare') || '5.00') + 0.38 + 0.50)),
     },
-    estimated_delivery: progress < 25 ? '12 min' : progress < 45 ? '10 min' : progress < 90 ? '5 min' : 'Arrived',
+    estimated_delivery: !hasRider ? 'Finding rider...' : progress < 25 ? '12 min' : progress < 45 ? '10 min' : progress < 90 ? '5 min' : 'Arrived',
     created_at: liveOrder ? new Date(liveOrder.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
   };
 
@@ -227,16 +230,21 @@ function TrackingContent() {
 
     map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
 
-    const riderMarker = L.marker([pickupLat, pickupLng], { icon: createCustomIcon('🚴') }).addTo(map);
-    riderMarkerRef.current = riderMarker;
+    if (hasRider) {
+      const riderMarker = L.marker([pickupLat, pickupLng], { icon: createCustomIcon('🚴') }).addTo(map);
+      riderMarkerRef.current = riderMarker;
+    } else {
+      riderMarkerRef.current = null;
+    }
 
     return () => {
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
+      riderMarkerRef.current = null;
     };
-  }, [leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+  }, [leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng, hasRider]);
 
   // Simulate progress interval (0 to 100 in 25 seconds) - simulation mode only
   useEffect(() => {
@@ -301,7 +309,7 @@ function TrackingContent() {
     } else {
       mapRef.current.panTo([lat, lng]);
     }
-  }, [leafletLoaded, isSimulationMode, riderLocation, progress, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+  }, [leafletLoaded, isSimulationMode, riderLocation, progress, pickupLat, pickupLng, dropoffLat, dropoffLng, hasRider]);
 
   // Simulation-only state driver (updates currentStatus and database status)
   useEffect(() => {
@@ -337,14 +345,115 @@ function TrackingContent() {
 
   const hasProof = !!((liveOrder as any)?.proofs && (liveOrder as any).proofs.length > 0);
 
+  const getStatusTime = (statusName: string) => {
+    if (isSimulationMode) {
+      // Mock clock times for simulation
+      const mockTimes: Record<string, string> = {
+        'Order placed': '2:15 PM',
+        'Rider assigned': '2:16 PM',
+        'En route to pickup': '2:18 PM',
+        'At pickup': progress >= 25 ? '2:25 PM' : '',
+        'Proof uploaded': (progress >= 45 || hasProof) ? '2:28 PM' : '',
+        'En route to delivery': progress >= 45 ? '2:29 PM' : '',
+        'Delivered': progress >= 90 ? '2:35 PM' : '',
+      };
+      return mockTimes[statusName] || '';
+    }
+    
+    // Database-backed mode
+    if (!liveOrder) return '';
+    
+    // Order placed is always created_at
+    if (statusName === 'Order placed') {
+      return new Date(liveOrder.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    // Find matching status in status_log
+    const logMap: Record<string, string> = {
+      'Rider assigned': 'rider_assigned',
+      'En route to pickup': 'rider_en_route_pickup',
+      'At pickup': 'arrived_pickup',
+      'Proof uploaded': 'proof_uploaded',
+      'En route to delivery': 'en_route_delivery',
+      'Delivered': 'completed',
+    };
+    
+    const targetStatus = logMap[statusName];
+    if (targetStatus && Array.isArray((liveOrder as any).status_log)) {
+      const match = (liveOrder as any).status_log.find((log: any) => log.to_status === targetStatus);
+      if (match) {
+        return new Date(match.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+    
+    // Fallback if completed but no log entry found yet
+    const statusIndices: Record<string, number> = {
+      'Order placed': 0,
+      'Rider assigned': 1,
+      'En route to pickup': 2,
+      'At pickup': 3,
+      'Proof uploaded': 4,
+      'En route to delivery': 5,
+      'Delivered': 6,
+    };
+    
+    const { currentStatus: cStatus } = getStatusMilestones(liveOrder.status);
+    const itemIndex = statusIndices[statusName];
+    
+    if (itemIndex <= cStatus && cStatus > 0) {
+      return 'Completed';
+    }
+    
+    return '';
+  };
+
   const timeline = [
-    { status: 'Order placed', time: '2:15 PM', completed: true, description: 'Order confirmed and payment secured' },
-    { status: 'Rider assigned', time: '2:16 PM', completed: true, description: `${order.rider.name} accepted your delivery` },
-    { status: 'En route to pickup', time: '2:18 PM', completed: true, description: `${order.rider.name} is heading to pickup location` },
-    { status: 'At pickup', time: progress >= 25 ? '2:25 PM' : '', completed: currentStatus >= 4, active: currentStatus === 3, description: `${order.rider.name} arrived at pickup point` },
-    { status: 'Proof uploaded', time: (progress >= 45 || hasProof) ? '2:28 PM' : '', completed: currentStatus >= 6 || hasProof, active: currentStatus === 4 && !hasProof, description: 'Pickup photo captured' },
-    { status: 'En route to delivery', time: progress >= 45 ? '2:29 PM' : '', completed: currentStatus >= 6, active: currentStatus === 6, description: `On the way to ${dropoffAddress}` },
-    { status: 'Delivered', time: progress >= 90 ? '2:35 PM' : '', completed: currentStatus >= 7 || pinVerified, active: currentStatus === 7 && !pinVerified, description: 'Confirmed with PIN code' },
+    { 
+      status: 'Order placed', 
+      time: getStatusTime('Order placed'), 
+      completed: isSimulationMode ? true : ['draft', 'payment_pending', 'payment_held', 'rider_assigned', 'rider_en_route_pickup', 'arrived_pickup', 'at_pickup', 'proof_uploaded', 'en_route_delivery', 'at_delivery', 'completed'].includes(liveOrder?.status || ''), 
+      description: 'Order confirmed and payment secured' 
+    },
+    { 
+      status: 'Rider assigned', 
+      time: getStatusTime('Rider assigned'), 
+      completed: isSimulationMode ? true : ['rider_assigned', 'rider_en_route_pickup', 'arrived_pickup', 'at_pickup', 'proof_uploaded', 'en_route_delivery', 'at_delivery', 'completed'].includes(liveOrder?.status || ''), 
+      description: hasRider ? `${order.rider.name} accepted your delivery` : 'Searching for a nearby Biker...' 
+    },
+    { 
+      status: 'En route to pickup', 
+      time: getStatusTime('En route to pickup'), 
+      completed: isSimulationMode ? true : ['rider_en_route_pickup', 'arrived_pickup', 'at_pickup', 'proof_uploaded', 'en_route_delivery', 'at_delivery', 'completed'].includes(liveOrder?.status || ''), 
+      description: hasRider ? `${order.rider.name} is heading to pickup location` : 'Waiting for rider assignment' 
+    },
+    { 
+      status: 'At pickup', 
+      time: getStatusTime('At pickup'), 
+      completed: isSimulationMode ? (currentStatus >= 4) : ['arrived_pickup', 'at_pickup', 'proof_uploaded', 'en_route_delivery', 'at_delivery', 'completed'].includes(liveOrder?.status || ''), 
+      active: isSimulationMode ? (currentStatus === 3) : liveOrder?.status === 'rider_en_route_pickup', 
+      description: hasRider ? `${order.rider.name} arrived at pickup point` : 'Rider will confirm arrival' 
+    },
+    { 
+      status: 'Proof uploaded', 
+      time: getStatusTime('Proof uploaded'), 
+      completed: isSimulationMode ? (currentStatus >= 6 || hasProof) : (['proof_uploaded', 'en_route_delivery', 'at_delivery', 'completed'].includes(liveOrder?.status || '') || hasProof), 
+      active: isSimulationMode ? (currentStatus === 4 && !hasProof) : ((liveOrder?.status === 'arrived_pickup' || liveOrder?.status === 'at_pickup') && !hasProof), 
+      description: 'Pickup photo captured' 
+    },
+    { 
+      status: 'En route to delivery', 
+      time: getStatusTime('En route to delivery'), 
+      completed: isSimulationMode ? (currentStatus >= 6) : ['en_route_delivery', 'at_delivery', 'completed'].includes(liveOrder?.status || ''), 
+      active: isSimulationMode ? (currentStatus === 6) : liveOrder?.status === 'en_route_delivery', 
+      description: `On the way to ${dropoffAddress}` 
+    },
+    { 
+      status: 'Delivered', 
+      time: getStatusTime('Delivered'), 
+      completed: isSimulationMode ? (currentStatus >= 7 || pinVerified) : (liveOrder?.status === 'completed' || pinVerified), 
+      active: isSimulationMode ? (currentStatus === 7 && !pinVerified) : (liveOrder?.status === 'at_delivery' && !pinVerified), 
+      description: 'Confirmed with PIN code' 
+    },
   ];
 
   const verifyPin = async () => {
@@ -367,9 +476,20 @@ function TrackingContent() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 min-h-[50vh]">
-        <span className="spinner spinner--lg" style={{ marginBottom: '16px' }} />
-        <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Loading live tracking data...</p>
+      <div className={styles.page}>
+        <div className={styles.header}>
+          <div className="skeleton skeleton--title" style={{ width: '200px', height: '32px' }} />
+        </div>
+        <div className={styles.content}>
+          <div className={styles.mapArea} style={{ display: 'block' }}>
+            <div className={styles.mapPlaceholder} style={{ height: '350px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="spinner spinner--lg" />
+            </div>
+          </div>
+          <div className={styles.infoPanel} style={{ display: 'flex' }}>
+            <ListSkeleton count={2} />
+          </div>
+        </div>
       </div>
     );
   }
@@ -419,10 +539,11 @@ function TrackingContent() {
             <div className={styles.etaIcon}>🚴</div>
             <div className={styles.etaInfo}>
               <div className={styles.etaStatus}>
-                {progress < 25 && 'Rider heading to pickup'}
-                {progress >= 25 && progress < 45 && 'Rider collecting package'}
-                {progress >= 45 && progress < 90 && 'Rider en route to delivery'}
-                {progress >= 90 && 'Rider arrived at destination'}
+                {!hasRider && 'Finding a verified biker...'}
+                {hasRider && progress < 25 && 'Rider heading to pickup'}
+                {hasRider && progress >= 25 && progress < 45 && 'Rider collecting package'}
+                {hasRider && progress >= 45 && progress < 90 && 'Rider en route to delivery'}
+                {hasRider && progress >= 90 && 'Rider arrived at destination'}
               </div>
               <div className={styles.etaTime}>
                 {isSimulationMode ? (
@@ -438,26 +559,36 @@ function TrackingContent() {
         {/* Info Panel */}
         <div className={`${styles.infoPanel} ${activeTab === 'info' ? styles.infoPanelVisible : ''}`}>
           {/* Rider Card */}
-          <div className={styles.riderCard}>
-            <div className={styles.riderInfo}>
-              <div className="avatar avatar--lg">{order.rider.avatar}</div>
-              <div>
-                <div className={styles.riderName}>{order.rider.name}</div>
-                <div className={styles.riderMeta}>
-                  <span className="trust-badge trust-badge--verified">✓ Verified</span>
-                  <span>⭐ {order.rider.rating}</span>
-                  <span>{order.rider.completions} deliveries</span>
-                </div>
-                <div className={styles.riderVehicle}>
-                  {order.rider.vehicle} · {order.rider.reg}
+          {!hasRider ? (
+            <div className={`${styles.riderCard} flex flex-col items-center justify-center p-6 text-center`} style={{ gap: 'var(--space-2)' }}>
+              <div className="spinner spinner--md" style={{ color: 'var(--color-primary-500)', marginBottom: '8px' }} />
+              <div className={styles.riderName} style={{ marginTop: 'var(--space-2)' }}>Connecting to rider...</div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', lineHeight: '1.4' }}>
+                Broadcasting your order to nearby verified bikers in Harare. Please hold on.
+              </p>
+            </div>
+          ) : (
+            <div className={styles.riderCard}>
+              <div className={styles.riderInfo}>
+                <div className="avatar avatar--lg">{order.rider.avatar}</div>
+                <div>
+                  <div className={styles.riderName}>{order.rider.name}</div>
+                  <div className={styles.riderMeta}>
+                    <span className="trust-badge trust-badge--verified">✓ Verified</span>
+                    <span>⭐ {order.rider.rating}</span>
+                    <span>{order.rider.completions} deliveries</span>
+                  </div>
+                  <div className={styles.riderVehicle}>
+                    {order.rider.vehicle} · {order.rider.reg}
+                  </div>
                 </div>
               </div>
+              <div className={styles.riderActions}>
+                <button className="btn btn--secondary btn--sm">📞 Call</button>
+                <button className="btn btn--secondary btn--sm">💬 Message</button>
+              </div>
             </div>
-            <div className={styles.riderActions}>
-              <button className="btn btn--secondary btn--sm">📞 Call</button>
-              <button className="btn btn--secondary btn--sm">💬 Message</button>
-            </div>
-          </div>
+          )}
 
           {/* Route */}
           <div className={styles.routeCard}>
@@ -539,7 +670,7 @@ function TrackingContent() {
                 <strong>{pinVerified ? 'Funds Released' : 'Funds held securely'}</strong>
                 <div style={{ fontSize: 'var(--text-xs)', marginTop: '2px' }}>
                   {pinVerified
-                    ? `$${order.pricing.total.toFixed(2)} transferred to rider Takudzwa M.`
+                    ? `$${order.pricing.total.toFixed(2)} transferred to rider ${hasRider ? order.rider.name : 'assigned rider'}.`
                     : `$${order.pricing.total.toFixed(2)} held in escrow · Releases after PIN confirmation`}
                 </div>
               </div>

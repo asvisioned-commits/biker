@@ -13,6 +13,7 @@ import {
   getOpsDashboardStats, 
   toggleRiderOnline 
 } from '@/lib/database';
+import { ListSkeleton, StatsSkeleton } from '@/components/skeletons';
 
 const SERVICE_ICONS: Record<string, string> = {
   send_item: '📦',
@@ -44,8 +45,19 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
-        <span className="spinner" />
+      <div className={styles.dashboard} style={{ padding: 'var(--space-6)' }}>
+        {/* Welcome Shimmer */}
+        <div style={{ marginBottom: 'var(--space-8)' }}>
+          <div className="skeleton skeleton--title" style={{ width: '220px', height: '32px' }} />
+          <div className="skeleton skeleton--text" style={{ width: '320px', height: '16px' }} />
+        </div>
+        {/* Stats Grid Shimmer */}
+        <StatsSkeleton />
+        {/* Active Orders List Shimmer */}
+        <div style={{ marginTop: 'var(--space-8)' }}>
+          <div className="skeleton skeleton--title" style={{ width: '150px', height: '24px', marginBottom: 'var(--space-4)' }} />
+          <ListSkeleton count={2} />
+        </div>
       </div>
     );
   }
@@ -152,11 +164,7 @@ function CustomerDashboard({ userName }: { userName: string }) {
           <Link href="/dashboard/orders" className={styles.sectionLink}>View all →</Link>
         </div>
         <div className={styles.ordersList}>
-          {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-              <span className="spinner spinner--sm" />
-            </div>
-          )}
+          {loading && <ListSkeleton count={2} />}
           {!loading && activeOrders.length === 0 && (
             <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
               No active orders at the moment.
@@ -202,11 +210,7 @@ function CustomerDashboard({ userName }: { userName: string }) {
           <h2 className={styles.sectionTitle}>Recently completed</h2>
         </div>
         <div className={styles.ordersList}>
-          {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-              <span className="spinner spinner--sm" />
-            </div>
-          )}
+          {loading && <ListSkeleton count={1} />}
           {!loading && completedOrders.length === 0 && (
             <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
               No recently completed orders.
@@ -412,8 +416,7 @@ function RiderDashboard() {
             <div 
               className={styles.tierProgressFill} 
               style={{ 
-                width: stats?.subscription 
-                  ? `${Math.min(100, (stats.subscription.currentEarnings / stats.subscription.earningCap) * 100)}%` 
+                width: stats?.subscription \n                  ? `${Math.min(100, (stats.subscription.currentEarnings / stats.subscription.earningCap) * 100)}%` 
                   : '30%' 
               }} 
             />
@@ -434,7 +437,21 @@ function RiderDashboard() {
             <Link href="/dashboard/jobs" className={styles.sectionLink}>View all →</Link>
           </div>
           <div className={styles.jobsList}>
-            {loading && <p className={styles.emptyText}>Loading jobs...</p>}
+            {loading && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                {Array.from({ length: 2 }).map((_, idx) => (
+                  <div key={idx} className="card card--glass" style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="skeleton" style={{ width: '80px', height: '18px', borderRadius: 'var(--radius-full)' }} />
+                      <div className="skeleton" style={{ width: '40px', height: '18px' }} />
+                    </div>
+                    <div className="skeleton skeleton--title" style={{ width: '80%', height: '14px', marginTop: 'var(--space-2)' }} />
+                    <div className="skeleton skeleton--text" style={{ width: '50%', height: '10px' }} />
+                    <div className="skeleton" style={{ width: '100%', height: '40px', borderRadius: 'var(--radius-md)', marginTop: 'var(--space-2)' }} />
+                  </div>
+                ))}
+              </div>
+            )}
             {!loading && jobs.length === 0 && (
               <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
                 You&apos;re all caught up! New jobs appear here instantly.
@@ -573,7 +590,20 @@ function MerchantDashboard() {
           <Link href="/dashboard/links" className={styles.sectionLink}>Manage →</Link>
         </div>
         <div className={styles.deliveryLinks}>
-          {loading && <p className={styles.emptyText}>Loading delivery links...</p>}
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              {Array.from({ length: 2 }).map((_, idx) => (
+                <div key={idx} className="card card--glass" style={{ padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="skeleton skeleton--title" style={{ width: '150px', height: '14px', marginBottom: 0 }} />
+                    <div className="skeleton" style={{ width: '50px', height: '18px', borderRadius: 'var(--radius-full)' }} />
+                  </div>
+                  <div className="skeleton skeleton--text" style={{ width: '80%', height: '10px' }} />
+                  <div className="skeleton skeleton--text" style={{ width: '40%', height: '10px' }} />
+                </div>
+              ))}
+            </div>
+          )}
           {!loading && links.length === 0 && (
             <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
               No active delivery links yet. Create one above!
@@ -707,7 +737,7 @@ function OpsDashboard() {
           <Link href="/dashboard/disputes" className={styles.sectionLink}>View all →</Link>
         </div>
         <div className={styles.ordersList}>
-          {loading && <p className={styles.emptyText}>Loading disputes...</p>}
+          {loading && <ListSkeleton count={2} />}
           {!loading && disputes.length === 0 && (
             <p className={styles.emptyText} style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
               No open disputes at the moment. Good job!
