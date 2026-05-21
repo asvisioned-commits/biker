@@ -12,8 +12,13 @@ import {
   EarningsLogEntry
 } from './actions';
 import styles from './earnings.module.css';
+import { useProfile } from '@/context/ProfileContext';
+import { FLAGS } from '@/lib/flags';
 
 export default function EarningsPage() {
+  const { session, loading: profileLoading } = useProfile();
+  const userId = session?.user_id || 'mock-rider';
+
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<RiderSubscription | null>(null);
   const [ledger, setLedger] = useState<EarningsLogEntry[]>([]);
@@ -28,10 +33,11 @@ export default function EarningsPage() {
 
   // Load state
   const loadData = async () => {
+    if (profileLoading) return;
     setLoading(true);
     try {
-      const activeSub = await getRiderSubscription('mock-rider');
-      const activeLedger = await getEarningsLedger('mock-rider');
+      const activeSub = await getRiderSubscription(userId);
+      const activeLedger = await getEarningsLedger(userId);
       setSub(activeSub);
       setLedger(activeLedger);
     } catch (e) {
@@ -42,18 +48,20 @@ export default function EarningsPage() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (!profileLoading) {
+      loadData();
+    }
+  }, [profileLoading, userId]);
 
   const handleSimulateEarning = async (amount: number) => {
     if (!sub) return;
-    const res = await recordDeliveryEarning('mock-rider', 'order-sim-' + Date.now(), amount);
+    const res = await recordDeliveryEarning(userId, 'order-sim-' + Date.now(), amount);
     if (!res.success) {
       alert(`Simulation failed: ${res.message}`);
     } else {
       // Reload details
-      const activeSub = await getRiderSubscription('mock-rider');
-      const activeLedger = await getEarningsLedger('mock-rider');
+      const activeSub = await getRiderSubscription(userId);
+      const activeLedger = await getEarningsLedger(userId);
       setSub(activeSub);
       setLedger(activeLedger);
     }
@@ -61,7 +69,7 @@ export default function EarningsPage() {
 
   const handleRequestCredit = async () => {
     if (!sub) return;
-    const res = await requestEmergencyCredit('mock-rider');
+    const res = await requestEmergencyCredit(userId);
     alert(res.message);
     if (res.success) {
       loadData();
@@ -73,8 +81,8 @@ export default function EarningsPage() {
     if (!sub) return;
     
     const res = await subscribeOrRenew(
-      'mock-rider',
-      'Takudzwa M. (Zimbabwe Rider)',
+      userId,
+      session?.full_name || 'Takudzwa M. (Zimbabwe Rider)',
       payTier,
       payMethod === 'stripe' ? 'stripe' : payMethod,
       refNum,
@@ -95,7 +103,7 @@ export default function EarningsPage() {
     }
   };
 
-  if (loading || !sub) {
+  if (profileLoading || loading || !sub) {
     return (
       <div className={styles.loadingContainer}>
         <div className={styles.spinner} />
@@ -136,55 +144,57 @@ export default function EarningsPage() {
   return (
     <div className={styles.page}>
       {/* Simulation Controls HUD (Floating Bar) */}
-      <div className={styles.simulatorHud}>
-        <div className={styles.simLabel}>🧪 SIMULATION SANDBOX</div>
-        <div className={styles.simActions}>
-          <button 
-            onClick={() => handleSimulateEarning(10.00)} 
-            disabled={sub.status === 'suspended' || sub.status === 'closed'}
-            className={styles.simBtn}
-          >
-            +$10.00 Earning
-          </button>
-          <button 
-            onClick={() => handleSimulateEarning(25.00)}
-            disabled={sub.status === 'suspended' || sub.status === 'closed'}
-            className={`${styles.simBtn} ${styles.simBtnOrange}`}
-          >
-            +$25.00 Earning
-          </button>
-          <button 
-            onClick={async () => {
-              // Trigger auto suspension by resetting grace period into past
-              if (typeof window !== 'undefined') {
-                const subs = JSON.parse(localStorage.getItem('biker_subs_subscriptions') || '{}');
-                if (subs['mock-rider']) {
-                  subs['mock-rider'].status = 'suspended';
-                  localStorage.setItem('biker_subs_subscriptions', JSON.stringify(subs));
+      {FLAGS.devHud && (
+        <div className={styles.simulatorHud}>
+          <div className={styles.simLabel}>🧪 SIMULATION SANDBOX</div>
+          <div className={styles.simActions}>
+            <button 
+              onClick={() => handleSimulateEarning(10.00)} 
+              disabled={sub.status === 'suspended' || sub.status === 'closed'}
+              className={styles.simBtn}
+            >
+              +$10.00 Earning
+            </button>
+            <button 
+              onClick={() => handleSimulateEarning(25.00)}
+              disabled={sub.status === 'suspended' || sub.status === 'closed'}
+              className={`${styles.simBtn} ${styles.simBtnOrange}`}
+            >
+              +$25.00 Earning
+            </button>
+            <button 
+              onClick={async () => {
+                // Trigger auto suspension by resetting grace period into past
+                if (typeof window !== 'undefined') {
+                  const subs = JSON.parse(localStorage.getItem('biker_subs_subscriptions') || '{}');
+                  if (subs[userId]) {
+                    subs[userId].status = 'suspended';
+                    localStorage.setItem('biker_subs_subscriptions', JSON.stringify(subs));
+                    loadData();
+                  }
+                }
+              }}
+              className={`${styles.simBtn} ${styles.simBtnRed}`}
+            >
+              Trigger Suspension
+            </button>
+            <button 
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('biker_subs_subscriptions');
+                  localStorage.removeItem('biker_subs_earnings_log');
+                  localStorage.removeItem('biker_subs_payment_proofs');
+                  localStorage.removeItem('biker_subs_audit_logs');
                   loadData();
                 }
-              }
-            }}
-            className={`${styles.simBtn} ${styles.simBtnRed}`}
-          >
-            Trigger Suspension
-          </button>
-          <button 
-            onClick={() => {
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem('biker_subs_subscriptions');
-                localStorage.removeItem('biker_subs_earnings_log');
-                localStorage.removeItem('biker_subs_payment_proofs');
-                localStorage.removeItem('biker_subs_audit_logs');
-                loadData();
-              }
-            }}
-            className={styles.simBtnReset}
-          >
-            Reset All
-          </button>
+              }}
+              className={styles.simBtnReset}
+            >
+              Reset All
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Header Info */}
       <div className={styles.header}>

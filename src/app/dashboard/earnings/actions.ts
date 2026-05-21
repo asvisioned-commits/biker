@@ -4,8 +4,9 @@
  */
 
 import { createClient } from '@/lib/supabase/client';
+import { FLAGS } from '@/lib/flags';
 
-const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+const IS_DEV = !FLAGS.useLiveDb;
 
 export interface RiderSubscription {
   id?: string;
@@ -80,11 +81,11 @@ function saveMockSubscriptions(data: Record<string, RiderSubscription>) {
   }
 }
 
+// Default mock transactions
 function getMockEarningsLogs(): EarningsLogEntry[] {
   if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem(KEYS.EARNINGS_LOG);
   if (stored) return JSON.parse(stored);
-  // Default mock transactions
   const defaults: EarningsLogEntry[] = [
     { id: 'tx-1', rider_id: 'mock-rider', amount: 8.50, type: 'delivery', balance_after: 8.50, created_at: new Date(Date.now() - 3 * 3600000).toISOString() },
     { id: 'tx-2', rider_id: 'mock-rider', amount: 12.00, type: 'delivery', balance_after: 20.50, created_at: new Date(Date.now() - 2 * 3600000).toISOString() },
@@ -108,6 +109,7 @@ function getMockPaymentProofs(): PaymentProof[] {
   return [];
 }
 
+// Save mock payment proofs
 function saveMockPaymentProofs(proofs: PaymentProof[]) {
   if (typeof window !== 'undefined') {
     localStorage.setItem(KEYS.PAYMENT_PROOFS, JSON.stringify(proofs));
@@ -485,7 +487,7 @@ export async function recordDeliveryEarning(
           from_status: oldStatus,
           to_status: finalStatus,
           trigger: 'auto_system',
-          reason: `Earnings reached $${newEarnings.toFixed(2)}. Cap limit is $${totalCap.toFixed(2)}.`,
+          reason: `Earnings reached $${newEarnings.toFixed(2)}. Cap limit is $${totalCap.toFixed(2)}。`,
           created_at: new Date().toISOString(),
         });
         saveMockAuditLogs(audits);

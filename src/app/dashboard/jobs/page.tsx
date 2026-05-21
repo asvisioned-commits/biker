@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getRiderSubscription, requestEmergencyCredit, RiderSubscription } from '../earnings/actions';
 import styles from './jobs.module.css';
+import { useProfile } from '@/context/ProfileContext';
+import { createClient } from '@/lib/supabase/client';
+import { FLAGS } from '@/lib/flags';
+import { toggleRiderOnline } from '@/lib/database';
 
 const MOCK_JOBS = [
   {
@@ -37,6 +41,7 @@ const MOCK_JOBS = [
     posted: '30 sec ago',
     customer_name: 'John K.',
     customer_rating: 4.5,
+    payment_method: 'cash',
   },
   {
     id: '3',
@@ -91,20 +96,78 @@ const SERVICE_LABELS: Record<string, string> = {
 };
 
 export default function JobsPage() {
-  const [jobs, setJobs] = useState(MOCK_JOBS);
+  const { session, loading: profileLoading } = useProfile();
+  const userId = session?.user_id;
+
+  const [jobs, setJobs] = useState<any[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(false);
   const [sub, setSub] = useState<RiderSubscription | null>(null);
   const [loading, setLoading] = useState(true);
+  const [togglePending, setTogglePending] = useState(false);
+  const [cashBalance, setCashBalance] = useState<number>(15.00);
+  const cashLimit = 50.00;
   
   // Guard Modal State
   const [showGuardModal, setShowGuardModal] = useState(false);
   const [pendingJobId, setPendingJobId] = useState<string | null>(null);
 
+  const formatOrderTime = (timeStr: string) => {
+    if (!timeStr) return 'Just now';
+    const date = new Date(timeStr);
+    if (isNaN(date.getTime())) return timeStr;
+    
+    const diffMs = Date.now() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const mapDbJobToUi = (dbJob: any) => {
+    const payout = dbJob.payout ?? Number(dbJob.rider_payout || dbJob.delivery_fee * 0.8 || 0);
+    const distance = dbJob.distance ?? (dbJob.estimated_distance_km ? `${dbJob.estimated_distance_km} km` : 'N/A');
+    const estimated_time = dbJob.estimated_time ?? (dbJob.estimated_duration_minutes ? `${dbJob.estimated_duration_minutes} min` : 'N/A');
+    const customer_name = dbJob.customer_name ?? (dbJob.customer?.full_name || 'Guest');
+    const customer_rating = dbJob.customer_rating ?? 5.0;
+    const posted = dbJob.posted ?? formatOrderTime(dbJob.created_at);
+
+    return {
+      ...dbJob,
+      payout,
+      distance,
+      estimated_time,
+      customer_name,
+      customer_rating,
+      posted,
+    };
+  };
+
   const fetchStatus = async () => {
+    const riderId = userId || 'mock-rider';
     try {
-      const activeSub = await getRiderSubscription('mock-rider');
+      const activeSub = await getRiderSubscription(riderId);
       setSub(activeSub);
+      
+      if (FLAGS.useLiveDb && userId) {
+        const supabase = createClient();
+        const [profileRes, ledgerRes] = await Promise.all([
+          supabase.from('rider_profiles').select('is_available').eq('user_id', userId).single(),
+          supabase.from('rider_cash_ledger').select('amount').eq('rider_id', userId).eq('status', 'outstanding')
+        ]);
+        
+        if (profileRes.data) {
+          setIsOnline(profileRes.data.is_available);
+        }
+        if (ledgerRes.data) {
+          const sum = ledgerRes.data.reduce((acc, row) => acc + Number(row.amount), 0);
+          setCashBalance(sum);
+        }
+      } else {
+        setIsOnline(true);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -112,14 +175,120 @@ export default function JobsPage() {
     }
   };
 
+  const fetchJobs = async () => {
+    if (!FLAGS.useLiveDb) {
+      setJobs(MOCK_JOBS.map(mapDbJobToUi));
+      return;
+    }
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('delivery_requests')
+        .select(`
+          *,
+          customer:profiles!delivery_requests_customer_id_fkey(full_name, avatar_url)
+        `)
+        .is('assigned_rider_id', null)
+        .eq('status', 'payment_held')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setJobs((data || []).map(mapDbJobToUi));
+    } catch (err) {
+      console.error('Failed to fetch available jobs:', err);
+      if (FLAGS.enableMockFallback) {
+        setJobs(MOCK_JOBS.map(mapDbJobToUi));
+      } else {
+        setJobs([]);
+      }
+    }
+  };
+
   useEffect(() => {
+    if (profileLoading) return;
     fetchStatus();
-  }, []);
+    fetchJobs();
+  }, [profileLoading, userId]);
+
+  useEffect(() => {
+    if (profileLoading || !userId || !FLAGS.useLiveDb) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('available_jobs')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'delivery_requests',
+        },
+        async (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new.status === 'payment_held' && !payload.new.assigned_rider_id) {
+            const { data } = await supabase
+              .from('delivery_requests')
+              .select('*, customer:profiles!delivery_requests_customer_id_fkey(full_name, avatar_url)')
+              .eq('id', payload.new.id)
+              .single();
+            if (data) {
+              setJobs((prev) => {
+                if (prev.some((j) => j.id === data.id)) return prev;
+                return [mapDbJobToUi(data), ...prev];
+              });
+            }
+          }
+          if (payload.eventType === 'UPDATE') {
+            const updated = payload.new;
+            if (updated.assigned_rider_id || updated.status !== 'payment_held') {
+              setJobs((prev) => prev.filter((j) => j.id !== updated.id));
+            } else {
+              const { data } = await supabase
+                .from('delivery_requests')
+                .select('*, customer:profiles!delivery_requests_customer_id_fkey(full_name, avatar_url)')
+                .eq('id', updated.id)
+                .single();
+              if (data) {
+                setJobs((prev) => prev.map((j) => (j.id === data.id ? mapDbJobToUi(data) : j)));
+              }
+            }
+          }
+          if (payload.eventType === 'DELETE') {
+            setJobs((prev) => prev.filter((j) => j.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profileLoading, userId]);
+
+  const handleToggleOnline = async () => {
+    if (togglePending) return;
+    const targetStatus = !isOnline;
+    setIsOnline(targetStatus);
+    setTogglePending(true);
+    
+    if (FLAGS.useLiveDb && userId) {
+      try {
+        const { error } = await toggleRiderOnline(userId, targetStatus);
+        if (error) throw error;
+      } catch (err) {
+        console.error(err);
+        setIsOnline(!targetStatus);
+        alert('Failed to update status. Please try again.');
+      } finally {
+        setTogglePending(false);
+      }
+    } else {
+      setTogglePending(false);
+    }
+  };
 
   const handleAcceptJob = (jobId: string) => {
     if (!sub) return;
 
-    // Check subscription status before accepting
     if (sub.status === 'suspended' || sub.status === 'closed') {
       alert('Your account is currently suspended/closed. Please renew your subscription to accept jobs.');
       return;
@@ -134,22 +303,58 @@ export default function JobsPage() {
     proceedAcceptJob(jobId);
   };
 
-  const proceedAcceptJob = (jobId: string) => {
+  const proceedAcceptJob = async (jobId: string) => {
     setAccepting(jobId);
-    setTimeout(() => {
+    
+    if (!FLAGS.useLiveDb) {
+      setTimeout(() => {
+        setJobs((prev) => prev.filter((j) => j.id !== jobId));
+        setAccepting(null);
+        alert('Job Accepted! Navigating to navigation dispatcher...');
+      }, 1200);
+      return;
+    }
+
+    const riderId = userId || 'mock-rider';
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('delivery_requests')
+        .update({
+          assigned_rider_id: riderId,
+          status: 'rider_assigned',
+          accepted_at: new Date().toISOString(),
+        })
+        .eq('id', jobId)
+        .is('assigned_rider_id', null)
+        .eq('status', 'payment_held')
+        .select();
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        alert('This job was just accepted by another rider.');
+        fetchJobs();
+        return;
+      }
+
+      alert('Job Accepted! Navigating to active orders...');
       setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    } catch (err) {
+      console.error('Failed to accept job:', err);
+      alert('Failed to accept job. Please try again.');
+    } finally {
       setAccepting(null);
-      alert('Job Accepted! Navigating to navigation dispatcher...');
-    }, 1200);
+    }
   };
 
   const handleActivateEmergencyCredit = async () => {
     if (!pendingJobId) return;
     setLoading(true);
-    const res = await requestEmergencyCredit('mock-rider');
+    const riderId = userId || 'mock-rider';
+    const res = await requestEmergencyCredit(riderId);
     alert(res.message);
     if (res.success) {
-      // Reload sub details
       await fetchStatus();
       setShowGuardModal(false);
       proceedAcceptJob(pendingJobId);
@@ -157,7 +362,7 @@ export default function JobsPage() {
     setLoading(false);
   };
 
-  if (loading) {
+  if (profileLoading || loading) {
     return (
       <div className={styles.loadingContainer}>
         <div className={styles.spinner} />
@@ -253,7 +458,9 @@ export default function JobsPage() {
             </div>
             <button
               className={`${styles.onlineToggle} ${isOnline ? styles.onlineToggleActive : ''}`}
-              onClick={() => setIsOnline(!isOnline)}
+              onClick={handleToggleOnline}
+              disabled={togglePending}
+              style={{ cursor: togglePending ? 'not-allowed' : 'pointer', opacity: togglePending ? 0.7 : 1 }}
             >
               <span className={styles.onlineDot} />
               {isOnline ? 'Online' : 'Offline'}
@@ -295,6 +502,26 @@ export default function JobsPage() {
                     </div>
                   </div>
 
+                  {/* COD Badge */}
+                  {job.payment_method === 'cash' && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.375rem',
+                      padding: '0.375rem 0.75rem',
+                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08))',
+                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                      borderRadius: '9999px',
+                      fontSize: '0.8125rem',
+                      fontWeight: 700,
+                      color: '#34d399',
+                      marginBottom: '0.75rem',
+                      boxShadow: '0 0 15px rgba(16, 185, 129, 0.1)'
+                    }}>
+                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
+                    </div>
+                  )}
+
                   {/* Route */}
                   <div className={styles.jobRoute}>
                     <div className={styles.routePoint}>
@@ -329,20 +556,40 @@ export default function JobsPage() {
                     <span className={styles.jobTime}>{job.posted}</span>
                   </div>
 
-                  {/* Accept */}
-                  <button
-                    className={`btn btn--primary btn--lg btn--full ${styles.acceptBtn}`}
-                    onClick={() => handleAcceptJob(job.id)}
-                    disabled={accepting === job.id}
-                  >
-                    {accepting === job.id ? (
-                      <>
-                        <span className="spinner" /> Accepting...
-                      </>
-                    ) : (
-                      `Accept — $${job.payout.toFixed(2)}`
-                    )}
-                  </button>
+                  {/* Accept / Float Check */}
+                  {job.payment_method === 'cash' && (cashBalance + (job.total_amount || (job.payout / 0.8)) > cashLimit) ? (
+                    <div style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      borderRadius: '0.75rem',
+                      padding: '0.75rem 0.875rem',
+                      marginTop: '0.75rem',
+                      fontSize: '0.8125rem',
+                      color: '#f87171',
+                      lineHeight: '1.4',
+                      textAlign: 'left'
+                    }}>
+                      ⚠️ <strong>Cash Collection Limit Warning</strong>
+                      <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
+                        You are near your cash collection limit (${cashBalance.toFixed(2)}/${cashLimit.toFixed(2)}). 
+                        Please remit collected cash to platform operations before accepting more COD orders.
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      className={`btn btn--primary btn--lg btn--full ${styles.acceptBtn}`}
+                      onClick={() => handleAcceptJob(job.id)}
+                      disabled={accepting === job.id}
+                    >
+                      {accepting === job.id ? (
+                        <>
+                          <span className="spinner" /> Accepting...
+                        </>
+                      ) : (
+                        `Accept — $${job.payout.toFixed(2)}`
+                      )}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

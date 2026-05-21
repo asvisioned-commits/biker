@@ -8,6 +8,8 @@ import styles from './new-order.module.css';
 import { useGeolocation } from '@/lib/geolocation';
 import { reverseGeocode } from '@/lib/geocoding';
 import type { ServiceType, FulfillmentMode } from '@/types';
+import { GlassCard } from '@/components/primitives/GlassCard';
+import { SegmentedControl } from '@/components/primitives/SegmentedControl';
 
 const POPULAR_LOCATIONS = [
   { name: "Sam Levy's Village, Borrowdale", lat: -17.7502, lng: 31.0858 },
@@ -62,6 +64,7 @@ function NewOrderContent() {
   const [fulfillmentMode, setFulfillmentMode] = useState<FulfillmentMode>('standard');
   const [proposedFare, setProposedFare] = useState<number>(5.00); // InDrive proposed fare
   const [itemDescription, setItemDescription] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'ecocash' | 'cash'>('ecocash');
 
   const mapRef = useRef<any>(null);
   const gpsMarkerRef = useRef<any>(null);
@@ -155,20 +158,23 @@ function NewOrderContent() {
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
+        mapRef.current = null;
       }
     };
   }, [leafletLoaded]);
 
-  // Track blue dot marker updates
+  // Handle GPS blue dot rendering
   useEffect(() => {
     if (!leafletLoaded || !mapRef.current || !gpsCoords) return;
     const L = (window as any).L;
     if (!L) return;
 
+    // Clear previous marker
     if (gpsMarkerRef.current) {
       gpsMarkerRef.current.remove();
     }
 
+    // Create blue pulsing GPS dot
     const gpsIcon = L.divIcon({
       html: `
         <div style="
@@ -271,6 +277,7 @@ function NewOrderContent() {
         service_fee: 0.38,
         protection_fee: 0.50,
         total_amount: proposedFare + 0.38 + 0.50,
+        payment_method: paymentMethod,
       };
 
       const createdOrder = await OrderService.createOrder(orderPayload);
@@ -284,7 +291,7 @@ function NewOrderContent() {
       const timer3 = setTimeout(() => setScanStep(3), 3600);
       const timer4 = setTimeout(() => {
         router.push(
-          `/dashboard/tracking?id=${createdOrder.id}&pLat=${pCoords[0]}&pLng=${pCoords[1]}&dLat=${dCoords[0]}&dLng=${dCoords[1]}&pAddr=${encodeURIComponent(pickupAddress)}&dAddr=${encodeURIComponent(dropoffAddress)}&fare=${proposedFare}&service=${serviceType}`
+          `/dashboard/tracking?id=${createdOrder.id}&pLat=${pCoords[0]}&pLng=${pCoords[1]}&dLat=${dCoords[0]}&dLng=${dCoords[1]}&pAddr=${encodeURIComponent(pickupAddress)}&dAddr=${encodeURIComponent(dropoffAddress)}&fare=${proposedFare}&service=${serviceType}&paymentMethod=${paymentMethod}`
         );
       }, 4800);
     } catch (error) {
@@ -297,7 +304,7 @@ function NewOrderContent() {
   // Radar screen renderer
   if (isScanning) {
     const scanSteps = [
-      { text: 'Securing escrow payment...', icon: '🔒' },
+      { text: paymentMethod === 'cash' ? 'Preparing secure COD collection...' : 'Securing escrow payment...', icon: '🔒' },
       { text: `Negotiating fare offer ($${proposedFare.toFixed(2)}) with riders...`, icon: '💰' },
       { text: 'Rider matched! Verifying path...', icon: '🤝' },
       { text: 'Takudzwa M. accepted your fare! Arriving soon...', icon: '✅' },
@@ -317,7 +324,7 @@ function NewOrderContent() {
 
         <h2 className={styles.scanStatusTitle}>Finding a Rider</h2>
         <p className={styles.scanStatusSubtitle}>
-          {scanStep === 0 && 'Connecting with escrow...'}
+          {scanStep === 0 && (paymentMethod === 'cash' ? 'Setting up cash invoice...' : 'Connecting with escrow...')}
           {scanStep === 1 && 'Waiting for rider counter offers...'}
           {scanStep === 2 && 'Finalizing rider match...'}
           {scanStep === 3 && 'Biker is dispatched!'}
@@ -633,6 +640,43 @@ function NewOrderContent() {
                   📅 Saver
                 </button>
               </div>
+            </div>
+
+            {/* Payment Method Picker */}
+            <div className={styles.servicePicker}>
+              <span className={styles.pickerLabel} style={{ marginBottom: '0.375rem', display: 'block' }}>Payment Method</span>
+              <SegmentedControl
+                value={paymentMethod}
+                onChange={(val) => setPaymentMethod(val as 'ecocash' | 'cash')}
+                options={[
+                  { value: 'ecocash', label: 'EcoCash', icon: '💳' },
+                  { value: 'cash', label: 'Cash on Delivery', icon: '💵' },
+                ]}
+              />
+              
+              {paymentMethod === 'cash' && (
+                <div style={{
+                  marginTop: '0.625rem',
+                  borderRadius: '0.75rem',
+                  backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  padding: '0.75rem 0.875rem',
+                  transition: 'all 0.3s ease'
+                }}>
+                  <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '1rem', lineHeight: 1.2 }}>🔒</span>
+                    <div>
+                      <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 700, color: '#34d399' }}>
+                        Secure Cash Collection
+                      </p>
+                      <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', lineHeight: 1.4 }}>
+                        Rider will collect <strong>${(proposedFare + 0.38 + 0.50).toFixed(2)}</strong> in cash at delivery. 
+                        A secure 4-digit PIN is generated; provide it to the rider only after receiving your items.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Package details */}
