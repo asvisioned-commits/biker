@@ -4,7 +4,7 @@ import { useState, Suspense, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './signup.module.css';
-import { signInWithGoogle, signUpWithEmail, getSession, type BikerSession } from '@/lib/auth';
+import { signInWithGoogle, signUpWithEmail, getSession, verifyEmailOtp, resendVerificationEmail, type BikerSession } from '@/lib/auth';
 import type { UserRole, VehicleType } from '@/types';
 import { updateProfile, createRiderProfile, createMerchantProfile, setActiveRole } from '@/lib/database';
 
@@ -13,7 +13,7 @@ function SignupContent() {
   const searchParams = useSearchParams();
   const preselectedRole = searchParams.get('role') as UserRole | null;
 
-  const [step, setStep] = useState<'role' | 'details' | 'rider_kyc' | 'merchant_details'>('role');
+  const [step, setStep] = useState<'role' | 'details' | 'rider_kyc' | 'merchant_details' | 'verify_email'>('role');
   const [selectedRole, setSelectedRole] = useState<UserRole>(preselectedRole || 'customer');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -27,6 +27,21 @@ function SignupContent() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Verification and Cooldown States
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Countdown timer for resends
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
 
   // Rider KYC fields
   const [vehicleType, setVehicleType] = useState<VehicleType>('motorcycle');
@@ -217,9 +232,9 @@ function SignupContent() {
       metadata.business_type = businessType;
       metadata.whatsapp = whatsapp ? '+263' + whatsapp : null;
     }
-
+    const targetEmail = email || `${phone}@biker.co.zw`;
     const { data: signUpData, error: signUpError } = await signUpWithEmail(
-      email || `${phone}@biker.co.zw`,
+      targetEmail,
       password,
       metadata
     );
@@ -230,7 +245,19 @@ function SignupContent() {
       return;
     }
 
-    // App-Side Provisioning Fallback (Dual Protection)
+    // Check if verification is required (session is null)
+    if (!signUpData?.session && signUpData?.user) {
+      setUnconfirmedEmail(targetEmail);
+      setStep('verify_email');
+      setLoading(false);
+      setResendCooldown(60);
+      if (IS_DEV) {
+        setSuccessMsg(`Verification code sent to ${targetEmail}! [DEV Mode: Use code 123456]`);
+      }
+      return;
+    }
+
+    // App-Side Provisioning Fallback (Dual Protection for instant autologin scenarios)
     const newUser = signUpData?.user;
     if (newUser && !IS_DEV) {
       try {
@@ -271,6 +298,81 @@ function SignupContent() {
     setLoading(false);
   };
 
+  const handleEmailOtpVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccessMsg('');
+    const { error: otpError } = await verifyEmailOtp(unconfirmedEmail, otp);
+    setLoading(false);
+    
+    if (otpError) {
+      setError(typeof otpError === 'string' ? otpError : (otpError as { message?: string }).message || 'Invalid confirmation code');
+      return;
+    }
+    
+    setSuccessMsg('Email successfully verified! Provisioning your account...');
+    
+    // Now that the session is active, run the App-Side Provisioning Fallback if not in Dev mode
+    const sess = await getSession();
+    const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+    if (sess && !IS_DEV) {
+      try {
+        if (phone || fullName) {
+          await updateProfile(sess.user_id, {
+            phone: phone ? '+263' + phone : undefined,
+            full_name: fullName || undefined,
+          });
+        }
+
+        if (selectedRole === 'rider') {
+          await createRiderProfile({
+            user_id: sess.user_id,
+            vehicle_type: vehicleType,
+            vehicle_registration: vehicleType === 'bicycle' ? 'N/A' : vehicleReg,
+            license_number: vehicleType === 'bicycle' ? 'N/A' : licenseNumber,
+            operating_zone: operatingZone,
+          });
+        } else if (selectedRole === 'merchant') {
+          await createMerchantProfile({
+            user_id: sess.user_id,
+            business_name: businessName,
+            business_type: businessType as any,
+            whatsapp_number: whatsapp ? '+263' + whatsapp : undefined,
+          });
+        }
+
+        await setActiveRole(sess.user_id, selectedRole);
+      } catch (provError) {
+        console.warn('App-side provisioning fallback caught error:', provError);
+      }
+    }
+
+    localStorage.removeItem('biker_signup_role');
+    
+    setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 1000);
+  };
+
+  const handleResendVerification = async () => {
+    if (resendCooldown > 0) return;
+    setLoading(true);
+    setError('');
+    setSuccessMsg('');
+    
+    const { error: resendError } = await resendVerificationEmail(unconfirmedEmail);
+    setLoading(false);
+    
+    if (resendError) {
+      setError(typeof resendError === 'string' ? resendError : (resendError as { message?: string }).message || 'Failed to resend verification');
+      return;
+    }
+    
+    setResendCooldown(60);
+    setSuccessMsg(`Verification code sent to ${unconfirmedEmail}!`);
+  };
+
   return (
     <div className={styles.page}>
       <div className={styles.container}>
@@ -304,13 +406,14 @@ function SignupContent() {
                 <span>Details</span>
               </div>
               <div className={styles.progressLine} />
-              <div className={`${styles.progressStep} ${(step === 'rider_kyc' || step === 'merchant_details') ? styles.progressStepActive : ''}`}>
+              <div className={`${styles.progressStep} ${(step === 'rider_kyc' || step === 'merchant_details' || step === 'verify_email') ? styles.progressStepActive : ''}`}>
                 <div className={styles.progressDot}>3</div>
                 <span>Verify</span>
               </div>
             </div>
 
-            {error && <div className={styles.error}>{error}</div>}
+            {error && <div className={styles.error}>⚠️ {error}</div>}
+            {successMsg && <div className={styles.success}>✨ {successMsg}</div>}
 
             {/* Step 1: Role Selection */}
             {step === 'role' && (
@@ -623,6 +726,67 @@ function SignupContent() {
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* Step 4: Email OTP Verification */}
+            {step === 'verify_email' && (
+              <form onSubmit={handleEmailOtpVerify} className={styles.stepContent}>
+                <h1 className={styles.formTitle}>Verify your email</h1>
+                <p className={styles.formSubtitle}>
+                  We sent a 6-digit activation code to <strong>{unconfirmedEmail}</strong>
+                </p>
+                <div className="pin-input-group">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <input
+                      key={i}
+                      type="text"
+                      maxLength={1}
+                      className={`pin-digit ${otp[i] ? 'pin-digit--filled' : ''}`}
+                      value={otp[i] || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^\d?$/.test(val)) {
+                          const newOtp = otp.split('');
+                          newOtp[i] = val;
+                          setOtp(newOtp.join(''));
+                          if (val && e.target.nextElementSibling) {
+                            (e.target.nextElementSibling as HTMLInputElement).focus();
+                          }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Backspace' && !otp[i] && e.currentTarget.previousElementSibling) {
+                          (e.currentTarget.previousElementSibling as HTMLInputElement).focus();
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading || otp.length < 6}>
+                  {loading ? <span className="spinner" /> : 'Confirm Code'}
+                </button>
+                <div className={styles.otpActionRow}>
+                  <button
+                    type="button"
+                    className={styles.resendBtn}
+                    onClick={handleResendVerification}
+                    disabled={loading || resendCooldown > 0}
+                  >
+                    {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : 'Resend Email Verification'}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.backBtn}
+                    onClick={() => {
+                       setStep('details');
+                       setError('');
+                       setSuccessMsg('');
+                    }}
+                  >
+                    Change Details
+                  </button>
+                </div>
+              </form>
             )}
 
             <div className={styles.formFooter}>
