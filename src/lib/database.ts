@@ -123,4 +123,679 @@ export async function createOrder(order: {
         recipient_id: data.customer_id,
         type: 'order',
         title: 'Order Placed 📦',
-        body: `Your delivery request ${data.reference_code} has been successfully submitted!`,\n        data: { order_id: data.id, reference_code: data.reference_code }\n      });\n    } catch (err) {\n      console.error('Failed to create order notification', err);\n    }\n  }\n  \n  return { data, error };\n}\n\nexport async function getOrders(userId: string, role: UserRole, filters?: { status?: string; limit?: number; offset?: number; }) {\n  let query = supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name, avatar_url), customer:profiles!delivery_requests_customer_id_fkey(full_name, avatar_url)`).order('created_at', { ascending: false });\n  if (role === 'customer') query = query.eq('customer_id', userId);\n  else if (role === 'rider') query = query.eq('assigned_rider_id', userId);\n  if (filters?.status) {\n    if (filters.status === 'active') query = query.not('status', 'in', '(\"completed\",\"cancelled\",\"disputed\")');\n    else if (filters.status === 'completed') query = query.eq('status', 'completed');\n    else if (filters.status === 'disputed') query = query.eq('status', 'disputed');\n    else query = query.eq('status', filters.status);\n  }\n  if (filters?.limit) query = query.limit(filters.limit);\n  if (filters?.offset) query = query.range(filters.offset, filters.offset + (filters.limit || 20) - 1);\n  const { data, error } = await query;\n  return { data, error };\n}\n\nexport async function getOrderById(orderId: string) {\n  const { data, error } = await supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(id, full_name, avatar_url, phone), customer:profiles!delivery_requests_customer_id_fkey(id, full_name, avatar_url, phone), proofs:delivery_proofs(proof_type, file_url, notes, created_at), status_log:delivery_status_log(from_status, to_status, changed_by, notes, created_at)`).eq('id', orderId).single();\n  return { data, error };\n}\n\nexport async function updateOrderStatus(orderId: string, status: string, notes?: string) {\n  const { data, error } = await supabase.from('delivery_requests').update({ status }).eq('id', orderId).select().single();\n  if (!error && data) {\n    await supabase.from('delivery_status_log').insert({ request_id: orderId, to_status: status, notes });\n    try {\n      await createStatusNotifications(data);\n    } catch (err) {\n      console.error('Failed to create status notification', err);\n    }\n  }\n  return { data, error };\n}\n\nexport async function completeCodDelivery(params: {\n  orderId: string;\n  riderId: string;\n  pin: string;\n  cashCollected: number;\n  hasDiscrepancy: boolean;\n}) {\n  const { data, error } = await supabase.rpc('complete_cod_delivery', {\n    p_order_id: params.orderId,\n    p_rider_id: params.riderId,\n    p_pin: params.pin,\n    p_cash_collected: params.cashCollected,\n    p_has_discrepancy: params.hasDiscrepancy,\n  });\n  \n  if (!error && data && data.success) {\n    try {\n      const { data: order } = await supabase.from('delivery_requests').select('*').eq('id', params.orderId).single();\n      if (order) {\n        await createStatusNotifications(order);\n      }\n    } catch (err) {\n      console.error('Failed to create COD status notifications:', err);\n    }\n  }\n  \n  return { data, error };\n}\n\nexport async function verifyDeliveryPin(orderId: string, pin: string) {\n  const { data, error } = await supabase.rpc('verify_delivery_pin', {\n    p_order_id: orderId,\n    p_pin_code: pin\n  });\n\n  if (!error && data && data.success) {\n    try {\n      const { data: order } = await supabase.from('delivery_requests').select('*').eq('id', orderId).single();\n      if (order) {\n        await createStatusNotifications(order);\n      }\n    } catch (err) {\n      console.error('Failed to create status notifications for verify_delivery_pin:', err);\n    }\n  }\n\n  return { \n    success: data?.success ?? false, \n    message: data?.message || 'Verification failed', \n    error \n  };\n}\n\n// ─── Addresses ─────────────────────────────────────────────────────\n\nexport async function getSavedAddresses(userId: string) {\n  const { data, error } = await supabase.from('saved_addresses').select('*').eq('user_id', userId).order('is_default', { ascending: false });\n  return { data, error };\n}\n\nexport async function createAddress(address: {\n  user_id: string; label: string; address_line: string; area_suburb?: string; city?: string;\n  lat?: number; lng?: number; landmark?: string; gate_color?: string;\n  contact_name?: string; contact_phone?: string; is_default?: boolean;\n}) {\n  const { data, error } = await supabase.from('saved_addresses').insert(address).select().single();\n  return { data, error };\n}\n\nexport async function deleteAddress(addressId: string) {\n  const { error } = await supabase.from('saved_addresses').delete().eq('id', addressId);\n  return { error };\n}\n\nexport async function setDefaultAddress(userId: string, addressId: string) {\n  await supabase.from('saved_addresses').update({ is_default: false }).eq('user_id', userId);\n  const { error } = await supabase.from('saved_addresses').update({ is_default: true }).eq('id', addressId);\n  return { error };\n}\n\n// ─── Disputes ──────────────────────────────────────────────────────\n\nexport async function createDispute(dispute: { request_id: string; initiated_by: string; dispute_type: string; description: string; against_user_id?: string; }) {\n  const { data, error } = await supabase.from('disputes').insert({ ...dispute, status: 'open' }).select().single();\n  return { data, error };\n}\n\nexport async function getDisputes(userId: string) {\n  const { data, error } = await supabase.from('disputes').select(`*, request:delivery_requests(reference_code, service_type), initiator:profiles!disputes_initiated_by_fkey(full_name), against:profiles!disputes_against_user_id_fkey(full_name)`).or(`initiated_by.eq.${userId},against_user_id.eq.${userId}`).order('created_at', { ascending: false });\n  return { data, error };\n}\n\n// ─── Rider ─────────────────────────────────────────────────────────\n\nexport async function getRiderProfile(userId: string) { \n  const { data, error } = await supabase.from('rider_profiles').select('*').eq('user_id', userId).single();\n  return { data, error };\n}\n\nexport async function updateRiderProfile(userId: string, updates: { vehicle_type?: VehicleType; vehicle_registration?: string; license_number?: string; operating_zone?: string; is_available?: boolean; }) {\n  const { data, error } = await supabase.from('rider_profiles').update(updates).eq('user_id', userId).select().single();\n  return { data, error };\n}\n\nexport async function getRiderEarnings(riderId: string, period: 'today' | 'week' | 'month') {\n  const now = new Date();\n  let startDate: Date;\n  switch (period) {\n    case 'today': startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()); break;\n    case 'week': startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;\n    case 'month': startDate = new Date(now.getFullYear(), now.getMonth(), 1); break;\n  }\n  const { data, error } = await supabase.from('journal_entries').select('amount, entry_type, description, created_at').eq('account_id', riderId).gte('created_at', startDate.toISOString()).order('created_at', { ascending: false });\n  return { data, error };\n}\n\n// ─── Merchant ─────────────────────────────────────────────────────\n\nexport async function getMerchantProfile(userId: string) {\n  const { data, error } = await supabase.from('merchant_profiles').select('*').eq('user_id', userId).single();\n  return { data, error };\n}\n\nexport async function getMerchantOrders(merchantId: string, limit = 20) {\n  const { data, error } = await supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name, avatar_url), customer:profiles!delivery_requests_customer_id_fkey(full_name)`).eq('merchant_id', merchantId).order('created_at', { ascending: false }).limit(limit);\n  return { data, error };\n}\n\n// ─── Delivery Proofs ──────────────────────────────────────────────\n\nexport async function uploadProof(proof: { request_id: string; uploaded_by: string; proof_type: 'pickup_photo' | 'delivery_photo' | 'receipt_photo' | 'signature' | 'condition_note'; file_url: string; notes?: string; }) { \n  const { data, error } = await supabase.from('delivery_proofs').insert(proof).select().single();\n  return { data, error };\n}\n\n// ─── Trust / Ratings ───────────────────────────────────────────────\n\nexport async function submitRating(rating: { request_id: string; from_user_id: string; to_user_id: string; rating: number; comment?: string; }) {\n  const { data, error } = await supabase.from('ratings').insert(rating).select().single();\n  return { data, error };\n}\n\n// ─── Rider Profile ────────────────────────────────────────────────\n\nexport async function createRiderProfile(profile: { user_id: string; vehicle_type?: 'bicycle' | 'motorcycle' | 'car' | 'van'; vehicle_registration?: string; license_number?: string; operating_zone?: string; }) {\n  const { data, error } = await supabase.from('rider_profiles').insert(profile).select().single();\n  if (!error) { await supabase.from('user_roles').upsert({ user_id: profile.user_id, role: 'rider', is_active: true }, { onConflict: 'user_id,role' }); }\n  return { data, error };\n}\n\nexport async function toggleRiderOnline(userId: string, isAvailable: boolean) {\n  const { data, error } = await supabase.from('rider_profiles').update({ is_available: isAvailable }).eq('user_id', userId).select().single();\n  return { data, error };\n}\n\nexport async function completeSafetyQuiz(riderId: string) {\n  const { data, error } = await supabase.from('rider_profiles').update({ safety_quiz_completed: true }).eq('user_id', riderId).select().single();\n  return { data, error };\n}\n\nexport async function createCounterOffer(orderId: string, riderId: string, amount: number) {\n  const { data, error } = await supabase.from('order_offers').insert({\n    order_id: orderId,\n    rider_id: riderId,\n    status: 'counter_offered',\n    counter_offer_amount: amount,\n    estimated_rider_payout: amount,\n    expires_at: new Date(Date.now() + 120 * 1000).toISOString() // 2 minutes expiry\n  }).select().single();\n\n  return { data, error };\n}\n\nexport async function respondToCounterOffer(offerId: string, action: 'accept' | 'decline') {\n  if (action === 'decline') {\n    const { data, error } = await supabase\n      .from('order_offers')\n      .update({ status: 'declined', responded_at: new Date().toISOString() })\n      .eq('id', offerId)\n      .select()\n      .single();\n    return { data, error };\n  }\n\n  // Accept flow\n  const { data: offer, error: offerError } = await supabase\n    .from('order_offers')\n    .update({ status: 'accepted', responded_at: new Date().toISOString() })\n    .eq('id', offerId)\n    .select('*')\n    .single();\n\n  if (offerError || !offer) return { data: null, error: offerError };\n\n  const { data: order, error: orderError } = await supabase\n    .from('delivery_requests')\n    .select('*')\n    .eq('id', offer.order_id)\n    .single();\n\n  if (orderError || !order) return { data: null, error: orderError };\n\n  const counterAmount = Number(offer.counter_offer_amount || offer.estimated_rider_payout || 0);\n  const serviceFee = Number(order.service_fee || 0);\n  const protectionFee = Number(order.protection_fee || 0);\n  const purchaseAmount = Number(order.purchase_amount || 0);\n  const newTotal = counterAmount + serviceFee + protectionFee + purchaseAmount;\n\n  const { data: updatedOrder, error: updateError } = await supabase\n    .from('delivery_requests')\n    .update({\n      assigned_rider_id: offer.rider_id,\n      status: 'rider_assigned',\n      rider_payout: counterAmount,\n      delivery_fee: counterAmount,\n      total_amount: newTotal,\n      accepted_at: new Date().toISOString()\n    })\n    .eq('id', offer.order_id)\n    .select()\n    .single();\n\n  if (updateError) return { data: null, error: updateError };\n\n  await supabase\n    .from('order_offers')\n    .update({ status: 'cancelled' })\n    .eq('order_id', offer.order_id)\n    .neq('id', offerId)\n    .in('status', ['pending', 'counter_offered']);\n\n  try {\n    await createStatusNotifications(updatedOrder);\n  } catch (err) {\n    console.error('Failed to create status notifications for counter offer accept:', err);\n  }\n\n  return { data: updatedOrder, error: null };\n}\n\n\n// ─── Merchant Profile ─────────────────────────────────────────────\n\nexport async function createMerchantProfile(profile: { user_id: string; business_name: string; business_type?: 'boutique' | 'pharmacy' | 'grocery' | 'restaurant' | 'electronics' | 'general'; whatsapp_number?: string; instagram_handle?: string; }) {\n  const { data, error } = await supabase.from('merchant_profiles').insert(profile).select().single();\n  return { data, error };\n}\n\n// ─── Notifications ────────────────────────────────────────────────\n\nexport async function getNotifications(userId: string, limit = 20) {\n  const { data, error } = await supabase.from('notifications').select('*').eq('recipient_id', userId).order('created_at', { ascending: false }).limit(limit);\n  return { data, error };\n}\n\nexport async function createNotification(notification: { \n  recipient_id: string;\n  type: string;\n  title: string;\n  body: string;\n  data?: Record<string, unknown>;\n  channel?: string;\n}) {\n  const { data, error } = await supabase.from('notifications').insert({\n    ...notification,\n    read: false,\n    created_at: new Date().toISOString()\n  }).select().single();\n  return { data, error };\n}\n\nexport async function createStatusNotifications(order: any) {\n  const customerId = order.customer_id;\n  const riderId = order.assigned_rider_id;\n  const ref = order.reference_code;\n  const status = order.status;\n\n  if (customerId) {\n    let title = '';\n    let body = '';\n    let type = 'order';\n\n    // Fetch rider name if riderId is present\n    let riderName = 'Your rider';\n    if (riderId) {\n      const { data: riderProfile } = await supabase.from('profiles').select('full_name').eq('id', riderId).single();\n      if (riderProfile?.full_name) {\n        riderName = riderProfile.full_name;\n      }\n    }\n\n    if (status === 'rider_assigned') {\n      title = 'Rider Assigned';\n      body = `${riderName} accepted your delivery ${ref}`;\n    } else if (status === 'rider_en_route_pickup') {\n      title = 'Rider En Route';\n      body = `${riderName} is heading to pickup location for ${ref}`;\n    } else if (status === 'at_pickup') {\n      title = 'Rider at Pickup';\n      body = `${riderName} has arrived at the pickup location for ${ref}`;\n    } else if (status === 'proof_uploaded') {\n      title = 'Pickup Confirmed';\n      body = `Pickup confirmed for ${ref}. Photo proof uploaded.`;\n    } else if (status === 'en_route_delivery') {\n      title = 'En Route to Delivery';\n      body = `${riderName} is delivering your package for ${ref}`;\n    } else if (status === 'at_delivery') {\n      title = 'Rider at Delivery';\n      body = `${riderName} has arrived at the delivery destination. Please provide your PIN to complete ${ref}`;\n    } else if (status === 'completed') {\n      title = 'Delivery Completed 📦';\n      body = `Your order ${ref} has been successfully completed!`;\n    } else if (status === 'disputed') {\n      title = 'Order Disputed';\n      body = `Your order ${ref} has been flagged with a dispute.`;\n      type = 'dispute';\n    } else if (status === 'cancelled') {\n      title = 'Order Cancelled';\n      body = `Your order ${ref} has been cancelled.`;\n    }\n\n    if (title && body) {\n      await createNotification({\n        recipient_id: customerId,\n        type,\n        title,\n        body,\n        data: { order_id: order.id, reference_code: ref }\n      });\n    }\n  }\n\n  // Send payout notification to rider when order is completed\n  if (riderId && status === 'completed') {\n    await createNotification({\n      recipient_id: riderId,\n      type: 'payout',\n      title: 'Payment Received 💰',\n      body: `Payment for delivery ${ref} has been released to your wallet.`,\n      data: { order_id: order.id, reference_code: ref }\n    });\n  }\n}\n\nexport async function markNotificationRead(notificationId: string) {\n  const { error } = await supabase.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('id', notificationId);\n  return { error };\n}\n\nexport async function markAllNotificationsRead(userId: string) {\n  const { error } = await supabase.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('recipient_id', userId).eq('read', false);\n  return { error };\n}\n\n// ─── Order Offers ─────────────────────────────────────────────────\n\nexport async function acceptOrderOffer(offerId: string, riderId: string) {\n  const { data: offer, error: offerError } = await supabase.from('order_offers').update({ status: 'accepted', responded_at: new Date().toISOString() }).eq('id', offerId).eq('rider_id', riderId).select('order_id').single();\n  if (offerError || !offer) return { data: null, error: offerError };\n  const { data, error } = await supabase.from('delivery_requests').update({ assigned_rider_id: riderId, status: 'rider_assigned' }).eq('id', offer.order_id).select().single();\n  if (!error) { await supabase.from('order_offers').update({ status: 'cancelled' }).eq('order_id', offer.order_id).neq('id', offerId).eq('status', 'pending'); }\n  return { data, error };\n}\n\nexport async function declineOrderOffer(offerId: string, riderId: string, reason?: 'too_far' | 'fee_too_low' | 'busy' | 'vehicle_mismatch' | 'zone_mismatch' | 'personal') {\n  const { data, error } = await supabase.from('order_offers').update({ status: 'declined', responded_at: new Date().toISOString(), decline_reason: reason || 'personal' }).eq('id', offerId).eq('rider_id', riderId).select().single();\n  return { data, error };\n}\n\n// ─── Quotes ───────────────────────────────────────────────────────\n\nexport async function createQuote(quote: {\n  customer_id: string; order_id?: string; service_type: ServiceType; fulfillment_mode?: FulfillmentMode;\n  protection_level?: ProtectionLevel; distance_km: number; estimated_duration_minutes: number;\n  pickup_zone?: string; dropoff_zone?: string; delivery_fee: number; service_fee: number;\n  protection_fee: number; purchase_budget?: number; total_amount: number;\n}) {\n  const { data, error } = await supabase.from('quotes').insert({ ...quote, status: 'presented', pricing_version: 'v1' }).select().single();\n  return { data, error };\n}\n\nexport async function acceptQuote(quoteId: string) {\n  const { data, error } = await supabase.from('quotes').update({ status: 'accepted', accepted_at: new Date().toISOString() }).eq('id', quoteId).select().single();\n  return { data, error };\n}\n\n// ─── Delivery Links ───────────────────────────────────────────────\n\nexport async function createDeliveryLink(link: {\n  merchant_id: string; slug: string; customer_name?: string; customer_phone?: string;\n  items?: Record<string, unknown>[]; pickup_address: string; pickup_lat?: number; pickup_lng?: number;\n  delivery_fee_preset?: number; protection_level?: ProtectionLevel; fulfillment_mode?: FulfillmentMode;\n}) {\n  const { data, error } = await supabase.from('delivery_links').insert({ ...link, status: 'active' }).select().single();\n  return { data, error };\n}\n\nexport async function cancelDeliveryLink(linkId: string) {\n  const { error } = await supabase.from('delivery_links').update({ status: 'cancelled' }).eq('id', linkId);\n  return { error };\n}\n\n// ─── Rider Location ───────────────────────────────────────────────\n\nexport async function insertLocationCheckpoint(checkpoint: {\n  rider_id: string; order_id?: string; event_type: string;\n  lat: number; lng: number; heading?: number; speed_kmh?: number; accuracy_meters?: number;\n}) {\n  const { data, error } = await supabase.from('rider_location_checkpoints').insert(checkpoint).select().single();\n  return { data, error };\n}\n\n// ─── Dashboard Stats Aggregations ────────────────────────────────────\n\nexport async function getRiderDashboardStats(riderId: string) {\n  const now = new Date();\n  \n  const startToday = new Date(now);\n  startToday.setHours(0, 0, 0, 0);\n  const startTodayStr = startToday.toISOString();\n\n  const startWeek = new Date(now);\n  startWeek.setDate(now.getDate() - 7);\n  startWeek.setHours(0, 0, 0, 0);\n  const startWeekStr = startWeek.toISOString();\n\n  const startMonth = new Date(now);\n  startMonth.setDate(now.getDate() - 30);\n  startMonth.setHours(0, 0, 0, 0);\n  const startMonthStr = startMonth.toISOString();\n\n  const [profileRes, userProfileRes, todayEarningsRes, weekEarningsRes, monthEarningsRes, completedRes, subscriptionRes] = await Promise.all([\n    supabase.from('rider_profiles').select('*').eq('user_id', riderId).single(),\n    supabase.from('profiles').select('trust_score').eq('id', riderId).single(),\n    supabase.from('rider_earnings_log').select('amount').eq('rider_id', riderId).eq('type', 'delivery').gte('created_at', startTodayStr),\n    supabase.from('rider_earnings_log').select('amount').eq('rider_id', riderId).eq('type', 'delivery').gte('created_at', startWeekStr),\n    supabase.from('rider_earnings_log').select('amount').eq('rider_id', riderId).eq('type', 'delivery').gte('created_at', startMonthStr),\n    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('assigned_rider_id', riderId).eq('status', 'completed').gte('completed_at', startTodayStr),\n    supabase.from('rider_subscriptions').select('*').eq('rider_id', riderId).single()\n  ]);\n\n  const profile = profileRes.data;\n  const completedCount = completedRes.count || 0;\n  const subscription = subscriptionRes.data;\n  const trustScore = userProfileRes.data?.trust_score ?? 50;\n\n  const todayEarnings = (todayEarningsRes.data || []).reduce((sum, log) => sum + Number(log.amount), 0);\n  const weekEarnings = (weekEarningsRes.data || []).reduce((sum, log) => sum + Number(log.amount), 0);\n  const monthEarnings = (monthEarningsRes.data || []).reduce((sum, log) => sum + Number(log.amount), 0);\n\n  return { \n    isOnline: profile?.is_available ?? false,\n    safetyQuizCompleted: profile?.safety_quiz_completed ?? false,\n    todayEarnings,\n    weekEarnings,\n    monthEarnings,\n    completedToday: completedCount,\n    rating: profile?.avg_rating ? Number(profile.avg_rating) : 0.0,\n    trustScore,\n    tier: profile?.tier ?? 'starter',\n    subscription: subscription ? {\n      status: subscription.status,\n      earningCap: Number(subscription.earning_cap),\n      currentEarnings: Number(subscription.current_earnings),\n      emergencyCreditUsed: Number(subscription.emergency_credit_used),\n      expiresAt: subscription.subscription_expires_at\n    } : null\n  };\n}\n\nexport async function getMerchantDashboardStats(merchantId: string) {\n  const startToday = new Date();\n  startToday.setHours(0, 0, 0, 0);\n  const startTodayStr = startToday.toISOString();\n\n  const [profileRes, activeOrdersRes, todayOrdersRes, activeLinksRes] = await Promise.all([\n    supabase.from('merchant_profiles').select('*').eq('user_id', merchantId).single(),\n    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('merchant_id', merchantId).not('status', 'in', '(\"completed\",\"cancelled\",\"disputed\")'),\n    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('merchant_id', merchantId).gte('created_at', startTodayStr),\n    supabase.from('delivery_links').select('id', { count: 'exact' }).eq('merchant_id', merchantId).eq('status', 'active')\n  ]);\n\n  const profile = profileRes.data;\n\n  return {\n    businessName: profile?.business_name ?? '',\n    rating: profile?.avg_delivery_rating ? Number(profile.avg_delivery_rating) : 0.0,\n    totalDeliveries: profile?.total_deliveries ?? 0,\n    activeOrdersCount: activeOrdersRes.count || 0,\n    todayOrdersCount: todayOrdersRes.count || 0,\n    activeLinksCount: activeLinksRes.count || 0,\n  };\n}\n\nexport async function getOpsDashboardStats() {\n  const [activeOrdersRes, onlineRidersRes, openDisputesRes, pendingProofsRes] = await Promise.all([\n    supabase.from('delivery_requests').select('id', { count: 'exact' }).not('status', 'in', '(\"completed\",\"cancelled\",\"disputed\")'),\n    supabase.from('rider_profiles').select('id', { count: 'exact' }).eq('is_available', true),\n    supabase.from('disputes').select('id', { count: 'exact' }).eq('status', 'open'),\n    supabase.from('rider_payment_proofs').select('id', { count: 'exact' }).eq('status', 'pending')\n  ]);\n\n  return {\n    activeOrdersCount: activeOrdersRes.count || 0,\n    onlineRidersCount: onlineRidersRes.count || 0,\n    openDisputesCount: openDisputesRes.count || 0,\n    pendingVerificationsCount: pendingProofsRes.count || 0\n  };\n}\n\nexport async function getCODReconciliationReport(dateStr?: string) {\n  const devMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';\n  const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true';\n  \n  if (!useLiveDb || devMode) {\n    // Offline simulation / Developer mock data\n    return {\n      success: true,\n      data: {\n        totalCODOrders: 8,\n        totalCashExpected: 180.50,\n        totalCashCollected: 178.50,\n        discrepancies: [\n          { orderId: 'mock-cod-1', reference: 'BKR-COD88', riderName: 'John Doe', expected: 20.00, collected: 18.00, difference: 2.00, flaggedAt: new Date(Date.now() - 3600000).toISOString() }\n        ],\n        outstandingRiderBalances: [\n          { riderId: 'mock-rider-1', riderName: 'John Doe', balance: 35.00, limit: 50.00 },\n          { riderId: 'mock-rider-2', riderName: 'Tinashe M.', balance: 12.50, limit: 50.00 }\n        ]\n      }\n    };\n  }\n\n  try {\n    // Query live COD orders\n    const { data: orders, error: ordersError } = await supabase\n      .from('delivery_requests')\n      .select('id, reference_code, cod_amount_expected, cod_amount_collected, cod_discrepancy_flag, cod_collection_confirmed_at, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name)')\n      .eq('payment_method', 'cash')\n      .eq('status', 'completed');\n      \n    if (ordersError) throw ordersError;\n\n    // Query active outstanding balances per rider from ledger\n    const { data: ledger, error: ledgerError } = await supabase\n      .from('rider_cash_ledger')\n      .select('rider_id, amount, type, status, rider:profiles!rider_cash_ledger_rider_id_fkey(full_name)');\n      \n    if (ledgerError) throw ledgerError;\n\n    // Calculate aggregations\n    let totalCODOrders = orders?.length || 0;\n    let totalCashExpected = 0;\n    let totalCashCollected = 0;\n    const discrepancies: any[] = [];\n\n    orders?.forEach(o => {\n      const expected = Number(o.cod_amount_expected || 0);\n      const collected = Number(o.cod_amount_collected || 0);\n      totalCashExpected += expected;\n      totalCashCollected += collected;\n\n      if (o.cod_discrepancy_flag || Math.abs(expected - collected) > 0.01) {\n        discrepancies.push({ \n          orderId: o.id,\n          reference: o.reference_code,\n          riderName: (o.rider as any)?.full_name || 'Unknown Rider',\n          expected,\n          collected,\n          difference: Math.abs(expected - collected),\n          flaggedAt: o.cod_collection_confirmed_at\n        });\n      }\n    });\n\n    // Calculate rider ledger outstanding balances\n    const riderBalancesMap = new Map<string, { riderName: string; balance: number; }>();\n    ledger?.forEach(item => {\n      const riderId = item.rider_id;\n      const riderName = (item.rider as any)?.full_name || 'Rider';\n      const amount = Number(item.amount || 0);\n      \n      let balanceChange = 0;\n      if (item.type === 'collected') {\n        balanceChange = amount;\n      } else if (item.type === 'remitted') {\n        balanceChange = -amount;\n      }\n      \n      const current = riderBalancesMap.get(riderId) || { riderName, balance: 0 };\n      if (item.status === 'outstanding') {\n        current.balance += balanceChange;\n      }\n      riderBalancesMap.set(riderId, current);\n    });\n\n    const outstandingRiderBalances = Array.from(riderBalancesMap.entries()).map(([riderId, info]) => ({ \n      riderId,\n      riderName: info.riderName,\n      balance: info.balance,\n      limit: 50.00 // Standard limit\n    })).filter(b => b.balance > 0);\n\n    return {\n      success: true,\n      data: { \n        totalCODOrders,\n        totalCashExpected,\n        totalCashCollected,\n        discrepancies,\n        outstandingRiderBalances\n      }\n    };\n  } catch (err: any) {\n    console.error('Error fetching COD Reconciliation Report:', err);\n    return { success: false, error: err.message };\n  }\n}\n\nexport async function processOrderPayment(orderId: string, paymentMethod: string) {\n  const { data, error } = await supabase.rpc('process_order_payment', {\n    p_order_id: orderId,\n    p_payment_method: paymentMethod\n  });\n\n  return {\n    success: data?.success ?? false,\n    message: data?.message || 'Payment processing failed',\n    error\n  };\n}\n
+        body: `Your delivery request ${data.reference_code} has been successfully submitted!`,
+        data: { order_id: data.id, reference_code: data.reference_code }
+      });
+    } catch (err) {
+      console.error('Failed to create order notification', err);
+    }
+  }
+  
+  return { data, error };
+}
+
+export async function getOrders(userId: string, role: UserRole, filters?: { status?: string; limit?: number; offset?: number; }) {
+  let query = supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name, avatar_url), customer:profiles!delivery_requests_customer_id_fkey(full_name, avatar_url)`).order('created_at', { ascending: false });
+  if (role === 'customer') query = query.eq('customer_id', userId);
+  else if (role === 'rider') query = query.eq('assigned_rider_id', userId);
+  if (filters?.status) {
+    if (filters.status === 'active') query = query.not('status', 'in', '("completed","cancelled","disputed")');
+    else if (filters.status === 'completed') query = query.eq('status', 'completed');
+    else if (filters.status === 'disputed') query = query.eq('status', 'disputed');
+    else query = query.eq('status', filters.status);
+  }
+  if (filters?.limit) query = query.limit(filters.limit);
+  if (filters?.offset) query = query.range(filters.offset, filters.offset + (filters.limit || 20) - 1);
+  const { data, error } = await query;
+  return { data, error };
+}
+
+export async function getOrderById(orderId: string) {
+  const { data, error } = await supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(id, full_name, avatar_url, phone), customer:profiles!delivery_requests_customer_id_fkey(id, full_name, avatar_url, phone), proofs:delivery_proofs(proof_type, file_url, notes, created_at), status_log:delivery_status_log(from_status, to_status, changed_by, notes, created_at)`).eq('id', orderId).single();
+  return { data, error };
+}
+
+export async function updateOrderStatus(orderId: string, status: string, notes?: string) {
+  const { data, error } = await supabase.from('delivery_requests').update({ status }).eq('id', orderId).select().single();
+  if (!error && data) {
+    await supabase.from('delivery_status_log').insert({ request_id: orderId, to_status: status, notes });
+    try {
+      await createStatusNotifications(data);
+    } catch (err) {
+      console.error('Failed to create status notification', err);
+    }
+  }
+  return { data, error };
+}
+
+export async function completeCodDelivery(params: {
+  orderId: string;
+  riderId: string;
+  pin: string;
+  cashCollected: number;
+  hasDiscrepancy: boolean;
+}) {
+  const { data, error } = await supabase.rpc('complete_cod_delivery', {
+    p_order_id: params.orderId,
+    p_rider_id: params.riderId,
+    p_pin: params.pin,
+    p_cash_collected: params.cashCollected,
+    p_has_discrepancy: params.hasDiscrepancy,
+  });
+  
+  if (!error && data && data.success) {
+    try {
+      const { data: order } = await supabase.from('delivery_requests').select('*').eq('id', params.orderId).single();
+      if (order) {
+        await createStatusNotifications(order);
+      }
+    } catch (err) {
+      console.error('Failed to create COD status notifications:', err);
+    }
+  }
+  
+  return { data, error };
+}
+
+export async function verifyDeliveryPin(orderId: string, pin: string) {
+  const { data, error } = await supabase.rpc('verify_delivery_pin', {
+    p_order_id: orderId,
+    p_pin_code: pin
+  });
+
+  if (!error && data && data.success) {
+    try {
+      const { data: order } = await supabase.from('delivery_requests').select('*').eq('id', orderId).single();
+      if (order) {
+        await createStatusNotifications(order);
+      }
+    } catch (err) {
+      console.error('Failed to create status notifications for verify_delivery_pin:', err);
+    }
+  }
+
+  return { 
+    success: data?.success ?? false, 
+    message: data?.message || 'Verification failed', 
+    error 
+  };
+}
+
+// ─── Addresses ─────────────────────────────────────────────────────
+
+export async function getSavedAddresses(userId: string) {
+  const { data, error } = await supabase.from('saved_addresses').select('*').eq('user_id', userId).order('is_default', { ascending: false });
+  return { data, error };
+}
+
+export async function createAddress(address: {
+  user_id: string; label: string; address_line: string; area_suburb?: string; city?: string;
+  lat?: number; lng?: number; landmark?: string; gate_color?: string;
+  contact_name?: string; contact_phone?: string; is_default?: boolean;
+}) {
+  const { data, error } = await supabase.from('saved_addresses').insert(address).select().single();
+  return { data, error };
+}
+
+export async function deleteAddress(addressId: string) {
+  const { error } = await supabase.from('saved_addresses').delete().eq('id', addressId);
+  return { error };
+}
+
+export async function setDefaultAddress(userId: string, addressId: string) {
+  await supabase.from('saved_addresses').update({ is_default: false }).eq('user_id', userId);
+  const { error } = await supabase.from('saved_addresses').update({ is_default: true }).eq('id', addressId);
+  return { error };
+}
+
+// ─── Disputes ──────────────────────────────────────────────────────
+
+export async function createDispute(dispute: { request_id: string; initiated_by: string; dispute_type: string; description: string; against_user_id?: string; }) {
+  const { data, error } = await supabase.from('disputes').insert({ ...dispute, status: 'open' }).select().single();
+  return { data, error };
+}
+
+export async function getDisputes(userId: string) {
+  const { data, error } = await supabase.from('disputes').select(`*, request:delivery_requests(reference_code, service_type), initiator:profiles!disputes_initiated_by_fkey(full_name), against:profiles!disputes_against_user_id_fkey(full_name)`).or(`initiated_by.eq.${userId},against_user_id.eq.${userId}`).order('created_at', { ascending: false });
+  return { data, error };
+}
+
+// ─── Rider ─────────────────────────────────────────────────────────
+
+export async function getRiderProfile(userId: string) { 
+  const { data, error } = await supabase.from('rider_profiles').select('*').eq('user_id', userId).single();
+  return { data, error };
+}
+
+export async function updateRiderProfile(userId: string, updates: { vehicle_type?: VehicleType; vehicle_registration?: string; license_number?: string; operating_zone?: string; is_available?: boolean; }) {
+  const { data, error } = await supabase.from('rider_profiles').update(updates).eq('user_id', userId).select().single();
+  return { data, error };
+}
+
+export async function getRiderEarnings(riderId: string, period: 'today' | 'week' | 'month') {
+  const now = new Date();
+  let startDate: Date;
+  switch (period) {
+    case 'today': startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()); break;
+    case 'week': startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+    case 'month': startDate = new Date(now.getFullYear(), now.getMonth(), 1); break;
+  }
+  const { data, error } = await supabase.from('journal_entries').select('amount, entry_type, description, created_at').eq('account_id', riderId).gte('created_at', startDate.toISOString()).order('created_at', { ascending: false });
+  return { data, error };
+}
+
+// ─── Merchant ─────────────────────────────────────────────────────
+
+export async function getMerchantProfile(userId: string) {
+  const { data, error } = await supabase.from('merchant_profiles').select('*').eq('user_id', userId).single();
+  return { data, error };
+}
+
+export async function getMerchantOrders(merchantId: string, limit = 20) {
+  const { data, error } = await supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name, avatar_url), customer:profiles!delivery_requests_customer_id_fkey(full_name)`).eq('merchant_id', merchantId).order('created_at', { ascending: false }).limit(limit);
+  return { data, error };
+}
+
+// ─── Delivery Proofs ──────────────────────────────────────────────
+
+export async function uploadProof(proof: { request_id: string; uploaded_by: string; proof_type: 'pickup_photo' | 'delivery_photo' | 'receipt_photo' | 'signature' | 'condition_note'; file_url: string; notes?: string; }) { 
+  const { data, error } = await supabase.from('delivery_proofs').insert(proof).select().single();
+  return { data, error };
+}
+
+// ─── Trust / Ratings ───────────────────────────────────────────────
+
+export async function submitRating(rating: { request_id: string; from_user_id: string; to_user_id: string; rating: number; comment?: string; }) {
+  const { data, error } = await supabase.from('ratings').insert(rating).select().single();
+  return { data, error };
+}
+
+// ─── Rider Profile ────────────────────────────────────────────────
+
+export async function createRiderProfile(profile: { user_id: string; vehicle_type?: 'bicycle' | 'motorcycle' | 'car' | 'van'; vehicle_registration?: string; license_number?: string; operating_zone?: string; }) {
+  const { data, error } = await supabase.from('rider_profiles').insert(profile).select().single();
+  if (!error) { await supabase.from('user_roles').upsert({ user_id: profile.user_id, role: 'rider', is_active: true }, { onConflict: 'user_id,role' }); }
+  return { data, error };
+}
+
+export async function toggleRiderOnline(userId: string, isAvailable: boolean) {
+  const { data, error } = await supabase.from('rider_profiles').update({ is_available: isAvailable }).eq('user_id', userId).select().single();
+  return { data, error };
+}
+
+export async function completeSafetyQuiz(riderId: string) {
+  const { data, error } = await supabase.from('rider_profiles').update({ safety_quiz_completed: true }).eq('user_id', riderId).select().single();
+  return { data, error };
+}
+
+export async function createCounterOffer(orderId: string, riderId: string, amount: number) {
+  const { data, error } = await supabase.from('order_offers').insert({
+    order_id: orderId,
+    rider_id: riderId,
+    status: 'counter_offered',
+    counter_offer_amount: amount,
+    estimated_rider_payout: amount,
+    expires_at: new Date(Date.now() + 120 * 1000).toISOString() // 2 minutes expiry
+  }).select().single();
+
+  return { data, error };
+}
+
+export async function respondToCounterOffer(offerId: string, action: 'accept' | 'decline') {
+  if (action === 'decline') {
+    const { data, error } = await supabase
+      .from('order_offers')
+      .update({ status: 'declined', responded_at: new Date().toISOString() })
+      .eq('id', offerId)
+      .select()
+      .single();
+    return { data, error };
+  }
+
+  // Accept flow
+  const { data: offer, error: offerError } = await supabase
+    .from('order_offers')
+    .update({ status: 'accepted', responded_at: new Date().toISOString() })
+    .eq('id', offerId)
+    .select('*')
+    .single();
+
+  if (offerError || !offer) return { data: null, error: offerError };
+
+  const { data: order, error: orderError } = await supabase
+    .from('delivery_requests')
+    .select('*')
+    .eq('id', offer.order_id)
+    .single();
+
+  if (orderError || !order) return { data: null, error: orderError };
+
+  const counterAmount = Number(offer.counter_offer_amount || offer.estimated_rider_payout || 0);
+  const serviceFee = Number(order.service_fee || 0);
+  const protectionFee = Number(order.protection_fee || 0);
+  const purchaseAmount = Number(order.purchase_amount || 0);
+  const newTotal = counterAmount + serviceFee + protectionFee + purchaseAmount;
+
+  const { data: updatedOrder, error: updateError } = await supabase
+    .from('delivery_requests')
+    .update({
+      assigned_rider_id: offer.rider_id,
+      status: 'rider_assigned',
+      rider_payout: counterAmount,
+      delivery_fee: counterAmount,
+      total_amount: newTotal,
+      accepted_at: new Date().toISOString()
+    })
+    .eq('id', offer.order_id)
+    .select()
+    .single();
+
+  if (updateError) return { data: null, error: updateError };
+
+  await supabase
+    .from('order_offers')
+    .update({ status: 'cancelled' })
+    .eq('order_id', offer.order_id)
+    .neq('id', offerId)
+    .in('status', ['pending', 'counter_offered']);
+
+  try {
+    await createStatusNotifications(updatedOrder);
+  } catch (err) {
+    console.error('Failed to create status notifications for counter offer accept:', err);
+  }
+
+  return { data: updatedOrder, error: null };
+}
+
+
+// ─── Merchant Profile ─────────────────────────────────────────────
+
+export async function createMerchantProfile(profile: { user_id: string; business_name: string; business_type?: 'boutique' | 'pharmacy' | 'grocery' | 'restaurant' | 'electronics' | 'general'; whatsapp_number?: string; instagram_handle?: string; }) {
+  const { data, error } = await supabase.from('merchant_profiles').insert(profile).select().single();
+  return { data, error };
+}
+
+// ─── Notifications ────────────────────────────────────────────────
+
+export async function getNotifications(userId: string, limit = 20) {
+  const { data, error } = await supabase.from('notifications').select('*').eq('recipient_id', userId).order('created_at', { ascending: false }).limit(limit);
+  return { data, error };
+}
+
+export async function createNotification(notification: { 
+  recipient_id: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  channel?: string;
+}) {
+  const { data, error } = await supabase.from('notifications').insert({
+    ...notification,
+    read: false,
+    created_at: new Date().toISOString()
+  }).select().single();
+  return { data, error };
+}
+
+export async function createStatusNotifications(order: any) {
+  const customerId = order.customer_id;
+  const riderId = order.assigned_rider_id;
+  const ref = order.reference_code;
+  const status = order.status;
+
+  if (customerId) {
+    let title = '';
+    let body = '';
+    let type = 'order';
+
+    // Fetch rider name if riderId is present
+    let riderName = 'Your rider';
+    if (riderId) {
+      const { data: riderProfile } = await supabase.from('profiles').select('full_name').eq('id', riderId).single();
+      if (riderProfile?.full_name) {
+        riderName = riderProfile.full_name;
+      }
+    }
+
+    if (status === 'rider_assigned') {
+      title = 'Rider Assigned';
+      body = `${riderName} accepted your delivery ${ref}`;
+    } else if (status === 'rider_en_route_pickup') {
+      title = 'Rider En Route';
+      body = `${riderName} is heading to pickup location for ${ref}`;
+    } else if (status === 'at_pickup') {
+      title = 'Rider at Pickup';
+      body = `${riderName} has arrived at the pickup location for ${ref}`;
+    } else if (status === 'proof_uploaded') {
+      title = 'Pickup Confirmed';
+      body = `Pickup confirmed for ${ref}. Photo proof uploaded.`;
+    } else if (status === 'en_route_delivery') {
+      title = 'En Route to Delivery';
+      body = `${riderName} is delivering your package for ${ref}`;
+    } else if (status === 'at_delivery') {
+      title = 'Rider at Delivery';
+      body = `${riderName} has arrived at the delivery destination. Please provide your PIN to complete ${ref}`;
+    } else if (status === 'completed') {
+      title = 'Delivery Completed 📦';
+      body = `Your order ${ref} has been successfully completed!`;
+    } else if (status === 'disputed') {
+      title = 'Order Disputed';
+      body = `Your order ${ref} has been flagged with a dispute.`;
+      type = 'dispute';
+    } else if (status === 'cancelled') {
+      title = 'Order Cancelled';
+      body = `Your order ${ref} has been cancelled.`;
+    }
+
+    if (title && body) {
+      await createNotification({
+        recipient_id: customerId,
+        type,
+        title,
+        body,
+        data: { order_id: order.id, reference_code: ref }
+      });
+    }
+  }
+
+  // Send payout notification to rider when order is completed
+  if (riderId && status === 'completed') {
+    await createNotification({
+      recipient_id: riderId,
+      type: 'payout',
+      title: 'Payment Received 💰',
+      body: `Payment for delivery ${ref} has been released to your wallet.`,
+      data: { order_id: order.id, reference_code: ref }
+    });
+  }
+}
+
+export async function markNotificationRead(notificationId: string) {
+  const { error } = await supabase.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('id', notificationId);
+  return { error };
+}
+
+export async function markAllNotificationsRead(userId: string) {
+  const { error } = await supabase.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('recipient_id', userId).eq('read', false);
+  return { error };
+}
+
+// ─── Order Offers ─────────────────────────────────────────────────
+
+export async function acceptOrderOffer(offerId: string, riderId: string) {
+  const { data: offer, error: offerError } = await supabase.from('order_offers').update({ status: 'accepted', responded_at: new Date().toISOString() }).eq('id', offerId).eq('rider_id', riderId).select('order_id').single();
+  if (offerError || !offer) return { data: null, error: offerError };
+  const { data, error } = await supabase.from('delivery_requests').update({ assigned_rider_id: riderId, status: 'rider_assigned' }).eq('id', offer.order_id).select().single();
+  if (!error) { await supabase.from('order_offers').update({ status: 'cancelled' }).eq('order_id', offer.order_id).neq('id', offerId).eq('status', 'pending'); }
+  return { data, error };
+}
+
+export async function declineOrderOffer(offerId: string, riderId: string, reason?: 'too_far' | 'fee_too_low' | 'busy' | 'vehicle_mismatch' | 'zone_mismatch' | 'personal') {
+  const { data, error } = await supabase.from('order_offers').update({ status: 'declined', responded_at: new Date().toISOString(), decline_reason: reason || 'personal' }).eq('id', offerId).eq('rider_id', riderId).select().single();
+  return { data, error };
+}
+
+// ─── Quotes ───────────────────────────────────────────────────────
+
+export async function createQuote(quote: {
+  customer_id: string; order_id?: string; service_type: ServiceType; fulfillment_mode?: FulfillmentMode;
+  protection_level?: ProtectionLevel; distance_km: number; estimated_duration_minutes: number;
+  pickup_zone?: string; dropoff_zone?: string; delivery_fee: number; service_fee: number;
+  protection_fee: number; purchase_budget?: number; total_amount: number;
+}) {
+  const { data, error } = await supabase.from('quotes').insert({ ...quote, status: 'presented', pricing_version: 'v1' }).select().single();
+  return { data, error };
+}
+
+export async function acceptQuote(quoteId: string) {
+  const { data, error } = await supabase.from('quotes').update({ status: 'accepted', accepted_at: new Date().toISOString() }).eq('id', quoteId).select().single();
+  return { data, error };
+}
+
+// ─── Delivery Links ───────────────────────────────────────────────
+
+export async function createDeliveryLink(link: {
+  merchant_id: string; slug: string; customer_name?: string; customer_phone?: string;
+  items?: Record<string, unknown>[]; pickup_address: string; pickup_lat?: number; pickup_lng?: number;
+  delivery_fee_preset?: number; protection_level?: ProtectionLevel; fulfillment_mode?: FulfillmentMode;
+}) {
+  const { data, error } = await supabase.from('delivery_links').insert({ ...link, status: 'active' }).select().single();
+  return { data, error };
+}
+
+export async function cancelDeliveryLink(linkId: string) {
+  const { error } = await supabase.from('delivery_links').update({ status: 'cancelled' }).eq('id', linkId);
+  return { error };
+}
+
+// ─── Rider Location ───────────────────────────────────────────────
+
+export async function insertLocationCheckpoint(checkpoint: {
+  rider_id: string; order_id?: string; event_type: string;
+  lat: number; lng: number; heading?: number; speed_kmh?: number; accuracy_meters?: number;
+}) {
+  const { data, error } = await supabase.from('rider_location_checkpoints').insert(checkpoint).select().single();
+  return { data, error };
+}
+
+// ─── Dashboard Stats Aggregations ────────────────────────────────────
+
+export async function getRiderDashboardStats(riderId: string) {
+  const now = new Date();
+  
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+  const startTodayStr = startToday.toISOString();
+
+  const startWeek = new Date(now);
+  startWeek.setDate(now.getDate() - 7);
+  startWeek.setHours(0, 0, 0, 0);
+  const startWeekStr = startWeek.toISOString();
+
+  const startMonth = new Date(now);
+  startMonth.setDate(now.getDate() - 30);
+  startMonth.setHours(0, 0, 0, 0);
+  const startMonthStr = startMonth.toISOString();
+
+  const [profileRes, userProfileRes, todayEarningsRes, weekEarningsRes, monthEarningsRes, completedRes, subscriptionRes] = await Promise.all([
+    supabase.from('rider_profiles').select('*').eq('user_id', riderId).single(),
+    supabase.from('profiles').select('trust_score').eq('id', riderId).single(),
+    supabase.from('rider_earnings_log').select('amount').eq('rider_id', riderId).eq('type', 'delivery').gte('created_at', startTodayStr),
+    supabase.from('rider_earnings_log').select('amount').eq('rider_id', riderId).eq('type', 'delivery').gte('created_at', startWeekStr),
+    supabase.from('rider_earnings_log').select('amount').eq('rider_id', riderId).eq('type', 'delivery').gte('created_at', startMonthStr),
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('assigned_rider_id', riderId).eq('status', 'completed').gte('completed_at', startTodayStr),
+    supabase.from('rider_subscriptions').select('*').eq('rider_id', riderId).single()
+  ]);
+
+  const profile = profileRes.data;
+  const completedCount = completedRes.count || 0;
+  const subscription = subscriptionRes.data;
+  const trustScore = userProfileRes.data?.trust_score ?? 50;
+
+  const todayEarnings = (todayEarningsRes.data || []).reduce((sum, log) => sum + Number(log.amount), 0);
+  const weekEarnings = (weekEarningsRes.data || []).reduce((sum, log) => sum + Number(log.amount), 0);
+  const monthEarnings = (monthEarningsRes.data || []).reduce((sum, log) => sum + Number(log.amount), 0);
+
+  return { 
+    isOnline: profile?.is_available ?? false,
+    safetyQuizCompleted: profile?.safety_quiz_completed ?? false,
+    todayEarnings,
+    weekEarnings,
+    monthEarnings,
+    completedToday: completedCount,
+    rating: profile?.avg_rating ? Number(profile.avg_rating) : 0.0,
+    trustScore,
+    tier: profile?.tier ?? 'starter',
+    subscription: subscription ? {
+      status: subscription.status,
+      earningCap: Number(subscription.earning_cap),
+      currentEarnings: Number(subscription.current_earnings),
+      emergencyCreditUsed: Number(subscription.emergency_credit_used),
+      expiresAt: subscription.subscription_expires_at
+    } : null
+  };
+}
+
+export async function getMerchantDashboardStats(merchantId: string) {
+  const startToday = new Date();
+  startToday.setHours(0, 0, 0, 0);
+  const startTodayStr = startToday.toISOString();
+
+  const [profileRes, activeOrdersRes, todayOrdersRes, activeLinksRes] = await Promise.all([
+    supabase.from('merchant_profiles').select('*').eq('user_id', merchantId).single(),
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('merchant_id', merchantId).not('status', 'in', '("completed","cancelled","disputed")'),
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).eq('merchant_id', merchantId).gte('created_at', startTodayStr),
+    supabase.from('delivery_links').select('id', { count: 'exact' }).eq('merchant_id', merchantId).eq('status', 'active')
+  ]);
+
+  const profile = profileRes.data;
+
+  return {
+    businessName: profile?.business_name ?? '',
+    rating: profile?.avg_delivery_rating ? Number(profile.avg_delivery_rating) : 0.0,
+    totalDeliveries: profile?.total_deliveries ?? 0,
+    activeOrdersCount: activeOrdersRes.count || 0,
+    todayOrdersCount: todayOrdersRes.count || 0,
+    activeLinksCount: activeLinksRes.count || 0,
+  };
+}
+
+export async function getOpsDashboardStats() {
+  const [activeOrdersRes, onlineRidersRes, openDisputesRes, pendingProofsRes] = await Promise.all([
+    supabase.from('delivery_requests').select('id', { count: 'exact' }).not('status', 'in', '("completed","cancelled","disputed")'),
+    supabase.from('rider_profiles').select('id', { count: 'exact' }).eq('is_available', true),
+    supabase.from('disputes').select('id', { count: 'exact' }).eq('status', 'open'),
+    supabase.from('rider_payment_proofs').select('id', { count: 'exact' }).eq('status', 'pending')
+  ]);
+
+  return {
+    activeOrdersCount: activeOrdersRes.count || 0,
+    onlineRidersCount: onlineRidersRes.count || 0,
+    openDisputesCount: openDisputesRes.count || 0,
+    pendingVerificationsCount: pendingProofsRes.count || 0
+  };
+}
+
+export async function getCODReconciliationReport(dateStr?: string) {
+  const devMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+  const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true';
+  
+  if (!useLiveDb || devMode) {
+    // Offline simulation / Developer mock data
+    return {
+      success: true,
+      data: {
+        totalCODOrders: 8,
+        totalCashExpected: 180.50,
+        totalCashCollected: 178.50,
+        discrepancies: [
+          { orderId: 'mock-cod-1', reference: 'BKR-COD88', riderName: 'John Doe', expected: 20.00, collected: 18.00, difference: 2.00, flaggedAt: new Date(Date.now() - 3600000).toISOString() }
+        ],
+        outstandingRiderBalances: [
+          { riderId: 'mock-rider-1', riderName: 'John Doe', balance: 35.00, limit: 50.00 },
+          { riderId: 'mock-rider-2', riderName: 'Tinashe M.', balance: 12.50, limit: 50.00 }
+        ]
+      }
+    };
+  }
+
+  try {
+    // Query live COD orders
+    const { data: orders, error: ordersError } = await supabase
+      .from('delivery_requests')
+      .select('id, reference_code, cod_amount_expected, cod_amount_collected, cod_discrepancy_flag, cod_collection_confirmed_at, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name)')
+      .eq('payment_method', 'cash')
+      .eq('status', 'completed');
+      
+    if (ordersError) throw ordersError;
+
+    // Query active outstanding balances per rider from ledger
+    const { data: ledger, error: ledgerError } = await supabase
+      .from('rider_cash_ledger')
+      .select('rider_id, amount, type, status, rider:profiles!rider_cash_ledger_rider_id_fkey(full_name)');
+      
+    if (ledgerError) throw ledgerError;
+
+    // Calculate aggregations
+    let totalCODOrders = orders?.length || 0;
+    let totalCashExpected = 0;
+    let totalCashCollected = 0;
+    const discrepancies: any[] = [];
+
+    orders?.forEach(o => {
+      const expected = Number(o.cod_amount_expected || 0);
+      const collected = Number(o.cod_amount_collected || 0);
+      totalCashExpected += expected;
+      totalCashCollected += collected;
+
+      if (o.cod_discrepancy_flag || Math.abs(expected - collected) > 0.01) {
+        discrepancies.push({ 
+          orderId: o.id,
+          reference: o.reference_code,
+          riderName: (o.rider as any)?.full_name || 'Unknown Rider',
+          expected,
+          collected,
+          difference: Math.abs(expected - collected),
+          flaggedAt: o.cod_collection_confirmed_at
+        });
+      }
+    });
+
+    // Calculate rider ledger outstanding balances
+    const riderBalancesMap = new Map<string, { riderName: string; balance: number; }>();
+    ledger?.forEach(item => {
+      const riderId = item.rider_id;
+      const riderName = (item.rider as any)?.full_name || 'Rider';
+      const amount = Number(item.amount || 0);
+      
+      let balanceChange = 0;
+      if (item.type === 'collected') {
+        balanceChange = amount;
+      } else if (item.type === 'remitted') {
+        balanceChange = -amount;
+      }
+      
+      const current = riderBalancesMap.get(riderId) || { riderName, balance: 0 };
+      if (item.status === 'outstanding') {
+        current.balance += balanceChange;
+      }
+      riderBalancesMap.set(riderId, current);
+    });
+
+    const outstandingRiderBalances = Array.from(riderBalancesMap.entries()).map(([riderId, info]) => ({ 
+      riderId,
+      riderName: info.riderName,
+      balance: info.balance,
+      limit: 50.00 // Standard limit
+    })).filter(b => b.balance > 0);
+
+    return {
+      success: true,
+      data: { 
+        totalCODOrders,
+        totalCashExpected,
+        totalCashCollected,
+        discrepancies,
+        outstandingRiderBalances
+      }
+    };
+  } catch (err: any) {
+    console.error('Error fetching COD Reconciliation Report:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function processOrderPayment(orderId: string, paymentMethod: string) {
+  const { data, error } = await supabase.rpc('process_order_payment', {
+    p_order_id: orderId,
+    p_payment_method: paymentMethod
+  });
+
+  return {
+    success: data?.success ?? false,
+    message: data?.message || 'Payment processing failed',
+    error
+  };
+}
