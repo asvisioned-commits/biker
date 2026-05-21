@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import styles from './orders.module.css';
 import type { UserRole } from '@/types';
+import { useProfile } from '@/context/ProfileContext';
+import { OrderService, BikerOrder } from '@/lib/order-service';
 
 const MOCK_ORDERS = [
   {
@@ -113,21 +115,63 @@ const STATUS_LABELS: Record<string, { label: string; variant: string }> = {
 };
 
 export default function OrdersPage() {
+  const { session, loading: sessionLoading } = useProfile();
+  const [orders, setOrders] = useState<BikerOrder[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'disputed'>('all');
-  const [role, setRole] = useState<UserRole>('customer');
+
+  const role = (session?.role as UserRole) || 'customer';
 
   useEffect(() => {
-    const stored = localStorage.getItem('biker_mock_session');
-    if (stored) setRole(JSON.parse(stored).role || 'customer');
-  }, []);
+    if (sessionLoading) return;
 
-  const filteredOrders = MOCK_ORDERS.filter((order) => {
+    const fetchOrders = async () => {
+      try {
+        const userId = session?.user_id || 'mock-customer-id';
+        const list = await OrderService.getOrders(userId, role);
+        setOrders(list);
+      } catch (err) {
+        console.error('Failed to fetch order history:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 8000);
+    return () => clearInterval(interval);
+  }, [session?.user_id, role, sessionLoading]);
+
+  const formatOrderTime = (timeStr: string) => {
+    if (!timeStr) return '';
+    const date = new Date(timeStr);
+    if (isNaN(date.getTime())) return timeStr;
+    
+    const diffMs = Date.now() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} hr${diffHr > 1 ? 's' : ''} ago`;
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const filteredOrders = orders.filter((order) => {
     if (filter === 'all') return true;
     if (filter === 'active') return !['completed', 'cancelled', 'disputed'].includes(order.status);
     if (filter === 'completed') return order.status === 'completed';
     if (filter === 'disputed') return order.status === 'disputed';
     return true;
   });
+
+  if (loading || sessionLoading) {
+    return (
+      <div className={styles.page} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
+        <span className="spinner" style={{ marginBottom: '16px' }} />
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Loading order history...</p>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>
@@ -171,6 +215,7 @@ export default function OrdersPage() {
         ) : (
           filteredOrders.map((order) => {
             const statusInfo = STATUS_LABELS[order.status] || STATUS_LABELS.draft;
+            const totalAmount = order.total_amount || order.delivery_fee || 0;
             return (
               <Link
                 key={order.id}
@@ -184,12 +229,12 @@ export default function OrdersPage() {
                     </span>
                     <div>
                       <div className={styles.orderRef}>{order.reference_code}</div>
-                      <div className={styles.orderType}>{SERVICE_LABELS[order.service_type]}</div>
+                      <div className={styles.orderType}>{SERVICE_LABELS[order.service_type] || order.service_type}</div>
                     </div>
                   </div>
                   <div className={styles.orderRight}>
                     <span className={`badge badge--${statusInfo.variant}`}>{statusInfo.label}</span>
-                    {order.protection_level !== 'none' && (
+                    {order.protection_level && order.protection_level !== 'none' && (
                       <span className="trust-badge trust-badge--protected" style={{ fontSize: '0.7rem' }}>
                         🛡️ {order.protection_level === 'premium_secure' ? 'Protect+' : 'Protected'}
                       </span>
@@ -210,14 +255,23 @@ export default function OrdersPage() {
                 </div>
 
                 <div className={styles.orderFooter}>
-                  <div className={styles.riderInfo}>
-                    <span className={styles.riderAvatar}>{order.rider_name[0]}</span>
-                    <span>{order.rider_name}</span>
-                    <span className={styles.riderRating}>⭐ {order.rider_rating}</span>
-                  </div>
+                  {order.rider ? (
+                    <div className={styles.riderInfo}>
+                      <span className={styles.riderAvatar}>{order.rider.full_name ? order.rider.full_name[0] : '🚴'}</span>
+                      <span>{order.rider.full_name || 'Rider'}</span>
+                      <span className={styles.riderRating}>⭐ 4.9</span>
+                    </div>
+                  ) : (
+                    <div className={styles.riderInfo}>
+                      <span className={styles.riderAvatar}>⏳</span>
+                      <span style={{ opacity: 0.6, fontSize: '0.85rem' }}>
+                        {order.status === 'completed' || order.status === 'cancelled' ? 'No rider' : 'Finding rider...'}
+                      </span>
+                    </div>
+                  )}
                   <div className={styles.orderFooterRight}>
-                    <span className={styles.orderTime}>{order.created_at}</span>
-                    <span className={styles.orderAmount}>${order.total.toFixed(2)}</span>
+                    <span className={styles.orderTime}>{formatOrderTime(order.created_at)}</span>
+                    <span className={styles.orderAmount}>${totalAmount.toFixed(2)}</span>
                   </div>
                 </div>
               </Link>

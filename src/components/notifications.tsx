@@ -56,7 +56,7 @@ function timeAgo(dateStr: string): string {
 
 export default function NotificationsDropdown() {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -65,14 +65,23 @@ export default function NotificationsDropdown() {
   useEffect(() => {
     async function load() {
       const session = await getSession();
-      if (!session) return;
+      if (!session) {
+        setNotifications([]);
+        return;
+      }
       setUserId(session.user_id);
 
-      if (IS_DEV) return;
+      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true';
+      if (!useLiveDb) {
+        setNotifications(MOCK_NOTIFICATIONS);
+        return;
+      }
 
       const { data } = await fetchNotifications(session.user_id, 20);
-      if (data && data.length > 0) {
+      if (data) {
         setNotifications(data as NotificationItem[]);
+      } else {
+        setNotifications([]);
       }
     }
     load();

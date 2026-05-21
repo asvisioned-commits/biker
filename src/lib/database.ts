@@ -71,6 +71,21 @@ export async function createOrder(order: {
     ...order, 
     reference_code: reference 
   }).select().single();
+  
+  if (!error && data) {
+    try {
+      await createNotification({
+        recipient_id: data.customer_id,
+        type: 'order',
+        title: 'Order Placed 📦',
+        body: `Your delivery request ${data.reference_code} has been successfully submitted!`,
+        data: { order_id: data.id, reference_code: data.reference_code }
+      });
+    } catch (err) {
+      console.error('Failed to create order notification', err);
+    }
+  }
+  
   return { data, error };
 }
 
@@ -97,7 +112,14 @@ export async function getOrderById(orderId: string) {
 
 export async function updateOrderStatus(orderId: string, status: string, notes?: string) {
   const { data, error } = await supabase.from('delivery_requests').update({ status }).eq('id', orderId).select().single();
-  if (!error) { await supabase.from('delivery_status_log').insert({ request_id: orderId, to_status: status, notes }); }
+  if (!error && data) {
+    await supabase.from('delivery_status_log').insert({ request_id: orderId, to_status: status, notes });
+    try {
+      await createStatusNotifications(data);
+    } catch (err) {
+      console.error('Failed to create status notification', err);
+    }
+  }
   return { data, error };
 }
 
@@ -115,6 +137,18 @@ export async function completeCodDelivery(params: {
     p_cash_collected: params.cashCollected,
     p_has_discrepancy: params.hasDiscrepancy,
   });
+  
+  if (!error && data && data.success) {
+    try {
+      const { data: order } = await supabase.from('delivery_requests').select('*').eq('id', params.orderId).single();
+      if (order) {
+        await createStatusNotifications(order);
+      }
+    } catch (err) {
+      console.error('Failed to create COD status notifications:', err);
+    }
+  }
+  
   return { data, error };
 }
 
@@ -233,6 +267,95 @@ export async function createMerchantProfile(profile: { user_id: string; business
 export async function getNotifications(userId: string, limit = 20) {
   const { data, error } = await supabase.from('notifications').select('*').eq('recipient_id', userId).order('created_at', { ascending: false }).limit(limit);
   return { data, error };
+}
+
+export async function createNotification(notification: {
+  recipient_id: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  channel?: string;
+}) {
+  const { data, error } = await supabase.from('notifications').insert({
+    ...notification,
+    read: false,
+    created_at: new Date().toISOString()
+  }).select().single();
+  return { data, error };
+}
+
+export async function createStatusNotifications(order: any) {
+  const customerId = order.customer_id;
+  const riderId = order.assigned_rider_id;
+  const ref = order.reference_code;
+  const status = order.status;
+
+  if (customerId) {
+    let title = '';
+    let body = '';
+    let type = 'order';
+
+    // Fetch rider name if riderId is present
+    let riderName = 'Your rider';
+    if (riderId) {
+      const { data: riderProfile } = await supabase.from('profiles').select('full_name').eq('id', riderId).single();
+      if (riderProfile?.full_name) {
+        riderName = riderProfile.full_name;
+      }
+    }
+
+    if (status === 'rider_assigned') {
+      title = 'Rider Assigned';
+      body = `${riderName} accepted your delivery ${ref}`;
+    } else if (status === 'rider_en_route_pickup') {
+      title = 'Rider En Route';
+      body = `${riderName} is heading to pickup location for ${ref}`;
+    } else if (status === 'at_pickup') {
+      title = 'Rider at Pickup';
+      body = `${riderName} has arrived at the pickup location for ${ref}`;
+    } else if (status === 'proof_uploaded') {
+      title = 'Pickup Confirmed';
+      body = `Pickup confirmed for ${ref}. Photo proof uploaded.`;
+    } else if (status === 'en_route_delivery') {
+      title = 'En Route to Delivery';
+      body = `${riderName} is delivering your package for ${ref}`;
+    } else if (status === 'at_delivery') {
+      title = 'Rider at Delivery';
+      body = `${riderName} has arrived at the delivery destination. Please provide your PIN to complete ${ref}`;
+    } else if (status === 'completed') {
+      title = 'Delivery Completed 📦';
+      body = `Your order ${ref} has been successfully completed!`;
+    } else if (status === 'disputed') {
+      title = 'Order Disputed';
+      body = `Your order ${ref} has been flagged with a dispute.`;
+      type = 'dispute';
+    } else if (status === 'cancelled') {
+      title = 'Order Cancelled';
+      body = `Your order ${ref} has been cancelled.`;
+    }
+
+    if (title && body) {
+      await createNotification({
+        recipient_id: customerId,
+        type,
+        title,
+        body,
+        data: { order_id: order.id, reference_code: ref }
+      });
+    }
+  }
+
+  // Send payout notification to rider when order is completed
+  if (riderId && status === 'completed') {
+    await createNotification({
+      recipient_id: riderId,
+      type: 'payout',
+      title: 'Payment Received 💰',
+      body: `Payment for delivery ${ref} has been released to your wallet.`,
+      data: { order_id: order.id, reference_code: ref }
+    });
+  }
 }
 
 export async function markNotificationRead(notificationId: string) {

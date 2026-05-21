@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { OrderService, BikerOrder } from '@/lib/order-service';
+import { useOrderTracking } from '@/lib/realtime';
 import styles from './tracking.module.css';
 
 function TrackingContent() {
@@ -21,6 +22,12 @@ function TrackingContent() {
 
   const orderId = searchParams.get('id');
 
+  // Determine if we are in simulation mode
+  const isSimulationMode = !orderId || orderId.startsWith('mock-') || (liveOrder && liveOrder.id.startsWith('mock-')) || !OrderService.isOnline;
+
+  // Fetch real-time status updates and coordinates if we are in database-backed mode
+  const { status: realtimeStatus, riderLocation } = useOrderTracking(isSimulationMode ? null : orderId);
+
   useEffect(() => {
     if (!orderId) {
       setLoading(false);
@@ -32,14 +39,16 @@ function TrackingContent() {
         const o = await OrderService.getOrderById(orderId);
         if (o) {
           setLiveOrder(o);
-          if (o.status === 'completed') {
-            setProgress(100);
-            setPinVerified(true);
-            setCurrentStatus(7);
-          } else if (o.status === 'en_route_delivery') {
-            setProgress(prev => Math.max(prev, 50));
-          } else if (o.status === 'arrived_pickup') {
-            setProgress(prev => Math.max(prev, 30));
+          if (isSimulationMode) {
+            if (o.status === 'completed') {
+              setProgress(100);
+              setPinVerified(true);
+              setCurrentStatus(7);
+            } else if (o.status === 'en_route_delivery') {
+              setProgress(prev => Math.max(prev, 50));
+            } else if (o.status === 'arrived_pickup') {
+              setProgress(prev => Math.max(prev, 30));
+            }
           }
         }
       } catch (err) {
@@ -52,7 +61,53 @@ function TrackingContent() {
     fetchLiveOrder();
     const interval = setInterval(fetchLiveOrder, 10000);
     return () => clearInterval(interval);
-  }, [orderId]);
+  }, [orderId, isSimulationMode]);
+
+  // Sync real-time updates to liveOrder state
+  useEffect(() => {
+    if (realtimeStatus) {
+      setLiveOrder(prev => prev ? { ...prev, status: realtimeStatus } : null);
+    }
+  }, [realtimeStatus]);
+
+  // Dynamically map order status to timeline progress and milestones in database-backed mode
+  const getStatusMilestones = (status: string) => {
+    switch (status) {
+      case 'draft':
+      case 'payment_pending':
+        return { progress: 0, currentStatus: 0 };
+      case 'payment_held':
+        return { progress: 15, currentStatus: 1 };
+      case 'rider_assigned':
+      case 'rider_en_route_pickup':
+        return { progress: 25, currentStatus: 3 };
+      case 'at_pickup':
+      case 'proof_uploaded':
+      case 'arrived_pickup':
+        return { progress: 45, currentStatus: 4 };
+      case 'en_route_delivery':
+        return { progress: 70, currentStatus: 6 };
+      case 'at_delivery':
+        return { progress: 90, currentStatus: 6 };
+      case 'completed':
+        return { progress: 100, currentStatus: 7 };
+      default:
+        return { progress: 0, currentStatus: 0 };
+    }
+  };
+
+  useEffect(() => {
+    if (isSimulationMode) return;
+    if (!liveOrder) return;
+
+    const { progress: nextProgress, currentStatus: nextStatus } = getStatusMilestones(liveOrder.status);
+    setProgress(nextProgress);
+    setCurrentStatus(nextStatus);
+
+    if (liveOrder.status === 'completed') {
+      setPinVerified(true);
+    }
+  }, [liveOrder?.status, isSimulationMode]);
 
   const mapRef = useRef<any>(null);
   const riderMarkerRef = useRef<any>(null);
@@ -183,8 +238,9 @@ function TrackingContent() {
     };
   }, [leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
-  // Simulate progress interval (0 to 100 in 25 seconds)
+  // Simulate progress interval (0 to 100 in 25 seconds) - simulation mode only
   useEffect(() => {
+    if (!isSimulationMode) return;
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
@@ -196,71 +252,97 @@ function TrackingContent() {
     }, 250); // 100 steps * 250ms = 25 seconds
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isSimulationMode]);
 
-  // Update Rider position and status based on progress
+  // Update Rider position on map (Live or simulation)
   useEffect(() => {
     if (!leafletLoaded || !riderMarkerRef.current || !mapRef.current) return;
 
-    const interpolate = (p1: [number, number], p2: [number, number], t: number): [number, number] => {
-      return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t];
-    };
-
     let lat: number;
     let lng: number;
-    let status = 3;
 
-    if (progress < 25) {
-      // Phase 1: Rider moving to pickup
-      const startOffset: [number, number] = [pickupLat + 0.005, pickupLng - 0.005];
-      const t = progress / 25;
-      [lat, lng] = interpolate(startOffset, [pickupLat, pickupLng], t);
-      status = 3;
-    } else if (progress < 45) {
-      // Phase 2: Rider at pickup
-      lat = pickupLat;
-      lng = pickupLng;
-      status = 4;
-    } else if (progress < 90) {
-      // Phase 3: Rider en route to delivery
-      const t = (progress - 45) / 45;
-      [lat, lng] = interpolate([pickupLat, pickupLng], [dropoffLat, dropoffLng], t);
-      status = 6;
+    if (!isSimulationMode && riderLocation) {
+      lat = riderLocation.lat;
+      lng = riderLocation.lng;
     } else {
-      // Phase 4: Delivered (arrived)
-      lat = dropoffLat;
-      lng = dropoffLng;
-      status = 7;
+      // Fallback coordinates based on status/progress
+      const interpolate = (p1: [number, number], p2: [number, number], t: number): [number, number] => {
+        return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t];
+      };
+
+      if (progress < 25) {
+        const startOffset: [number, number] = [pickupLat + 0.005, pickupLng - 0.005];
+        const t = progress / 25;
+        [lat, lng] = interpolate(startOffset, [pickupLat, pickupLng], t);
+      } else if (progress < 45) {
+        lat = pickupLat;
+        lng = pickupLng;
+      } else if (progress < 90) {
+        if (!isSimulationMode) {
+          // Put rider halfway between pickup and dropoff as a fallback in live mode
+          lat = (pickupLat + dropoffLat) / 2;
+          lng = (pickupLng + dropoffLng) / 2;
+        } else {
+          const t = (progress - 45) / 45;
+          [lat, lng] = interpolate([pickupLat, pickupLng], [dropoffLat, dropoffLng], t);
+        }
+      } else {
+        lat = dropoffLat;
+        lng = dropoffLng;
+      }
     }
 
     riderMarkerRef.current.setLatLng([lat, lng]);
-    if (progress % 4 === 0) {
+    // Pan to rider location (every 4th step or always for real-time update)
+    if (isSimulationMode) {
+      if (progress % 4 === 0) {
+        mapRef.current.panTo([lat, lng]);
+      }
+    } else {
       mapRef.current.panTo([lat, lng]);
     }
-    
+  }, [leafletLoaded, isSimulationMode, riderLocation, progress, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+
+  // Simulation-only state driver (updates currentStatus and database status)
+  useEffect(() => {
+    if (!isSimulationMode) return;
+
+    let status = 3;
+    if (progress < 25) {
+      status = 3;
+    } else if (progress < 45) {
+      status = 4;
+    } else if (progress < 90) {
+      status = 6;
+    } else {
+      status = 7;
+    }
+
     if (status !== currentStatus) {
       setCurrentStatus(status);
-      
+
       const dbStatusMap: Record<number, string> = {
         3: 'en_route_pickup',
         4: 'arrived_pickup',
         6: 'en_route_delivery',
         7: 'completed',
       };
-      
+
       const targetDbStatus = dbStatusMap[status];
-      if (orderId && liveOrder && liveOrder.status !== targetDbStatus && !pinVerified) {
+      if (orderId && liveOrder && liveOrder.id.startsWith('mock-') && liveOrder.status !== targetDbStatus && !pinVerified) {
         OrderService.updateOrderStatus(orderId, targetDbStatus);
       }
     }
-  }, [progress, leafletLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng, currentStatus, orderId, liveOrder, pinVerified]);
+  }, [progress, currentStatus, orderId, liveOrder, pinVerified, isSimulationMode]);
+
+  const hasProof = !!((liveOrder as any)?.proofs && (liveOrder as any).proofs.length > 0);
 
   const timeline = [
     { status: 'Order placed', time: '2:15 PM', completed: true, description: 'Order confirmed and payment secured' },
     { status: 'Rider assigned', time: '2:16 PM', completed: true, description: 'Takudzwa M. accepted your delivery' },
     { status: 'En route to pickup', time: '2:18 PM', completed: true, description: 'Rider is heading to pickup location' },
     { status: 'At pickup', time: progress >= 25 ? '2:25 PM' : '', completed: currentStatus >= 4, active: currentStatus === 3, description: 'Rider arrived at pickup point' },
-    { status: 'Proof uploaded', time: progress >= 45 ? '2:28 PM' : '', completed: currentStatus >= 6, active: currentStatus === 4, description: 'Pickup photo captured' },
+    { status: 'Proof uploaded', time: (progress >= 45 || hasProof) ? '2:28 PM' : '', completed: currentStatus >= 6 || hasProof, active: currentStatus === 4 && !hasProof, description: 'Pickup photo captured' },
     { status: 'En route to delivery', time: progress >= 45 ? '2:29 PM' : '', completed: currentStatus >= 6, active: currentStatus === 6, description: `On the way to ${dropoffAddress}` },
     { status: 'Delivered', time: progress >= 90 ? '2:35 PM' : '', completed: currentStatus >= 7 || pinVerified, active: currentStatus === 7 && !pinVerified, description: 'Confirmed with PIN code' },
   ];
@@ -343,7 +425,11 @@ function TrackingContent() {
                 {progress >= 90 && 'Rider arrived at destination'}
               </div>
               <div className={styles.etaTime}>
-                Status: <strong>{order.estimated_delivery}</strong> (Simulation: {progress}%)
+                {isSimulationMode ? (
+                  <>Status: <strong>{order.estimated_delivery}</strong> (Simulation: {progress}%)</>
+                ) : (
+                  <>Status: <strong>{order.estimated_delivery}</strong></>
+                )}
               </div>
             </div>
           </div>
