@@ -37,7 +37,7 @@ export const PricingService = {
     dropoffLat: number;
     dropoffLng: number;
     fulfillmentMode: 'standard' | 'jet' | 'scheduled_saver';
-    protectionLevel: 'protected' | 'none';
+    protectionLevel: 'protected' | 'none' | 'premium_secure';
   }): PricingEstimate {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng, fulfillmentMode, protectionLevel } = params;
 
@@ -65,8 +65,13 @@ export const PricingService = {
     // 2. Standard Biker Service Fee: 8% of base fare, min $0.38
     const serviceFee = Math.max(0.38, Math.round(baseFare * 0.08 * 100) / 100);
 
-    // 3. Biker Protect fee (insurance): standard flat $0.50 if enabled
-    const protectionFee = protectionLevel === 'protected' ? 0.50 : 0.00;
+    // 3. Biker Protect fee (insurance): standard flat $0.50, premium_secure flat $1.50 if enabled
+    let protectionFee = 0.00;
+    if (protectionLevel === 'protected') {
+      protectionFee = 0.50;
+    } else if (protectionLevel === 'premium_secure') {
+      protectionFee = 1.50;
+    }
 
     const suggestedFare = baseFare;
     const total = suggestedFare + serviceFee + protectionFee;
