@@ -5,6 +5,7 @@ import styles from './disputes.module.css';
 import { useProfile } from '@/context/ProfileContext';
 import { OrderService } from '@/lib/order-service';
 import { ListSkeleton, StatsSkeleton } from '@/components/skeletons';
+import { createClient } from '@/lib/supabase/client';
 
 const MOCK_DISPUTES = [
   {
@@ -121,10 +122,68 @@ export default function DisputesPage() {
 
   const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
+  // Phase 4 safety alerts state
+  const [activeSafetyAlerts, setActiveSafetyAlerts] = useState<any[]>([]);
+  const [resolvingAlertId, setResolvingAlertId] = useState<string | null>(null);
+  const [sosNotes, setSosNotes] = useState('');
+
   // Check roles
   const userRole = session?.role || '';
   const userRoles = session?.roles || [];
   const isOpsOrAdmin = userRole === 'ops' || userRole === 'admin' || userRoles.includes('ops') || userRoles.includes('admin');
+
+  // Load and subscribe to active safety alerts for Ops/Admin
+  useEffect(() => {
+    if (!isOpsOrAdmin) return;
+
+    const fetchActiveAlerts = async () => {
+      try {
+        const data = await OrderService.getSafetyAlerts();
+        const active = data.filter((a: any) => a.status === 'active');
+        setActiveSafetyAlerts(active);
+      } catch (err) {
+        console.error('Failed to load safety alerts:', err);
+      }
+    };
+
+    fetchActiveAlerts();
+
+    // Set up polling for offline/local storage updates in dev mode
+    let intervalId: NodeJS.Timeout | null = null;
+    if (!OrderService.isOnline) {
+      intervalId = setInterval(fetchActiveAlerts, 3000);
+    }
+
+    if (!OrderService.isOnline) {
+      return () => {
+        if (intervalId) clearInterval(intervalId);
+      };
+    }
+
+    const supabase = createClient();
+    const safetyChannel = supabase
+      .channel('ops-safety-alerts')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'safety_alerts'
+        },
+        async (payload) => {
+          console.log('Realtime safety alert change:', payload);
+          const data = await OrderService.getSafetyAlerts();
+          const active = data.filter((a: any) => a.status === 'active');
+          setActiveSafetyAlerts(active);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      supabase.removeChannel(safetyChannel);
+    };
+  }, [isOpsOrAdmin]);
 
   const loadDisputes = async () => {
     try {
@@ -267,6 +326,133 @@ export default function DisputesPage() {
 
   return (
     <div className={styles.page}>
+      {isOpsOrAdmin && activeSafetyAlerts.length > 0 && (
+        <div className={styles.sosOverlay}>
+          <div className={styles.sosContainer}>
+            <div className={styles.sosHeader}>
+              <span className={styles.sosIcon}>🚨</span>
+              <div>
+                <h2 className={styles.sosTitle}>Critical Safety Alert Active</h2>
+                <p className={styles.sosSubtitle}>
+                  {activeSafetyAlerts.length} active distress signal{activeSafetyAlerts.length > 1 ? 's' : ''} require immediate action.
+                </p>
+              </div>
+            </div>
+
+            <div className={styles.sosAlertList}>
+              {activeSafetyAlerts.map((alert) => {
+                const orderRef = alert.order?.reference_code || alert.order_ref || 'BKR-UNKNOWN';
+                const riderName = alert.user?.full_name || 'Rider';
+                const riderPhone = alert.user?.phone || 'Unknown Phone';
+                const alertTime = new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                return (
+                  <div key={alert.id} className={styles.sosAlertCard}>
+                    <div className={styles.sosMetaGrid}>
+                      <div className={styles.sosMetaItem}>
+                        <span className={styles.sosMetaLabel}>Rider</span>
+                        <span className={styles.sosMetaValue}>{riderName} ({riderPhone})</span>
+                      </div>
+                      <div className={styles.sosMetaItem}>
+                        <span className={styles.sosMetaLabel}>Order Reference</span>
+                        <span className={styles.sosMetaValue}>{orderRef}</span>
+                      </div>
+                      <div className={styles.sosMetaItem}>
+                        <span className={styles.sosMetaLabel}>Alert Type</span>
+                        <span className={styles.sosMetaValue} style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                          {alert.type === 'sos_alert' ? '💥 SOS SIGNAL TRIGGERED' : '⏳ MISSED IN-TRANSIT CHECK-IN'}
+                        </span>
+                      </div>
+                      <div className={styles.sosMetaItem}>
+                        <span className={styles.sosMetaLabel}>Triggered At</span>
+                        <span className={styles.sosMetaValue}>{alertTime}</span>
+                      </div>
+                      {alert.gps_lat && alert.gps_lng && (
+                        <div className={styles.sosMetaItem} style={{ gridColumn: 'span 2' }}>
+                          <span className={styles.sosMetaLabel}>GPS Coordinates</span>
+                          <span className={styles.sosMetaValue}>
+                            📍 {alert.gps_lat.toFixed(6)}, {alert.gps_lng.toFixed(6)} 
+                            <a 
+                              href={`https://www.google.com/maps/search/?api=1&query=${alert.gps_lat},${alert.gps_lng}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ marginLeft: '10px', color: '#60a5fa', textDecoration: 'underline' }}
+                            >
+                              View on Map
+                            </a>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={styles.sosForm}>
+                      <textarea
+                        className={styles.sosTextarea}
+                        placeholder="Type safety clearance notes here..."
+                        value={resolvingAlertId === alert.id ? sosNotes : ''}
+                        onChange={(e) => {
+                          setResolvingAlertId(alert.id);
+                          setSosNotes(e.target.value);
+                        }}
+                      />
+                      <div className={styles.sosButtonRow}>
+                        <button
+                          className={`${styles.sosButton} ${styles.sosButtonSecondary}`}
+                          onClick={() => {
+                            alert(`Initiating emergency call to: ${riderPhone}`);
+                          }}
+                        >
+                          📞 Call Rider
+                        </button>
+                        <button
+                          className={`${styles.sosButton} ${styles.sosButtonDanger}`}
+                          onClick={() => {
+                            alert(`Dispatching local security response forces to order ${orderRef}. GPS coordinates forwarded.`);
+                            setResolvingAlertId(alert.id);
+                            setSosNotes(`[Ops Security Dispatch] Security services dispatched to coordinates: ${alert.gps_lat || 'Unknown'}, ${alert.gps_lng || 'Unknown'}.`);
+                          }}
+                        >
+                          🛡️ Dispatch Security
+                        </button>
+                        <button
+                          className={`${styles.sosButton} ${styles.sosButtonSuccess}`}
+                          onClick={async () => {
+                            const notes = resolvingAlertId === alert.id ? sosNotes : '';
+                            if (!notes.trim()) {
+                              alert('Please fill in resolution notes explaining details of safety clearance before resolving.');
+                              return;
+                            }
+                            try {
+                              const resolvedBy = session?.user_id || 'Ops Agent';
+                              const success = await OrderService.resolveSafetyAlert(alert.id, resolvedBy, notes);
+                              if (success) {
+                                alert('Distress alert resolved and cleared.');
+                                setSosNotes('');
+                                setResolvingAlertId(null);
+                                // Refresh list
+                                const freshAlerts = await OrderService.getSafetyAlerts();
+                                setActiveSafetyAlerts(freshAlerts.filter((a: any) => a.status === 'active'));
+                              } else {
+                                alert('Failed to resolve safety alert. Please try again.');
+                              }
+                            } catch (e: any) {
+                              console.error(e);
+                              alert('Error resolving safety alert: ' + e.message);
+                            }
+                          }}
+                        >
+                          ✅ Resolve & Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={styles.header}>
         <h1 className={styles.title}>Disputes</h1>
         <p className={styles.subtitle}>

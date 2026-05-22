@@ -1,0 +1,134 @@
+.toastContainer {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  box-shadow: 
+    0 4px 30px rgba(0, 0, 0, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  transform: translateX(120%);
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.toastShow {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toastHide {
+  transform: translateY(-20px) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Accent borders on the left side */
+.toast::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
+
+.type_success::before {
+  background: linear-gradient(180deg, #10b981, #059669);
+}
+.type_success {
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.type_warning::before {
+  background: linear-gradient(180deg, #f59e0b, #d97706);
+}
+.type_warning {
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.type_error::before,
+.type_sos::before {
+  background: linear-gradient(180deg, #ef4444, #dc2626);
+}
+.type_error,
+.type_sos {
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(30, 10, 10, 0.7);
+}
+
+.type_info::before {
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+}
+.type_info {
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.toastHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.toastTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.toastBody {
+  font-size: 13px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+.toastClose {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0 0 0 8px;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 0.15s ease;
+  margin-top: -2px;
+}
+
+.toastClose:hover {
+  color: #ffffff;
+}
+
+/* Pulsing background glow for SOS toasts */
+@keyframes sosGlow {
+  0%, 100% {
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 4px 30px rgba(239, 68, 68, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  }
+}
+
+.type_sos {
+  animation: sosGlow 2s infinite ease-in-out;
+}

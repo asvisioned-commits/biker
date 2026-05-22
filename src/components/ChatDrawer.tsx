@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { OrderService } from '@/lib/order-service';
+import { createClient } from '@/lib/supabase/client';
 
 interface ChatDrawerProps {
   orderId: string;
@@ -23,7 +24,14 @@ export function ChatDrawer({ orderId, senderId, senderName, onClose }: ChatDrawe
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [typingUser, setTypingUser] = useState<string | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatChannelRef = useRef<any>(null);
+  const typingChannelRef = useRef<any>(null);
+
+  const [isSelfTyping, setIsSelfTyping] = useState(false);
+  const selfTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Template response templates (1-tap quick replies)
   const templateReplies = [
@@ -49,22 +57,127 @@ export function ChatDrawer({ orderId, senderId, senderName, onClose }: ChatDrawe
 
   useEffect(() => {
     loadMessages();
-    // Poll messages every 3 seconds for simulation updates
-    const interval = setInterval(loadMessages, 3000);
-    return () => clearInterval(interval);
-  }, [orderId]);
+
+    if (!OrderService.isOnline) return;
+
+    const supabase = createClient();
+    
+    // 1. Messages table postgres changes
+    const msgChannel = supabase
+      .channel(`order-messages-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `order_id=eq.${orderId}`
+        },
+        (payload) => {
+          const newMsg = payload.new as ChatMessage;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe();
+
+    chatChannelRef.current = msgChannel;
+
+    // 2. Typing indicator broadcast channel
+    const typingChannel = supabase.channel(`chat-typing-${orderId}`);
+    let typingTimeout: NodeJS.Timeout | null = null;
+
+    typingChannel
+      .on(
+        'broadcast',
+        { event: 'typing' },
+        ({ payload }) => {
+          if (payload.senderName !== senderName) {
+            if (payload.isTyping) {
+              setTypingUser(payload.senderName);
+              if (typingTimeout) clearTimeout(typingTimeout);
+              typingTimeout = setTimeout(() => {
+                setTypingUser(null);
+              }, 3000);
+            } else {
+              setTypingUser(null);
+              if (typingTimeout) clearTimeout(typingTimeout);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    typingChannelRef.current = typingChannel;
+
+    return () => {
+      if (typingTimeout) clearTimeout(typingTimeout);
+      if (selfTypingTimeoutRef.current) clearTimeout(selfTypingTimeoutRef.current);
+      supabase.removeChannel(msgChannel);
+      supabase.removeChannel(typingChannel);
+    };
+  }, [orderId, senderName]);
 
   // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, typingUser]);
+
+  const handleInputChange = (val: string) => {
+    setInputText(val);
+
+    if (OrderService.isOnline && typingChannelRef.current) {
+      if (!isSelfTyping) {
+        setIsSelfTyping(true);
+        typingChannelRef.current.send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: { senderName, isTyping: true }
+        });
+      }
+
+      if (selfTypingTimeoutRef.current) {
+        clearTimeout(selfTypingTimeoutRef.current);
+      }
+
+      selfTypingTimeoutRef.current = setTimeout(() => {
+        setIsSelfTyping(false);
+        if (typingChannelRef.current) {
+          typingChannelRef.current.send({
+            type: 'broadcast',
+            event: 'typing',
+            payload: { senderName, isTyping: false }
+          });
+        }
+      }, 3000);
+    }
+  };
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
+
+    // Immediately stop self typing and notify
+    if (selfTypingTimeoutRef.current) {
+      clearTimeout(selfTypingTimeoutRef.current);
+    }
+    setIsSelfTyping(false);
+    if (OrderService.isOnline && typingChannelRef.current) {
+      typingChannelRef.current.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { senderName, isTyping: false }
+      });
+    }
+
     try {
       const msg = await OrderService.sendChatMessage(orderId, senderId, senderName, text);
       if (msg) {
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
         setInputText('');
       }
     } catch (e) {
@@ -197,6 +310,47 @@ export function ChatDrawer({ orderId, senderId, senderName, onClose }: ChatDrawe
               );
             })
           )}
+
+          {typingUser && (
+            <div 
+              style={{
+                alignSelf: 'flex-start',
+                maxWidth: '80%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                marginBottom: '8px'
+              }}
+            >
+              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '2px', fontWeight: 600 }}>
+                {typingUser}
+              </div>
+              <div 
+                style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  color: 'var(--text-secondary)',
+                  padding: '8px 14px',
+                  borderRadius: '16px 16px 16px 2px',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: 'var(--shadow-xs)',
+                  fontStyle: 'italic'
+                }}
+              >
+                <span>typing</span>
+                <span className="typing-dots">
+                  <span className="dot">.</span>
+                  <span className="dot">.</span>
+                  <span className="dot">.</span>
+                </span>
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -258,7 +412,7 @@ export function ChatDrawer({ orderId, senderId, senderName, onClose }: ChatDrawe
               style={{ minHeight: '40px', height: '40px', borderRadius: '12px', fontSize: '13px' }}
               placeholder="Type your message here..."
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => handleInputChange(e.target.value)}
             />
             <button
               type="submit"
@@ -281,6 +435,19 @@ export function ChatDrawer({ orderId, senderId, senderName, onClose }: ChatDrawe
             transform: translateX(0);
           }
         }
+        @keyframes typing-bounce {
+          0%, 80%, 100% { transform: translateY(0); }
+          40% { transform: translateY(-4px); }
+        }
+        .typing-dots .dot {
+          display: inline-block;
+          animation: typing-bounce 1.4s infinite ease-in-out both;
+          font-weight: bold;
+          font-size: 14px;
+          line-height: 1;
+        }
+        .typing-dots .dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dots .dot:nth-child(2) { animation-delay: -0.16s; }
       `}</style>
     </div>
   );

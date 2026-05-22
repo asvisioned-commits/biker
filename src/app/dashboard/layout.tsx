@@ -11,6 +11,7 @@ import type { UserRole } from '@/types';
 
 import { ProfileProvider, useProfile } from '@/context/ProfileContext';
 import { setActiveRole as dbSetActiveRole } from '@/lib/database';
+import { ToastProvider } from '@/components/ToastProvider';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -107,55 +108,57 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const roleLabels: Record<UserRole, string> = { customer: '📦 Customer', rider: '🚴 Rider', merchant: '🏪 Merchant', ops: '🔧 Ops', admin: '👑 Admin' };
 
   return (
-    <div className={styles.layout}>
-      <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
-        <div className={styles.sidebarHeader}>
-          <Link href="/" className={styles.logo}>Biker<span className={styles.logoDot}>.</span></Link>
-          <button className={styles.sidebarClose} onClick={() => setSidebarOpen(false)}>✕</button>
-        </div>
-        <div className={styles.roleSwitcher}>
-          <select className={styles.roleSelect} value={activeRole} onChange={(e) => handleRoleChange(e.target.value as UserRole)}>
-            <option value="customer">📦 Customer</option>
-            <option value="rider">🚴 Rider</option>
-            <option value="merchant">🏪 Merchant</option>
-            <option value="ops">🔧 Ops</option>
-            <option value="admin">👑 Admin</option>
-          </select>
-        </div>
-        <nav className={styles.nav}>
-          {currentNav.map((item) => <Link key={item.href} href={item.href} className={`${styles.navItem} ${pathname === item.href ? styles.navItemActive : ''}`} onClick={() => setSidebarOpen(false)}><span className={styles.navIcon}>{item.icon}</span><span>{item.label}</span></Link>)}
-        </nav>
-        <div className={styles.sidebarFooter}>
-          <Link href="/dashboard/settings" className={styles.userInfoLink} title="Profile Settings">
-            <div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div>
-            <div className={styles.userName}>
-              <span className={styles.userFullName}>{session?.full_name || 'User'}</span>
-              <span className={styles.userRole}>{roleLabels[activeRole]}</span>
-            </div>
-          </Link>
-          <button className={styles.logoutBtn} onClick={() => signOut()}>↗ Logout</button>
-        </div>
-      </aside>
-      {sidebarOpen && <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />}
-      <main className={styles.main}>
-        <header className={styles.mobileHeader}>
-          <button className={styles.hamburger} onClick={() => setSidebarOpen(true)}>☰</button>
-          <span className={styles.mobileTitle}>Biker<span className={styles.logoDot}>.</span></span>
-          <div className={styles.headerRight}>
-            <NotificationsDropdown />
-            <Link href="/dashboard/settings" className={styles.avatarLink} title="Profile Settings">
-              <div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div>
-            </Link>
+    <ToastProvider recipientId={session?.user_id}>
+      <div className={styles.layout}>
+        <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
+          <div className={styles.sidebarHeader}>
+            <Link href="/" className={styles.logo}>Biker<span className={styles.logoDot}>.</span></Link>
+            <button className={styles.sidebarClose} onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
-        </header>
-        <div className={styles.mainContent}>
-          <LocationPermissionBanner />
-          {children}
-        </div>
-      </main>
-      <nav className="bottom-nav">
-        {currentNav.slice(0, 5).map((item) => <Link key={item.href} href={item.href} className={`bottom-nav-item ${pathname === item.href ? 'bottom-nav-item--active' : ''}`}><span className="bottom-nav-icon">{item.icon}</span>{item.label}</Link>)}
-      </nav>
-    </div>
+          <div className={styles.roleSwitcher}>
+            <select className={styles.roleSelect} value={activeRole} onChange={(e) => handleRoleChange(e.target.value as UserRole)}>
+              <option value="customer">📦 Customer</option>
+              <option value="rider">🚴 Rider</option>
+              <option value="merchant">🏪 Merchant</option>
+              <option value="ops">🔧 Ops</option>
+              <option value="admin">👑 Admin</option>
+            </select>
+          </div>
+          <nav className={styles.nav}>
+            {currentNav.map((item) => <Link key={item.href} href={item.href} className={`${styles.navItem} ${pathname === item.href ? styles.navItemActive : ''}`} onClick={() => setSidebarOpen(false)}><span className={styles.navIcon}>{item.icon}</span><span>{item.label}</span></Link>)}
+          </nav>
+          <div className={styles.sidebarFooter}>
+            <Link href="/dashboard/settings" className={styles.userInfoLink} title="Profile Settings">
+              <div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div>
+              <div className={styles.userName}>
+                <span className={styles.userFullName}>{session?.full_name || 'User'}</span>
+                <span className={styles.userRole}>{roleLabels[activeRole]}</span>
+              </div>
+            </Link>
+            <button className={styles.logoutBtn} onClick={() => signOut()}>↗ Logout</button>
+          </div>
+        </aside>
+        {sidebarOpen && <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />}
+        <main className={styles.main}>
+          <header className={styles.mobileHeader}>
+            <button className={styles.hamburger} onClick={() => setSidebarOpen(true)}>☰</button>
+            <span className={styles.mobileTitle}>Biker<span className={styles.logoDot}>.</span></span>
+            <div className={styles.headerRight}>
+              <NotificationsDropdown />
+              <Link href="/dashboard/settings" className={styles.avatarLink} title="Profile Settings">
+                <div className="avatar avatar--sm">{session?.full_name?.[0] || 'U'}</div>
+              </Link>
+            </div>
+          </header>
+          <div className={styles.mainContent}>
+            <LocationPermissionBanner />
+            {children}
+          </div>
+        </main>
+        <nav className="bottom-nav">
+          {currentNav.slice(0, 5).map((item) => <Link key={item.href} href={item.href} className={`bottom-nav-item ${pathname === item.href ? 'bottom-nav-item--active' : ''}`}><span className="bottom-nav-icon">{item.icon}</span>{item.label}</Link>)}
+        </nav>
+      </div>
+    </ToastProvider>
   );
 }

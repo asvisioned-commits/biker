@@ -11,6 +11,7 @@ import { FLAGS } from '@/lib/flags';
 import { CallSimulator } from '@/components/CallSimulator';
 import { ChatDrawer } from '@/components/ChatDrawer';
 import { useProfile } from '@/context/ProfileContext';
+import LiveTrackingMap from '@/components/map/LiveTrackingMap';
 import styles from './tracking.module.css';
 
 function TrackingContent() {
@@ -52,7 +53,7 @@ function TrackingContent() {
   const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
   
   // Map markers & state tracking
-  const [riderLocation, setRiderLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [riderLocation, setRiderLocation] = useState<{ lat: number; lng: number; heading?: number | null } | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const markerRef = useRef<any>(null);
 
@@ -282,9 +283,10 @@ function TrackingContent() {
 
     // Also listen to location updates of rider if assigned
     let locationChannel: any = null;
+    let broadcastLocationChannel: any = null;
     if (liveOrder?.assigned_rider_id) {
       locationChannel = supabase
-        .channel(`rider-location-${liveOrder.assigned_rider_id}`)
+        .channel(`rider-location-db-${liveOrder.assigned_rider_id}`)
         .on(
           'postgres_changes',
           {
@@ -295,8 +297,23 @@ function TrackingContent() {
           },
           (payload) => {
             const cp = payload.new;
-            setRiderLocation({ lat: cp.lat, lng: cp.lng });
-            addSimulationLog(`📍 Location Checkpoint received: [${cp.lat.toFixed(5)}, ${cp.lng.toFixed(5)}]`);
+            setRiderLocation({ lat: cp.lat, lng: cp.lng, heading: cp.heading });
+            addSimulationLog(`📍 Location Checkpoint received (DB): [${cp.lat.toFixed(5)}, ${cp.lng.toFixed(5)}]`);
+          }
+        )
+        .subscribe();
+
+      broadcastLocationChannel = supabase
+        .channel(`rider-location-${orderId}`)
+        .on(
+          'broadcast',
+          { event: 'location' },
+          (payload) => {
+            const data = payload.payload;
+            if (data && data.lat && data.lng) {
+              setRiderLocation({ lat: data.lat, lng: data.lng, heading: data.heading });
+              addSimulationLog(`📍 Realtime Location Broadcast received: [${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}]`);
+            }
           }
         )
         .subscribe();
@@ -330,6 +347,9 @@ function TrackingContent() {
       if (locationChannel) {
         supabase.removeChannel(locationChannel);
       }
+      if (broadcastLocationChannel) {
+        supabase.removeChannel(broadcastLocationChannel);
+      }
       if (offersChannel) {
         supabase.removeChannel(offersChannel);
       }
@@ -360,7 +380,7 @@ function TrackingContent() {
       // Update locally
       await OrderService.updateOrderStatus(liveOrder.id, 'rider_assigned', 'Simulated matchmaker assigned Rider: Tinashe M.');
       setLiveOrder(updated);
-      setRiderLocation({ lat: -17.8105, lng: 31.0620 }); // Heading toward pickup
+      setRiderLocation({ lat: -17.8105, lng: 31.0620, heading: 45 }); // Heading toward pickup
       
       addSimulationLog('🟢 Status Changed: "Rider Assigned" (Tinashe M. is en route to pickup)');
     }, 6000);
@@ -383,7 +403,8 @@ function TrackingContent() {
       setLiveOrder(updated);
       setRiderLocation({
         lat: liveOrder.pickup_lat || -17.8292,
-        lng: liveOrder.pickup_lng || 31.0522
+        lng: liveOrder.pickup_lng || 31.0522,
+        heading: 180
       });
       addSimulationLog('🟢 Status Changed: "At Pickup"');
     }, 12000);
@@ -700,46 +721,14 @@ function TrackingContent() {
 
       <div className={styles.content}>
         {/* Left Column: Map Tracker (Dynamic) */}
-        <div className={`${styles.mapArea} ${activeTab === 'map' ? styles.mapAreaVisible : ''}`}>
-          <div className={styles.mapPlaceholder}>
-            {/* Visual simulation mapping grids */}
-            <div className={styles.mapContainer}>
-              {/* Harare Simulated Vector Map grid lines */}
-              <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ opacity: 0.15 }}>
-                <defs>
-                  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--text-primary)" strokeWidth="1"/>
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" />
-              </svg>
-            </div>
-
-            {/* Pickup Marker */}
-            <div className={styles.mapDotPickup} title="Pickup Point">🏪</div>
-
-            {/* Rider Vector Marker */}
-            {riderLocation && (
-              <div 
-                className={styles.mapDotRider}
-                style={{
-                  top: `${45 + (riderLocation.lat + 17.8292) * 500}%`,
-                  left: `${45 + (riderLocation.lng - 31.0522) * 500}%`,
-                  transition: 'all 2s ease-in-out'
-                }}
-                title="Your Biker Rider"
-              >
-                🏍️
-              </div>
-            )}
-
-            {/* Dropoff Marker */}
-            <div className={styles.mapDotDropoff} title="Dropoff Destination">🏠</div>
-
-            <div className={styles.mapLabel}>
-              Harare Metro Dispatch Grid Map (Simulated)
-            </div>
-          </div>
+        <div className={`${styles.mapArea} ${activeTab === 'map' ? styles.mapAreaVisible : ''}`} style={{ minHeight: '350px' }}>
+          <LiveTrackingMap
+            pickupCoords={[order.pickup_lat || -17.8292, order.pickup_lng || 31.0522]}
+            dropoffCoords={[order.dropoff_lat || -17.7994, order.dropoff_lng || 31.0378]}
+            riderCoords={riderLocation ? [riderLocation.lat, riderLocation.lng] : null}
+            riderHeading={riderLocation?.heading ?? null}
+            riderName={order.rider?.full_name || 'Tinashe M.'}
+          />
 
           {/* Real-time simulation log ticker for transparency */}
           <div className="card p-4" style={{ marginTop: '16px' }}>

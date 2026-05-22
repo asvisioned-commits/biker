@@ -1,0 +1,129 @@
+.mapWrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 350px;
+  border-radius: var(--radius-xl, 16px);
+  overflow: hidden;
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--border-default, rgba(226, 232, 240, 0.8));
+  background: var(--bg-secondary, #f8fafc);
+}
+
+.mapContainer {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card, rgba(255, 255, 255, 0.9));
+  z-index: 10;
+  gap: var(--space-4, 16px);
+  color: var(--text-secondary, #475569);
+  font-weight: 500;
+}
+
+/* Custom Marker Styling */
+.pickupIcon, .dropoffIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card, #ffffff);
+  border: 2px solid var(--color-primary-500, #3b82f6);
+  color: var(--text-primary, #0f172a);
+  border-radius: 50%;
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 18px;
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s ease;
+}
+
+.dropoffIcon {
+  border-color: var(--color-success-500, #10b981);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+}
+
+.riderIconContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px !important;
+  height: 44px !important;
+}
+
+.riderIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-500, #3b82f6);
+  color: #ffffff;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+  border: 2px solid #ffffff;
+  z-index: 2;
+  transition: transform 0.3s ease;
+}
+
+.riderDirectionArrow {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 8px solid var(--color-primary-500, #3b82f6);
+  z-index: 1;
+}
+
+/* Pulsing Radar effect for active rider */
+.pulsingRadar {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1.5px solid rgba(59, 130, 246, 0.4);
+  animation: pulseRadar 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes pulseRadar {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+/* Polyline dash-array flow animation */
+:global(.leaflet-interactive.movingRouteLine) {
+  stroke-dasharray: 10, 10;
+  animation: routeFlow 30s linear infinite !important;
+}
+
+@keyframes routeFlow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -1000px;
+  }
+}

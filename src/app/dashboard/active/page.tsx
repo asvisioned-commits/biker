@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { OrderService, BikerOrder } from '@/lib/order-service';
-import { getProfile } from '@/lib/database';
+import { getProfile, insertLocationCheckpoint } from '@/lib/database';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { useProfile } from '@/context/ProfileContext';
 import { CallSimulator } from '@/components/CallSimulator';
 import { ChatDrawer } from '@/components/ChatDrawer';
+import LiveTrackingMap from '@/components/map/LiveTrackingMap';
 
 
 export default function ActiveOrderRiderPage() {
@@ -17,6 +18,10 @@ export default function ActiveOrderRiderPage() {
   const [loading, setLoading] = useState(true);
   const [riderId, setRiderId] = useState<string | null>(null);
   const [statusNotes, setStatusNotes] = useState('');
+  
+  // Geolocation & Realtime tracking states
+  const [riderCoords, setRiderCoords] = useState<[number, number] | null>(null);
+  const [riderHeading, setRiderHeading] = useState<number | null>(null);
   
   // COD properties
   const [pinCode, setPinCode] = useState('');
@@ -60,6 +65,85 @@ export default function ActiveOrderRiderPage() {
     }, 1000);
     return () => clearInterval(interval);
   }, [showTransitCheckinTimer, checkinCountdown]);
+
+  // Geolocation watch and Realtime coordinates broadcasting
+  useEffect(() => {
+    if (!order || !['rider_en_route_pickup', 'en_route_delivery'].includes(order.status)) {
+      setRiderCoords(null);
+      setRiderHeading(null);
+      return;
+    }
+
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      console.warn('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    const supabase = createClient();
+    const locationChannel = supabase.channel(`rider-location-${order.id}`);
+
+    locationChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('Successfully subscribed to broadcast rider location channel');
+      }
+    });
+
+    let lastCheckpointTime = 0;
+
+    const watchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude, heading, speed } = position.coords;
+        const currentCoords: [number, number] = [latitude, longitude];
+        
+        setRiderCoords(currentCoords);
+        setRiderHeading(heading);
+
+        // Broadcast coordinates to Realtime channel
+        locationChannel.send({
+          type: 'broadcast',
+          event: 'location',
+          payload: {
+            lat: latitude,
+            lng: longitude,
+            heading: heading ?? null,
+            speed: speed ?? null,
+          }
+        });
+
+        // Throttle database inserts to every 10 seconds
+        const now = Date.now();
+        if (now - lastCheckpointTime >= 10000) {
+          lastCheckpointTime = now;
+          try {
+            await insertLocationCheckpoint({
+              rider_id: riderId || 'rider',
+              order_id: order.id,
+              event_type: 'checkpoint_periodic',
+              lat: latitude,
+              lng: longitude,
+              heading: heading ?? undefined,
+              speed_kmh: speed ? speed * 3.6 : undefined,
+            });
+          } catch (err) {
+            console.error('Failed to log location checkpoint:', err);
+          }
+        }
+      },
+      (error) => {
+        console.error('Geolocation watcher error:', error);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      supabase.removeChannel(locationChannel);
+    };
+  }, [order?.id, order?.status, riderId]);
 
   const handleMissedCheckin = async () => {
     if (!order) return;
@@ -127,6 +211,22 @@ export default function ActiveOrderRiderPage() {
     init();
   }, [router]);
 
+  const logTransitionCheckpoint = async (eventType: string, lat: number, lng: number) => {
+    if (!order) return;
+    try {
+      await insertLocationCheckpoint({
+        rider_id: riderId || 'rider',
+        order_id: order.id,
+        event_type: eventType,
+        lat,
+        lng,
+        heading: riderHeading ?? undefined
+      });
+    } catch (err) {
+      console.error(`Failed to log ${eventType} checkpoint:`, err);
+    }
+  };
+
   const handleStatusTransition = async (nextStatus: string) => {
     if (!order) return;
     setLoading(true);
@@ -135,6 +235,19 @@ export default function ActiveOrderRiderPage() {
       const fresh = await OrderService.getOrderById(order.id);
       setOrder(fresh);
       setStatusNotes('');
+
+      // Log DB checkpoint for status transitions if coords are available
+      if (riderCoords) {
+        let eventType = '';
+        if (nextStatus === 'rider_en_route_pickup') eventType = 'accepted_job';
+        else if (nextStatus === 'at_pickup') eventType = 'arrived_pickup';
+        else if (nextStatus === 'en_route_delivery') eventType = 'left_pickup';
+        else if (nextStatus === 'at_delivery') eventType = 'arrived_dropoff';
+        
+        if (eventType) {
+          await logTransitionCheckpoint(eventType, riderCoords[0], riderCoords[1]);
+        }
+      }
     }
     setLoading(false);
   };
@@ -150,6 +263,9 @@ export default function ActiveOrderRiderPage() {
         setPinSuccess(true);
         const fresh = await OrderService.getOrderById(order.id);
         setOrder(fresh);
+        if (riderCoords) {
+          await logTransitionCheckpoint('delivery_complete', riderCoords[0], riderCoords[1]);
+        }
       } else {
         setPinError(res.error || 'Verification failed. Please try again.');
       }
@@ -186,6 +302,9 @@ export default function ActiveOrderRiderPage() {
         setPinSuccess(true);
         const fresh = await OrderService.getOrderById(order.id);
         setOrder(fresh);
+        if (riderCoords) {
+          await logTransitionCheckpoint('delivery_complete', riderCoords[0], riderCoords[1]);
+        }
       } else {
         setPinError(res.error || 'Failed to complete COD delivery');
         if (res.attemptsRemaining !== undefined) {
@@ -241,6 +360,17 @@ export default function ActiveOrderRiderPage() {
           )}
           <span className="badge badge--primary font-mono">{order.reference_code}</span>
         </div>
+      </div>
+
+      <div className="card p-4 mb-6" style={{ padding: '16px', marginBottom: '24px' }}>
+        <h3 className="title title--sm" style={{ marginBottom: '12px' }}>Live Transit Map</h3>
+        <LiveTrackingMap
+          pickupCoords={[order.pickup_lat || -17.8292, order.pickup_lng || 31.0522]}
+          dropoffCoords={[order.dropoff_lat || -17.7994, order.dropoff_lng || 31.0378]}
+          riderCoords={riderCoords}
+          riderHeading={riderHeading}
+          riderName="You"
+        />
       </div>
 
       <div className="card p-6 mb-6">
