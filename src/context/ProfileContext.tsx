@@ -7,6 +7,8 @@ interface ProfileContextType {
   session: BikerSession | null;
   loading: boolean;
   refreshSession: (showLoading?: boolean) => Promise<void>;
+  country: 'ZW' | 'ZM';
+  setCountry: (country: 'ZW' | 'ZM') => void;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -14,6 +16,20 @@ const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<BikerSession | null>(null);
   const [loading, setLoading] = useState(true);
+  const [country, setCountryState] = useState<'ZW' | 'ZM'>('ZW');
+
+  // Load persisted country preference from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('biker_country');
+    if (saved === 'ZW' || saved === 'ZM') {
+      setCountryState(saved);
+    }
+  }, []);
+
+  const setCountry = (newCountry: 'ZW' | 'ZM') => {
+    setCountryState(newCountry);
+    localStorage.setItem('biker_country', newCountry);
+  };
 
   const refreshSession = async (showLoading = false) => {
     try {
@@ -34,7 +50,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <ProfileContext.Provider value={{ session, loading, refreshSession }}>
+    <ProfileContext.Provider value={{ session, loading, refreshSession, country, setCountry }}>
       {children}
     </ProfileContext.Provider>
   );

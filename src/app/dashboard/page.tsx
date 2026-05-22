@@ -6,10 +6,19 @@ import { createClient } from '@/lib/supabase/client';
 import { OrderService, BikerOrder } from '@/lib/order-service';
 import Link from 'next/link';
 import { getRiderDashboardStats, updateRiderOnlineStatus } from './earnings/actions';
+import { useProfile } from '@/context/ProfileContext';
 
 export default function DashboardHome() {
   const router = useRouter();
+  const { country } = useProfile();
   const [profile, setProfile] = useState<any>(null);
+
+  const formatPrice = (usdVal: number) => {
+    if (country === 'ZM') {
+      return `ZK ${(usdVal * 25).toFixed(2)}`;
+    }
+    return `$${usdVal.toFixed(2)}`;
+  };
   const [role, setRole] = useState<'customer' | 'rider' | 'merchant' | 'ops' | null>(null);
   const [orders, setOrders] = useState<BikerOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,7 +125,7 @@ export default function DashboardHome() {
           <div className="card p-6 md:col-span-2 display-flex flex-column justify-center align-start">
             <h2 className="title title--sm mb-2">Need to deliver or buy something?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
-              Zimbabwe's premier secure escrow courier logistics service. Real-time path tracing, dynamic pricing, and cash collection.
+              {country === 'ZM' ? "Zambia's" : "Zimbabwe's"} premier secure escrow courier logistics service. Real-time path tracing, dynamic pricing, and cash collection.
             </p>
             <Link href="/dashboard/order/new" className="btn btn--primary">
               📦 Book a Biker Delivery
@@ -172,11 +181,11 @@ export default function DashboardHome() {
               <div>
                 <div style={{ fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Rider Wallet balance</div>
                 <div style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  ${(riderStats?.subscription?.currentEarnings ?? 0).toFixed(2)}
+                  {formatPrice(riderStats?.subscription?.currentEarnings ?? 0)}
                 </div>
               </div>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Earning cap: ${(riderStats?.subscription?.earningCap ?? 60).toFixed(2)} | Status: <span style={{ fontWeight: 700, color: 'var(--color-primary-500)' }}>{riderStats?.subscription?.status ?? 'active'}</span>
+                Earning cap: {formatPrice(riderStats?.subscription?.earningCap ?? 60)} | Status: <span style={{ fontWeight: 700, color: 'var(--color-primary-500)' }}>{riderStats?.subscription?.status ?? 'active'}</span>
               </div>
             </div>
           </div>
@@ -189,7 +198,7 @@ export default function DashboardHome() {
               <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Today's Earnings</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
-                  ${(riderStats?.todayEarnings ?? 0).toFixed(2)}
+                  {formatPrice(riderStats?.todayEarnings ?? 0)}
                 </div>
               </div>
 
@@ -197,7 +206,7 @@ export default function DashboardHome() {
               <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Weekly Earnings</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#3b82f6', marginTop: '4px' }}>
-                  ${(riderStats?.weekEarnings ?? 0).toFixed(2)}
+                  {formatPrice(riderStats?.weekEarnings ?? 0)}
                 </div>
               </div>
 
@@ -205,7 +214,7 @@ export default function DashboardHome() {
               <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Monthly Earnings</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8b5cf6', marginTop: '4px' }}>
-                  ${(riderStats?.monthEarnings ?? 0).toFixed(2)}
+                  {formatPrice(riderStats?.monthEarnings ?? 0)}
                 </div>
               </div>
 
@@ -263,7 +272,7 @@ export default function DashboardHome() {
 
                 <div className="flex items-center gap-4">
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, fontSize: '14px' }}>${o.total_amount?.toFixed(2)}</div>
+                    <div style={{ fontWeight: 800, fontSize: '14px' }}>{formatPrice(o.total_amount ?? 0)}</div>
                     <div style={{ fontSize: '11px', textTransform: 'capitalize', fontWeight: 600, color: 'var(--color-primary-500)' }}>
                       {o.status.replace(/_/g, ' ')}
                     </div>

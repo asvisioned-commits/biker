@@ -38,8 +38,9 @@ export const EcoCashService = {
    * In a production environment, this would invoke the EcoCash Merchant Web Portal API.
    * In developer/sandbox mode, it initializes a simulated transaction and logs it.
    */
-  async initiatePayment(orderId: string, phone: string, amount: number, reference: string): Promise<EcoCashTransaction> {
-    const txId = `PP-EC-${Math.floor(100000 + Math.random() * 900000)}`;
+  async initiatePayment(orderId: string, phone: string, amount: number, reference: string, paymentMethod: string = 'ecocash'): Promise<EcoCashTransaction> {
+    const prefix = paymentMethod === 'mtn_momo' ? 'MTN' : paymentMethod === 'airtel_money' ? 'ART' : 'EC';
+    const txId = `PP-${prefix}-${Math.floor(100000 + Math.random() * 900000)}`;
     const newTx: EcoCashTransaction = {
       id: txId,
       orderId,
@@ -60,7 +61,7 @@ export const EcoCashService = {
   /**
    * Confirm and complete payment atomically, updating the Supabase state and double-entry accounting ledger.
    */
-  async confirmPayment(orderId: string, txId: string): Promise<{ success: boolean; error?: string }> {
+  async confirmPayment(orderId: string, txId: string, paymentMethod: string = 'ecocash'): Promise<{ success: boolean; error?: string }> {
     const logs = this.getLogs();
     const txIdx = logs.findIndex(t => t.id === txId);
     if (txIdx !== -1) {
@@ -69,14 +70,14 @@ export const EcoCashService = {
     }
 
     try {
-      const result = await processOrderPayment(orderId, 'ecocash');
+      const result = await processOrderPayment(orderId, paymentMethod);
       if (result.success) {
         return { success: true };
       } else {
         return { success: false, error: result.error?.message || 'Transaction failed in database' };
       }
     } catch (e: any) {
-      console.error('Failed to confirm EcoCash payment in Supabase:', e);
+      console.error('Failed to confirm payment in Supabase:', e);
       return { success: false, error: e.message || 'Payment confirmation failed' };
     }
   },

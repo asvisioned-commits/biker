@@ -6,9 +6,11 @@ import { createClient } from '@/lib/supabase/client';
 import { PricingService, PricingEstimate } from '@/lib/pricing';
 import { OrderService } from '@/lib/order-service';
 import Link from 'next/link';
+import { useProfile } from '@/context/ProfileContext';
 
 export default function NewOrderPage() {
   const router = useRouter();
+  const { country } = useProfile();
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -28,11 +30,20 @@ export default function NewOrderPage() {
   const [dropoffGateColor, setDropoffGateColor] = useState('');
   
   const [itemDescription, setItemDescription] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'ecocash' | 'cash'>('ecocash');
+  const [paymentMethod, setPaymentMethod] = useState<'ecocash' | 'mtn_momo' | 'airtel_money' | 'cash'>('ecocash');
 
   // Pricing estimate state
   const [estimate, setEstimate] = useState<PricingEstimate | null>(null);
   const [estimating, setEstimating] = useState(false);
+
+  // Sync payment method default when country changes
+  useEffect(() => {
+    if (country === 'ZM') {
+      setPaymentMethod('mtn_momo');
+    } else {
+      setPaymentMethod('ecocash');
+    }
+  }, [country]);
 
   useEffect(() => {
     async function getUser() {
@@ -45,15 +56,34 @@ export default function NewOrderPage() {
     getUser();
   }, []);
 
+  const formatPrice = (usdVal: number) => {
+    if (country === 'ZM') {
+      return `ZK ${(usdVal * 25).toFixed(2)}`;
+    }
+    return `$${usdVal.toFixed(2)}`;
+  };
+
+  const pickupPlaceholder = country === 'ZM' 
+    ? 'e.g. Manda Hill Mall, Great East Road, Lusaka' 
+    : "e.g. Sam Levy's Village, Borrowdale Road";
+    
+  const dropoffPlaceholder = country === 'ZM'
+    ? 'e.g. Woodlands Shopping Mall, Lusaka'
+    : 'e.g. Avondale Shops, Harare';
+
+  const phonePlaceholder = country === 'ZM'
+    ? 'e.g. 0971234567'
+    : 'e.g. 0771234567';
+
   // Simple mocked geocoding based on name inputs to simulate lat/lng changes for distance calculations
   const calculateFareEstimate = () => {
     if (!pickupAddress || !dropoffAddress) return;
     
     setEstimating(true);
     
-    // Hash addresses to stable pseudo-coordinates in Harare area to make simulation deterministic and beautiful
-    const harareCenterLat = -17.8292;
-    const harareCenterLng = 31.0522;
+    // Hash addresses to stable pseudo-coordinates to make simulation deterministic and beautiful
+    const centerLat = country === 'ZM' ? -15.3875 : -17.8292;
+    const centerLng = country === 'ZM' ? 28.3228 : 31.0522;
     
     const getHash = (str: string) => {
       let hash = 0;
@@ -67,10 +97,10 @@ export default function NewOrderPage() {
     const h2 = getHash(dropoffAddress);
     
     // Max 10km offset
-    const pickupLat = harareCenterLat + (h1 % 100) / 1000;
-    const pickupLng = harareCenterLng + (h1 % 80) / 1000;
-    const dropoffLat = harareCenterLat + (h2 % 100) / 1000;
-    const dropoffLng = harareCenterLng + (h2 % 80) / 1000;
+    const pickupLat = centerLat + (h1 % 100) / 1000;
+    const pickupLng = centerLng + (h1 % 80) / 1000;
+    const dropoffLat = centerLat + (h2 % 100) / 1000;
+    const dropoffLng = centerLng + (h2 % 80) / 1000;
 
     const est = PricingService.estimateFare({
       pickupLat,
@@ -114,13 +144,13 @@ export default function NewOrderPage() {
         pickup_address: pickupAddress,
         pickup_contact_name: pickupName,
         pickup_contact_phone: pickupPhone,
-        pickup_lat: -17.8292 + (pickupAddress.length % 10) / 100, // mock coordinates
-        pickup_lng: 31.0522 + (pickupAddress.length % 8) / 100,
+        pickup_lat: (country === 'ZM' ? -15.3875 : -17.8292) + (pickupAddress.length % 10) / 100, // mock coordinates
+        pickup_lng: (country === 'ZM' ? 28.3228 : 31.0522) + (pickupAddress.length % 8) / 100,
         dropoff_address: dropoffAddress,
         dropoff_contact_name: dropoffName,
         dropoff_contact_phone: dropoffPhone,
-        dropoff_lat: -17.8292 + (dropoffAddress.length % 10) / 100,
-        dropoff_lng: 31.0522 + (dropoffAddress.length % 8) / 100,
+        dropoff_lat: (country === 'ZM' ? -15.3875 : -17.8292) + (dropoffAddress.length % 10) / 100,
+        dropoff_lng: (country === 'ZM' ? 28.3228 : 31.0522) + (dropoffAddress.length % 8) / 100,
         dropoff_gate_color: dropoffGateColor || undefined,
         item_description: itemDescription,
         delivery_fee: estimate?.baseFare,
@@ -135,10 +165,12 @@ export default function NewOrderPage() {
       if (result) {
         // Direct routing based on payment mode
         if (paymentMethod === 'ecocash') {
-          // Send to tracking flow with auto EcoCash launch search param
           router.push(`/dashboard/tracking?id=${result.id}&pay=ecocash&phone=${encodeURIComponent(pickupPhone)}`);
+        } else if (paymentMethod === 'mtn_momo') {
+          router.push(`/dashboard/tracking?id=${result.id}&pay=mtn_momo&phone=${encodeURIComponent(pickupPhone)}`);
+        } else if (paymentMethod === 'airtel_money') {
+          router.push(`/dashboard/tracking?id=${result.id}&pay=airtel_money&phone=${encodeURIComponent(pickupPhone)}`);
         } else {
-          // Cash on delivery directly to tracking map
           router.push(`/dashboard/tracking?id=${result.id}`);
         }
       }
@@ -214,7 +246,7 @@ export default function NewOrderPage() {
                   style={{ flex: '1 1 30%' }}
                   onClick={() => setProtectionLevel('none')}
                 >
-                  ❌ None ($0.00)
+                  ❌ None ({formatPrice(0)})
                 </button>
                 <button 
                   type="button" 
@@ -222,7 +254,7 @@ export default function NewOrderPage() {
                   style={{ flex: '1 1 30%' }}
                   onClick={() => setProtectionLevel('protected')}
                 >
-                  🛡️ Protect ($0.50)
+                  🛡️ Protect ({formatPrice(0.5)})
                 </button>
                 <button 
                   type="button" 
@@ -230,13 +262,13 @@ export default function NewOrderPage() {
                   style={{ flex: '1 1 30%' }}
                   onClick={() => setProtectionLevel('premium_secure')}
                 >
-                  ✨ Protect+ ($1.50)
+                  ✨ Protect+ ({formatPrice(1.50)})
                 </button>
               </div>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
                 {protectionLevel === 'none' && '* No transit protection. Biker is not liable for damages.'}
-                {protectionLevel === 'protected' && '* Standard Protect covers transit damage and losses up to $100.'}
-                {protectionLevel === 'premium_secure' && '* Premium Protect+ (Secure) covers up to $500 + Priority Ops/Admin Resolution.'}
+                {protectionLevel === 'protected' && `* Standard Protect covers transit damage and losses up to ${formatPrice(100)}.`}
+                {protectionLevel === 'premium_secure' && `* Premium Protect+ (Secure) covers up to ${formatPrice(500)} + Priority Ops/Admin Resolution.`}
               </p>
             </div>
           </div>
@@ -250,7 +282,7 @@ export default function NewOrderPage() {
                 <input 
                   type="text" 
                   className="input" 
-                  placeholder="e.g. Sam Levy's Village, Borrowdale Road" 
+                  placeholder={pickupPlaceholder} 
                   value={pickupAddress}
                   onChange={(e) => setPickupAddress(e.target.value)}
                   required
@@ -273,7 +305,7 @@ export default function NewOrderPage() {
                 <input 
                   type="tel" 
                   className="input" 
-                  placeholder="e.g. 0771234567" 
+                  placeholder={phonePlaceholder} 
                   value={pickupPhone}
                   onChange={(e) => setPickupPhone(e.target.value)}
                   required
@@ -291,7 +323,7 @@ export default function NewOrderPage() {
                 <input 
                   type="text" 
                   className="input" 
-                  placeholder="e.g. Avondale Shops, Harare" 
+                  placeholder={dropoffPlaceholder} 
                   value={dropoffAddress}
                   onChange={(e) => setDropoffAddress(e.target.value)}
                   required
@@ -314,7 +346,7 @@ export default function NewOrderPage() {
                 <input 
                   type="tel" 
                   className="input" 
-                  placeholder="e.g. 0779876543" 
+                  placeholder={phonePlaceholder} 
                   value={dropoffPhone}
                   onChange={(e) => setDropoffPhone(e.target.value)}
                   required
@@ -369,22 +401,22 @@ export default function NewOrderPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>Base delivery:</span>
-                  <span style={{ fontWeight: 600 }}>${estimate.baseFare.toFixed(2)}</span>
+                  <span style={{ fontWeight: 600 }}>{formatPrice(estimate.baseFare)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Biker fee:</span>
-                  <span style={{ fontWeight: 600 }}>${estimate.serviceFee.toFixed(2)}</span>
+                  <span style={{ fontWeight: 600 }}>{formatPrice(estimate.serviceFee)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Protection fee:</span>
-                  <span style={{ fontWeight: 600 }}>${estimate.protectionFee.toFixed(2)}</span>
+                  <span style={{ fontWeight: 600 }}>{formatPrice(estimate.protectionFee)}</span>
                 </div>
                 
                 <div className="divider" style={{ margin: '8px 0' }} />
                 
                 <div className="flex justify-between" style={{ fontSize: '1.1rem', fontWeight: 800 }}>
                   <span>Total cost:</span>
-                  <span style={{ color: 'var(--color-primary-500)' }}>${estimate.total.toFixed(2)}</span>
+                  <span style={{ color: 'var(--color-primary-500)' }}>{formatPrice(estimate.total)}</span>
                 </div>
               </div>
             ) : (
@@ -397,24 +429,50 @@ export default function NewOrderPage() {
 
             <div>
               <label className="label">Payment Mode</label>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                <button 
-                  type="button" 
-                  className={`btn btn--full ${paymentMethod === 'ecocash' ? 'btn--primary' : 'btn--secondary'}`}
-                  onClick={() => setPaymentMethod('ecocash')}
-                >
-                  📱 EcoCash
-                </button>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                {country === 'ZW' ? (
+                  <button 
+                    type="button" 
+                    className={`btn btn--full ${paymentMethod === 'ecocash' ? 'btn--primary' : 'btn--secondary'}`}
+                    style={{ flex: '1 1 45%' }}
+                    onClick={() => setPaymentMethod('ecocash')}
+                  >
+                    📱 EcoCash
+                  </button>
+                ) : (
+                  <>
+                    <button 
+                      type="button" 
+                      className={`btn btn--full ${paymentMethod === 'mtn_momo' ? 'btn--primary' : 'btn--secondary'}`}
+                      style={{ flex: '1 1 45%' }}
+                      onClick={() => setPaymentMethod('mtn_momo')}
+                    >
+                      🟡 MTN MoMo
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`btn btn--full ${paymentMethod === 'airtel_money' ? 'btn--primary' : 'btn--secondary'}`}
+                      style={{ flex: '1 1 45%' }}
+                      onClick={() => setPaymentMethod('airtel_money')}
+                    >
+                      🔴 Airtel Money
+                    </button>
+                  </>
+                )}
                 <button 
                   type="button" 
                   className={`btn btn--full ${paymentMethod === 'cash' ? 'btn--primary' : 'btn--secondary'}`}
+                  style={{ flex: '1 1 45%' }}
                   onClick={() => setPaymentMethod('cash')}
                 >
                   💵 Cash (COD)
                 </button>
               </div>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                *EcoCash payments are held securely in escrow until successful PIN releases are completed.
+                {paymentMethod === 'ecocash' && '*EcoCash payments are held securely in escrow until successful PIN releases are completed.'}
+                {paymentMethod === 'mtn_momo' && '*MTN MoMo payments are held securely in escrow until successful PIN releases are completed.'}
+                {paymentMethod === 'airtel_money' && '*Airtel Money payments are held securely in escrow until successful PIN releases are completed.'}
+                {paymentMethod === 'cash' && '*Cash payments are collected by the rider on delivery.'}
               </p>
             </div>
 

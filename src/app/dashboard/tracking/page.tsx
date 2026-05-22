@@ -14,14 +14,84 @@ import { useProfile } from '@/context/ProfileContext';
 import LiveTrackingMap from '@/components/map/LiveTrackingMap';
 import styles from './tracking.module.css';
 
+const getModalStyles = (method: string) => {
+  switch (method) {
+    case 'mtn_momo':
+      return {
+        modal: { background: '#FFCC00', color: '#000000', borderColor: '#E6B800' },
+        title: { color: '#000000' },
+        subtitle: { color: 'rgba(0, 0, 0, 0.6)' },
+        body: { color: '#000000' },
+        details: { background: 'rgba(0, 0, 0, 0.05)', color: '#000000' },
+        detailLabel: { color: 'rgba(0, 0, 0, 0.6)' },
+        detailValue: { color: '#000000' },
+        statusBox: { background: 'rgba(0, 0, 0, 0.03)', borderColor: 'rgba(0, 0, 0, 0.2)', color: '#000000' },
+        statusTitle: { color: '#000000' },
+        statusDesc: { color: 'rgba(0, 0, 0, 0.6)' },
+        timer: { color: '#000000' },
+        sandboxBadge: { background: 'rgba(0, 0, 0, 0.1)', color: '#000000' },
+        brandIcon: { background: '#000000', color: '#FFCC00' },
+        primaryBtn: { background: '#000000', color: '#FFCC00', border: 'none' },
+        secondaryBtn: { background: 'transparent', color: '#000000', border: '1px solid rgba(0, 0, 0, 0.3)' }
+      };
+    case 'airtel_money':
+      return {
+        modal: { background: '#E11900', color: '#FFFFFF', borderColor: '#B31400' },
+        title: { color: '#FFFFFF' },
+        subtitle: { color: 'rgba(255, 255, 255, 0.7)' },
+        body: { color: '#FFFFFF' },
+        details: { background: 'rgba(255, 255, 255, 0.1)', color: '#FFFFFF' },
+        detailLabel: { color: 'rgba(255, 255, 255, 0.7)' },
+        detailValue: { color: '#FFFFFF' },
+        statusBox: { background: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.3)', color: '#FFFFFF' },
+        statusTitle: { color: '#FFFFFF' },
+        statusDesc: { color: 'rgba(255, 255, 255, 0.7)' },
+        timer: { color: '#FFFFFF' },
+        sandboxBadge: { background: 'rgba(255, 255, 255, 0.2)', color: '#FFFFFF' },
+        brandIcon: { background: '#FFFFFF', color: '#E11900' },
+        primaryBtn: { background: '#FFFFFF', color: '#E11900', border: 'none' },
+        secondaryBtn: { background: 'transparent', color: '#FFFFFF', border: '1px solid rgba(255, 255, 255, 0.5)' }
+      };
+    default: // ecocash
+      return {
+        modal: {},
+        title: {},
+        subtitle: {},
+        body: {},
+        details: {},
+        detailLabel: {},
+        detailValue: {},
+        statusBox: {},
+        statusTitle: {},
+        statusDesc: {},
+        timer: {},
+        sandboxBadge: {},
+        brandIcon: {},
+        primaryBtn: {},
+        secondaryBtn: {}
+      };
+  }
+};
+
 function TrackingContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const orderId = searchParams.get('id');
-  const launchEcoCash = searchParams.get('pay') === 'ecocash';
+  
+  const { session, country } = useProfile();
+  
+  const launchPay = searchParams.get('pay');
+  const launchEcoCash = launchPay === 'ecocash';
+  const launchMtnMomo = launchPay === 'mtn_momo';
+  const launchAirtelMoney = launchPay === 'airtel_money';
   const ecocashPhoneParam = searchParams.get('phone') || '';
 
-  const { session } = useProfile();
+  const formatPrice = (usdVal: number) => {
+    if (country === 'ZM') {
+      return `ZK ${(usdVal * 25).toFixed(2)}`;
+    }
+    return `$${usdVal.toFixed(2)}`;
+  };
 
   const [initialOrder, setInitialOrder] = useState<BikerOrder | null>(null);
   const [liveOrder, setLiveOrder] = useState<BikerOrder | null>(null);
@@ -108,8 +178,8 @@ function TrackingContent() {
         order_id: order.id,
         user_id: session?.user_id || 'customer',
         type: 'sos_alert',
-        gps_lat: order.pickup_lat || -17.8292,
-        gps_lng: order.pickup_lng || 31.0522
+        gps_lat: order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+        gps_lng: order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)
       });
       if (alert) {
         addSimulationLog('🆘 SOS Alert logged successfully. Active security dispatched.');
@@ -219,16 +289,16 @@ function TrackingContent() {
           setEcocashPhone(o.pickup_contact_phone);
         }
 
-        // Auto trigger EcoCash checkout overlay if requested
-        if (launchEcoCash && o.status === 'payment_pending') {
-          triggerEcoCashUSSDPush(o, ecocashPhoneParam || o.pickup_contact_phone || '0771234567');
+        // Auto trigger payment checkout overlay if requested
+        if ((launchEcoCash || launchMtnMomo || launchAirtelMoney) && o.status === 'payment_pending') {
+          triggerEcoCashUSSDPush(o, ecocashPhoneParam || o.pickup_contact_phone || (country === 'ZM' ? '0971234567' : '0771234567'));
         }
 
         // Initialize rider location coordinates if rider is assigned
         if (o.assigned_rider_id) {
           setRiderLocation({
-            lat: o.pickup_lat || -17.8292,
-            lng: o.pickup_lng || 31.0522
+            lat: o.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+            lng: o.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)
           });
         }
 
@@ -380,7 +450,11 @@ function TrackingContent() {
       // Update locally
       await OrderService.updateOrderStatus(liveOrder.id, 'rider_assigned', 'Simulated matchmaker assigned Rider: Tinashe M.');
       setLiveOrder(updated);
-      setRiderLocation({ lat: -17.8105, lng: 31.0620, heading: 45 }); // Heading toward pickup
+      setRiderLocation({
+        lat: country === 'ZM' ? -15.3705 : -17.8105,
+        lng: country === 'ZM' ? 28.3320 : 31.0620,
+        heading: 45
+      }); // Heading toward pickup
       
       addSimulationLog('🟢 Status Changed: "Rider Assigned" (Tinashe M. is en route to pickup)');
     }, 6000);
@@ -402,8 +476,8 @@ function TrackingContent() {
       await OrderService.updateOrderStatus(liveOrder.id, 'at_pickup', 'Rider arrived at pickup');
       setLiveOrder(updated);
       setRiderLocation({
-        lat: liveOrder.pickup_lat || -17.8292,
-        lng: liveOrder.pickup_lng || 31.0522,
+        lat: liveOrder.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+        lng: liveOrder.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522),
         heading: 180
       });
       addSimulationLog('🟢 Status Changed: "At Pickup"');
@@ -493,26 +567,30 @@ function TrackingContent() {
     return () => clearInterval(interval);
   }, [orderId, liveOrder?.status]);
 
-  // ECO-CASH USSD PUSH INITIATION FLOW
+  // USSD PUSH INITIATION FLOW
   const triggerEcoCashUSSDPush = async (ord: BikerOrder, phone: string) => {
     setEcocashError('');
     setShowEcoCashOverlay(true);
     setEcocashTimer(30);
     
-    addSimulationLog(`📱 Initiating EcoCash USSD Push request for ${phone}...`);
+    const method = ord.payment_method || (launchMtnMomo ? 'mtn_momo' : launchAirtelMoney ? 'airtel_money' : 'ecocash');
+    const providerName = method === 'mtn_momo' ? 'MTN MoMo' : method === 'airtel_money' ? 'Airtel Money' : 'EcoCash';
+    
+    addSimulationLog(`📱 Initiating ${providerName} USSD Push request for ${phone}...`);
     
     try {
       const tx = await EcoCashService.initiatePayment(
         ord.id,
         phone,
         ord.total_amount || 5.00,
-        ord.reference_code
+        ord.reference_code,
+        method
       );
       setActiveTxId(tx.id);
       addSimulationLog(`📱 USSD Push prompt dispatched. TxRef: ${tx.id}. Status: Awaiting PIN.`);
     } catch (e: any) {
       setEcocashError(e.message || 'Failed to dispatch USSD Push prompt');
-      addSimulationLog(`❌ EcoCash Error: ${e.message}`);
+      addSimulationLog(`❌ Payment Error: ${e.message}`);
     }
   };
 
@@ -549,10 +627,12 @@ function TrackingContent() {
     
     addSimulationLog('📱 Simulating Customer USSD PIN confirmation...');
     
+    const method = initialOrder.payment_method || (launchMtnMomo ? 'mtn_momo' : launchAirtelMoney ? 'airtel_money' : 'ecocash');
+    
     // Add 1.5s delay to make ledger writing visual
     setTimeout(async () => {
       try {
-        const res = await EcoCashService.confirmPayment(initialOrder.id, activeTxId);
+        const res = await EcoCashService.confirmPayment(initialOrder.id, activeTxId, method);
         if (res.success) {
           addSimulationLog('💸 Double-Entry Ledger updated: debited central gateway, credited customer escrow.');
           addSimulationLog('🔒 Payment Held: Funds secured in multi-sig escrow wallet.');
@@ -723,8 +803,8 @@ function TrackingContent() {
         {/* Left Column: Map Tracker (Dynamic) */}
         <div className={`${styles.mapArea} ${activeTab === 'map' ? styles.mapAreaVisible : ''}`} style={{ minHeight: '350px' }}>
           <LiveTrackingMap
-            pickupCoords={[order.pickup_lat || -17.8292, order.pickup_lng || 31.0522]}
-            dropoffCoords={[order.dropoff_lat || -17.7994, order.dropoff_lng || 31.0378]}
+            pickupCoords={[order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292), order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)]}
+            dropoffCoords={[order.dropoff_lat || (country === 'ZM' ? -15.3994 : -17.7994), order.dropoff_lng || (country === 'ZM' ? 28.3078 : 31.0378)]}
             riderCoords={riderLocation ? [riderLocation.lat, riderLocation.lng] : null}
             riderHeading={riderLocation?.heading ?? null}
             riderName={order.rider?.full_name || 'Tinashe M.'}
@@ -773,7 +853,7 @@ function TrackingContent() {
               </p>
               <button 
                 className="btn btn--primary btn--sm" 
-                onClick={() => triggerEcoCashUSSDPush(order, ecocashPhone || '0771234567')}
+                onClick={() => triggerEcoCashUSSDPush(order, ecocashPhone || (country === 'ZM' ? '0971234567' : '0771234567'))}
               >
                 Open USSD Push Simulator
               </button>
@@ -886,7 +966,7 @@ function TrackingContent() {
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '0.9375rem', fontWeight: 800, color: 'var(--color-success-400)' }}>
-                            ${Number(offer.counter_offer_amount).toFixed(2)}
+                            {formatPrice(Number(offer.counter_offer_amount))}
                           </div>
                           <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>payout</div>
                         </div>
@@ -1017,20 +1097,20 @@ function TrackingContent() {
           <div className={styles.priceSummary}>
             <div className={styles.priceRow}>
               <span>Delivery fee</span>
-              <span>${(order.delivery_fee ?? 0).toFixed(2)}</span>
+              <span>{formatPrice(order.delivery_fee ?? 0)}</span>
             </div>
             <div className={styles.priceRow}>
               <span>Service fee</span>
-              <span>${(order.service_fee ?? 0).toFixed(2)}</span>
+              <span>{formatPrice(order.service_fee ?? 0)}</span>
             </div>
             <div className={styles.priceRow}>
               <span>🛡️ Protection fee</span>
-              <span>${(order.protection_fee ?? 0).toFixed(2)}</span>
+              <span>{formatPrice(order.protection_fee ?? 0)}</span>
             </div>
             <hr className="divider" />
             <div className={`${styles.priceRow} ${styles.priceTotal}`}>
               <span>Total</span>
-              <span>${(order.total_amount ?? 0).toFixed(2)}</span>
+              <span>{formatPrice(order.total_amount ?? 0)}</span>
             </div>
           </div>
 
@@ -1067,86 +1147,95 @@ function TrackingContent() {
                   }
                 }}
               >
-                Cancel order
+                Cancel Order
               </button>
             )}
           </div>
         </div>
       </div>
-
-      {showEcoCashOverlay && (
-        <div className={styles.ecocashOverlay}>
-          <div className={styles.ecocashModal}>
-            <div className={styles.ecocashHeader}>
-              <div className={styles.ecocashBrandIcon}>📱</div>
-              <div>
-                <div className={styles.ecocashTitle}>EcoCash Payment</div>
-                <div className={styles.ecocashSubtitle}>USSD Push Notification Simulator</div>
-              </div>
-            </div>
-            
-            <div className={styles.ecocashBody}>
-              <div className={styles.ecocashSandboxBadge}>DEVELOPER SANDBOX</div>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: '1.4' }}>
-                A simulated USSD push prompt has been broadcasted to the customer's mobile device:
-              </p>
-              
-              <div className={styles.ecocashDetails}>
-                <div className={styles.ecocashDetailRow}>
-                  <span className={styles.ecocashDetailLabel}>Phone Number:</span>
-                  <span className={styles.ecocashDetailValue}>{ecocashPhone}</span>
+      {showEcoCashOverlay && (() => {
+        const activeMethod = order.payment_method || (launchMtnMomo ? 'mtn_momo' : launchAirtelMoney ? 'airtel_money' : 'ecocash');
+        const theme = getModalStyles(activeMethod);
+        const providerName = activeMethod === 'mtn_momo' ? 'MTN MoMo' : activeMethod === 'airtel_money' ? 'Airtel Money' : 'EcoCash';
+        
+        return (
+          <div className={styles.ecocashOverlay}>
+            <div className={styles.ecocashModal} style={theme.modal}>
+              <div className={styles.ecocashHeader}>
+                <div className={styles.ecocashBrandIcon} style={theme.brandIcon}>
+                  {activeMethod === 'mtn_momo' ? '🟡' : activeMethod === 'airtel_money' ? '🔴' : '📱'}
                 </div>
-                <div className={styles.ecocashDetailRow}>
-                  <span className={styles.ecocashDetailLabel}>Amount Due:</span>
-                  <span className={styles.ecocashDetailValue}>${(order.total_amount ?? 0).toFixed(2)} USD</span>
-                </div>
-                <div className={styles.ecocashDetailRow}>
-                  <span className={styles.ecocashDetailLabel}>Reference Code:</span>
-                  <span className={styles.ecocashDetailValue} style={{ fontFamily: 'var(--font-mono)' }}>{order.reference_code}</span>
+                <div>
+                  <div className={styles.ecocashTitle} style={theme.title}>{providerName} Payment</div>
+                  <div className={styles.ecocashSubtitle} style={theme.subtitle}>USSD Push Notification Simulator</div>
                 </div>
               </div>
               
-              <div className={styles.ecocashStatusBox}>
-                {isProcessingEcoCash ? (
-                  <>
-                    <div className="spinner spinner--md" style={{ color: 'var(--color-primary-500)' }} />
-                    <div className={styles.ecocashStatusTitle} style={{ marginTop: '8px' }}>Processing Ledger Updates...</div>
-                  </>
-                ) : (
-                  <>
-                    <div className={styles.ecocashTimer}>{ecocashTimer}s</div>
-                    <div className={styles.ecocashStatusTitle}>Awaiting USSD PIN authorization...</div>
-                    <p className={styles.ecocashStatusDesc}>Please approve the EcoCash push prompt on the simulator device below</p>
-                  </>
+              <div className={styles.ecocashBody}>
+                <div className={styles.ecocashSandboxBadge} style={theme.sandboxBadge}>DEVELOPER SANDBOX</div>
+                <p style={{ fontSize: '13px', color: theme.body?.color || 'var(--text-secondary)', textAlign: 'center', lineHeight: '1.4' }}>
+                  A simulated USSD push prompt has been broadcasted to the customer's mobile device:
+                </p>
+                
+                <div className={styles.ecocashDetails} style={theme.details}>
+                  <div className={styles.ecocashDetailRow}>
+                    <span className={styles.ecocashDetailLabel} style={theme.detailLabel}>Phone Number:</span>
+                    <span className={styles.ecocashDetailValue} style={theme.detailValue}>{ecocashPhone}</span>
+                  </div>
+                  <div className={styles.ecocashDetailRow}>
+                    <span className={styles.ecocashDetailLabel} style={theme.detailLabel}>Amount Due:</span>
+                    <span className={styles.ecocashDetailValue} style={theme.detailValue}>{formatPrice(order.total_amount ?? 0)}</span>
+                  </div>
+                  <div className={styles.ecocashDetailRow}>
+                    <span className={styles.ecocashDetailLabel} style={theme.detailLabel}>Reference Code:</span>
+                    <span className={styles.ecocashDetailValue} style={{ ...theme.detailValue, fontFamily: 'var(--font-mono)' }}>{order.reference_code}</span>
+                  </div>
+                </div>
+                
+                <div className={styles.ecocashStatusBox} style={theme.statusBox}>
+                  {isProcessingEcoCash ? (
+                    <>
+                      <div className="spinner spinner--md" style={{ color: activeMethod === 'mtn_momo' ? '#000' : activeMethod === 'airtel_money' ? '#fff' : 'var(--color-primary-500)' }} />
+                      <div className={styles.ecocashStatusTitle} style={{ ...theme.statusTitle, marginTop: '8px' }}>Processing Ledger Updates...</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className={styles.ecocashTimer} style={theme.timer}>{ecocashTimer}s</div>
+                      <div className={styles.ecocashStatusTitle} style={theme.statusTitle}>Awaiting USSD PIN authorization...</div>
+                      <p className={styles.ecocashStatusDesc} style={theme.statusDesc}>Please approve the {providerName} push prompt on the simulator device below</p>
+                    </>
+                  )}
+                </div>
+                
+                {ecocashError && (
+                  <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px' }}>
+                    ⚠️ {ecocashError}
+                  </div>
                 )}
               </div>
               
-              {ecocashError && (
-                <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px' }}>
-                  ⚠️ {ecocashError}
-                </div>
-              )}
-            </div>
-            
-            <div className={styles.ecocashActions}>
-              <button 
-                className="btn btn--primary btn--full"
-                onClick={handleApprovePayment}
-                disabled={isProcessingEcoCash}
-              >
-                {isProcessingEcoCash ? 'Please wait...' : 'Approve Simulated Payment'}
-              </button>
-              <button 
-                className="btn btn--secondary btn--full"
-                onClick={handleDeclinePayment}
-                disabled={isProcessingEcoCash}
-              >
-                Decline & Cancel Order
-              </button>
+              <div className={styles.ecocashActions}>
+                <button 
+                  className="btn btn--primary btn--full"
+                  onClick={handleApprovePayment}
+                  disabled={isProcessingEcoCash}
+                  style={theme.primaryBtn}
+                >
+                  {isProcessingEcoCash ? 'Please wait...' : 'Approve Simulated Payment'}
+                </button>
+                <button 
+                  className="btn btn--secondary btn--full"
+                  onClick={handleDeclinePayment}
+                  disabled={isProcessingEcoCash}
+                  style={theme.secondaryBtn}
+                >
+                  Decline & Cancel Order
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {showCallSimulator && (
         <CallSimulator
           orderId={order.id}

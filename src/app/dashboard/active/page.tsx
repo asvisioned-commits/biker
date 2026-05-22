@@ -34,8 +34,15 @@ export default function ActiveOrderRiderPage() {
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
 
   // Safety & Secure Communication
-  const { session } = useProfile();
+  const { session, country } = useProfile();
   const [showCallSimulator, setShowCallSimulator] = useState(false);
+
+  const formatPrice = (usdVal: number) => {
+    if (country === 'ZM') {
+      return `ZK ${(usdVal * 25).toFixed(2)}`;
+    }
+    return `$${usdVal.toFixed(2)}`;
+  };
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const [showTransitCheckinTimer, setShowTransitCheckinTimer] = useState(false);
   const [checkinCountdown, setCheckinCountdown] = useState(10);
@@ -152,8 +159,8 @@ export default function ActiveOrderRiderPage() {
         order_id: order.id,
         user_id: riderId || 'rider',
         type: 'missed_checkin',
-        gps_lat: order.pickup_lat || -17.8292,
-        gps_lng: order.pickup_lng || 31.0522
+        gps_lat: order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+        gps_lng: order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)
       });
       alert('⚠️ Missed Transit Check-in: Safety Alert has been flagged to Biker Operations.');
     } catch (e) {
@@ -175,8 +182,8 @@ export default function ActiveOrderRiderPage() {
         order_id: order.id,
         user_id: riderId || 'rider',
         type: 'sos_alert',
-        gps_lat: order.pickup_lat || -17.8292,
-        gps_lng: order.pickup_lng || 31.0522
+        gps_lat: order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+        gps_lng: order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)
       });
       alert('🆘 SOS Emergency Triggered! Active security dispatched.');
     } catch (e) {
@@ -288,13 +295,15 @@ export default function ActiveOrderRiderPage() {
       return;
     }
 
+    const usdCollected = country === 'ZM' ? amt / 25 : amt;
+
     try {
       const res = await OrderService.completeCodDelivery({
         orderId: order.id,
         riderId,
         pin: pinCode,
-        cashCollected: amt,
-        hasDiscrepancy: hasDiscrepancy || Math.abs(amt - (order.total_amount || 0)) > 0.01,
+        cashCollected: usdCollected,
+        hasDiscrepancy: hasDiscrepancy || Math.abs(usdCollected - (order.total_amount || 0)) > 0.01,
         expectedAmount: order.total_amount || 0
       });
 
@@ -365,8 +374,8 @@ export default function ActiveOrderRiderPage() {
       <div className="card p-4 mb-6" style={{ padding: '16px', marginBottom: '24px' }}>
         <h3 className="title title--sm" style={{ marginBottom: '12px' }}>Live Transit Map</h3>
         <LiveTrackingMap
-          pickupCoords={[order.pickup_lat || -17.8292, order.pickup_lng || 31.0522]}
-          dropoffCoords={[order.dropoff_lat || -17.7994, order.dropoff_lng || 31.0378]}
+          pickupCoords={[order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292), order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)]}
+          dropoffCoords={[order.dropoff_lat || (country === 'ZM' ? -15.3994 : -17.7994), order.dropoff_lng || (country === 'ZM' ? 28.3078 : 31.0378)]}
           riderCoords={riderCoords}
           riderHeading={riderHeading}
           riderName="You"
@@ -417,7 +426,7 @@ export default function ActiveOrderRiderPage() {
         </div>
         <div className="flex justify-between" style={{ fontSize: '14px', marginTop: '4px' }}>
           <span>Total Delivery Fee:</span>
-          <span style={{ fontWeight: 700 }}>${order.total_amount?.toFixed(2)}</span>
+          <span style={{ fontWeight: 700 }}>{formatPrice(order.total_amount ?? 0)}</span>
         </div>
         
         <div className="divider" style={{ margin: '16px 0' }} />
@@ -497,12 +506,12 @@ export default function ActiveOrderRiderPage() {
                     {isCOD && (
                       <>
                         <div>
-                          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Actual Cash Collected ($)</label>
+                          <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Actual Cash Collected ({country === 'ZM' ? 'ZK' : '$'})</label>
                           <input 
                             type="number" 
                             step="0.01"
                             className="input" 
-                            placeholder={`Expected: $${order.total_amount?.toFixed(2)}`}
+                            placeholder={`Expected: ${formatPrice(order.total_amount ?? 0)}`}
                             value={cashCollected}
                             onChange={(e) => setCashCollected(e.target.value)}
                           />

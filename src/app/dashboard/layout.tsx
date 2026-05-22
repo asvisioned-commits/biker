@@ -23,7 +23,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { session, loading, refreshSession } = useProfile();
+  const { session, loading, refreshSession, country, setCountry } = useProfile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Safeguard: Redirect Google sign-up users to the KYC wizard if role-metadata is pending
@@ -115,14 +115,24 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             <Link href="/" className={styles.logo}>Biker<span className={styles.logoDot}>.</span></Link>
             <button className={styles.sidebarClose} onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
-          <div className={styles.roleSwitcher}>
-            <select className={styles.roleSelect} value={activeRole} onChange={(e) => handleRoleChange(e.target.value as UserRole)}>
-              <option value="customer">📦 Customer</option>
-              <option value="rider">🚴 Rider</option>
-              <option value="merchant">🏪 Merchant</option>
-              <option value="ops">🔧 Ops</option>
-              <option value="admin">👑 Admin</option>
-            </select>
+          <div className={styles.switchers}>
+            <div className={styles.switcher}>
+              <span className={styles.switcherLabel}>Role</span>
+              <select className={styles.roleSelect} value={activeRole} onChange={(e) => handleRoleChange(e.target.value as UserRole)}>
+                <option value="customer">📦 Customer</option>
+                <option value="rider">🚴 Rider</option>
+                <option value="merchant">🏪 Merchant</option>
+                <option value="ops">🔧 Ops</option>
+                <option value="admin">👑 Admin</option>
+              </select>
+            </div>
+            <div className={styles.switcher}>
+              <span className={styles.switcherLabel}>Country</span>
+              <select className={styles.roleSelect} value={country} onChange={(e) => setCountry(e.target.value as 'ZW' | 'ZM')}>
+                <option value="ZW">🇿🇼 ZW</option>
+                <option value="ZM">🇿🇲 ZM</option>
+              </select>
+            </div>
           </div>
           <nav className={styles.nav}>
             {currentNav.map((item) => <Link key={item.href} href={item.href} className={`${styles.navItem} ${pathname === item.href ? styles.navItemActive : ''}`} onClick={() => setSidebarOpen(false)}><span className={styles.navIcon}>{item.icon}</span><span>{item.label}</span></Link>)}
