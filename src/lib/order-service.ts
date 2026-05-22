@@ -5,7 +5,18 @@ import {
   updateOrderStatus as dbUpdateOrderStatus,
   completeCodDelivery as dbCompleteCodDelivery,
   verifyDeliveryPin as dbVerifyDeliveryPin,
-  processOrderPayment as dbProcessOrderPayment
+  processOrderPayment as dbProcessOrderPayment,
+  createSafetyAlert as dbCreateSafetyAlert,
+  getSafetyAlerts as dbGetSafetyAlerts,
+  resolveSafetyAlert as dbResolveSafetyAlert,
+  logDeviceFingerprint as dbLogDeviceFingerprint,
+  checkOrderVelocity as dbCheckOrderVelocity,
+  createDispute as dbCreateDispute,
+  getDisputes as dbGetDisputes,
+  getAllDisputes as dbGetAllDisputes,
+  addDisputeEvidence as dbAddDisputeEvidence,
+  withdrawDisputeInDb as dbWithdrawDisputeInDb,
+  resolveDisputeInDb as dbResolveDisputeInDb
 } from './database';
 import type { ServiceType, FulfillmentMode, ProtectionLevel } from '@/types';
 
@@ -712,6 +723,347 @@ export const OrderService = {
 
     if (changed) {
       saveLocalOrders(updatedOrders);
+    }
+  },
+
+  // ─── Chat Messages ──────────────────────────────────────────────────
+  async getChatMessages(orderId: string): Promise<any[]> {
+    if (typeof window === 'undefined') return [];
+    const chats = localStorage.getItem('biker_order_chats');
+    if (!chats) return [];
+    try {
+      const allChats = JSON.parse(chats);
+      return allChats.filter((c: any) => c.order_id === orderId);
+    } catch {
+      return [];
+    }
+  },
+
+  async sendChatMessage(orderId: string, senderId: string, senderName: string, text: string): Promise<any> {
+    if (typeof window === 'undefined') return null;
+    const newMessage = {
+      id: `chat_${Date.now()}`,
+      order_id: orderId,
+      sender_id: senderId,
+      sender_name: senderName,
+      text,
+      created_at: new Date().toISOString()
+    };
+    const chats = localStorage.getItem('biker_order_chats');
+    let allChats = [];
+    if (chats) {
+      try { allChats = JSON.parse(chats); } catch {}
+    }
+    allChats.push(newMessage);
+    localStorage.setItem('biker_order_chats', JSON.stringify(allChats));
+    return newMessage;
+  },
+
+  // ─── Call Simulator Logging ─────────────────────────────────────────
+  async logCall(orderId: string, callerId: string, receiverId: string): Promise<any> {
+    if (typeof window === 'undefined') return null;
+    const newCall = {
+      id: `call_${Date.now()}`,
+      order_id: orderId,
+      caller_id: callerId,
+      receiver_id: receiverId,
+      created_at: new Date().toISOString()
+    };
+    const calls = localStorage.getItem('biker_calls');
+    let allCalls = [];
+    if (calls) {
+      try { allCalls = JSON.parse(calls); } catch {}
+    }
+    allCalls.push(newCall);
+    localStorage.setItem('biker_calls', JSON.stringify(allCalls));
+    return newCall;
+  },
+
+  // ─── Safety Alerts ──────────────────────────────────────────────────
+  async createSafetyAlert(alert: {
+    order_id: string;
+    user_id: string;
+    type: 'sos_alert' | 'missed_checkin';
+    gps_lat?: number;
+    gps_lng?: number;
+  }): Promise<any> {
+    if (this.isOnline) {
+      const { data, error } = await dbCreateSafetyAlert(alert);
+      if (!error && data) return data;
+    }
+    
+    // Fallback/offline
+    if (typeof window === 'undefined') return null;
+    const newAlert = {
+      id: `alert_${Date.now()}`,
+      ...alert,
+      status: 'active',
+      created_at: new Date().toISOString()
+    };
+    const alerts = localStorage.getItem('biker_safety_alerts');
+    let allAlerts = [];
+    if (alerts) {
+      try { allAlerts = JSON.parse(alerts); } catch {}
+    }
+    allAlerts.push(newAlert);
+    localStorage.setItem('biker_safety_alerts', JSON.stringify(allAlerts));
+    
+    // If it's SOS, log checkpoint in local storage too
+    if (alert.type === 'sos_alert') {
+      const order = await this.getOrderById(alert.order_id);
+      if (order) {
+        console.warn('RIDER SOS ALERT TRIGGERED FOR ORDER:', order.reference_code);
+      }
+    }
+    return newAlert;
+  },
+
+  async getSafetyAlerts(): Promise<any[]> {
+    if (this.isOnline) {
+      const { data } = await dbGetSafetyAlerts();
+      if (data) return data;
+    }
+    
+    if (typeof window === 'undefined') return [];
+    const alerts = localStorage.getItem('biker_safety_alerts');
+    if (!alerts) return [];
+    try { return JSON.parse(alerts); } catch { return []; }
+  },
+
+  async resolveSafetyAlert(alertId: string, resolvedBy: string, opsNotes: string): Promise<boolean> {
+    if (this.isOnline && !alertId.startsWith('alert_')) {
+      const { error } = await dbResolveSafetyAlert(alertId, resolvedBy, opsNotes);
+      if (!error) return true;
+    }
+    
+    if (typeof window === 'undefined') return false;
+    const alerts = localStorage.getItem('biker_safety_alerts');
+    if (!alerts) return false;
+    try {
+      const allAlerts = JSON.parse(alerts);
+      const updated = allAlerts.map((a: any) => {
+        if (a.id === alertId) {
+          return { ...a, status: 'resolved', resolved_by: resolvedBy, resolved_at: new Date().toISOString(), ops_notes: opsNotes };
+        }
+        return a;
+      });
+      localStorage.setItem('biker_safety_alerts', JSON.stringify(updated));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  // ─── Fraud Fingerprint & Velocity Checks ─────────────────────────────
+  async logDeviceFingerprint(userId: string | null, fingerprint: string): Promise<void> {
+    if (this.isOnline) {
+      await dbLogDeviceFingerprint(userId, fingerprint);
+    }
+    if (typeof window === 'undefined') return;
+    const fingerprints = localStorage.getItem('biker_device_fingerprints');
+    let allPrints = [];
+    if (fingerprints) {
+      try { allPrints = JSON.parse(fingerprints); } catch {}
+    }
+    allPrints.push({ user_id: userId, fingerprint, created_at: new Date().toISOString() });
+    localStorage.setItem('biker_device_fingerprints', JSON.stringify(allPrints));
+  },
+
+  async checkOrderVelocity(userId: string | null, fingerprint: string): Promise<{ allowed: boolean; details?: string }> {
+    if (this.isOnline) {
+      return await dbCheckOrderVelocity(userId, fingerprint);
+    }
+    
+    // Offline/Mock simulation
+    if (typeof window === 'undefined') return { allowed: true };
+    const localOrders = getLocalOrders();
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    
+    const recent = localOrders.filter(o => {
+      const matchesUser = userId && o.customer_id === userId;
+      const orderTime = new Date(o.created_at).getTime();
+      return matchesUser && orderTime >= tenMinutesAgo;
+    });
+    
+    const allowed = recent.length < 3;
+    return {
+      allowed,
+      details: allowed ? undefined : 'Booking limit exceeded. You can only place up to 3 orders every 10 minutes.'
+    };
+  },
+
+  // ─── Disputes ──────────────────────────────────────────────────────
+  async createDispute(dispute: {
+    request_id: string;
+    initiated_by: string;
+    dispute_type: string;
+    description: string;
+    refund_amount: number;
+    severity: string;
+    against_user_id?: string;
+  }): Promise<any> {
+    const order = await this.getOrderById(dispute.request_id);
+    const originalStatus = order?.status || 'completed';
+    
+    await this.updateOrderStatus(dispute.request_id, 'disputed');
+    
+    if (this.isOnline && !dispute.request_id.startsWith('local_')) {
+      const { data, error } = await dbCreateDispute({
+        request_id: dispute.request_id,
+        initiated_by: dispute.initiated_by,
+        dispute_type: dispute.dispute_type,
+        description: dispute.description,
+        against_user_id: dispute.against_user_id,
+        status: 'open',
+        severity: dispute.severity,
+        refund_amount: dispute.refund_amount,
+        original_status: originalStatus
+      } as any);
+      
+      if (!error && data) return data;
+    }
+    
+    if (typeof window === 'undefined') return null;
+    const newDispute = {
+      id: `mock-dispute-${Date.now()}`,
+      order_id: dispute.request_id,
+      order_ref: order?.reference_code || 'BKR-UNKNOWN',
+      ...dispute,
+      status: 'open',
+      original_status: originalStatus,
+      created_at: new Date().toISOString(),
+      evidence: []
+    };
+    
+    const disputes = localStorage.getItem('biker_local_disputes');
+    let allDisputes = [];
+    if (disputes) {
+      try { allDisputes = JSON.parse(disputes); } catch {}
+    }
+    allDisputes.push(newDispute);
+    localStorage.setItem('biker_local_disputes', JSON.stringify(allDisputes));
+    
+    return newDispute;
+  },
+
+  async getDisputes(userId: string): Promise<any[]> {
+    if (this.isOnline && userId) {
+      const { data } = await dbGetDisputes(userId);
+      if (data) return data;
+    }
+    
+    if (typeof window === 'undefined') return [];
+    const disputes = localStorage.getItem('biker_local_disputes');
+    if (!disputes) return [];
+    try {
+      const allDisputes = JSON.parse(disputes);
+      return allDisputes.filter((d: any) => d.initiated_by === userId || d.against_user_id === userId);
+    } catch {
+      return [];
+    }
+  },
+
+  async getAllDisputes(): Promise<any[]> {
+    if (this.isOnline) {
+      const { data } = await dbGetAllDisputes();
+      if (data) return data;
+    }
+    
+    if (typeof window === 'undefined') return [];
+    const disputes = localStorage.getItem('biker_local_disputes');
+    if (!disputes) return [];
+    try { return JSON.parse(disputes); } catch { return []; }
+  },
+
+  async addDisputeEvidence(disputeId: string, fileUrl: string): Promise<boolean> {
+    if (this.isOnline && !disputeId.startsWith('mock-dispute-')) {
+      const { error } = await dbAddDisputeEvidence(disputeId, fileUrl);
+      if (!error) return true;
+    }
+    
+    if (typeof window === 'undefined') return false;
+    const disputes = localStorage.getItem('biker_local_disputes');
+    if (!disputes) return false;
+    try {
+      const allDisputes = JSON.parse(disputes);
+      const updated = allDisputes.map((d: any) => {
+        if (d.id === disputeId) {
+          const currentEvidence = d.evidence || [];
+          return { ...d, evidence: [...currentEvidence, fileUrl] };
+        }
+        return d;
+      });
+      localStorage.setItem('biker_local_disputes', JSON.stringify(updated));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async withdrawDispute(disputeId: string): Promise<boolean> {
+    if (this.isOnline && !disputeId.startsWith('mock-dispute-')) {
+      const { error } = await dbWithdrawDisputeInDb(disputeId);
+      if (!error) return true;
+    }
+    
+    if (typeof window === 'undefined') return false;
+    const disputes = localStorage.getItem('biker_local_disputes');
+    if (!disputes) return false;
+    try {
+      const allDisputes = JSON.parse(disputes);
+      const dispute = allDisputes.find((d: any) => d.id === disputeId);
+      if (!dispute) return false;
+      
+      const originalStatus = dispute.original_status || 'completed';
+      await this.updateOrderStatus(dispute.request_id || dispute.order_id, originalStatus);
+      
+      const updated = allDisputes.map((d: any) => {
+        if (d.id === disputeId) {
+          return { ...d, status: 'closed', resolution_notes: 'Dispute withdrawn by claimant.' };
+        }
+        return d;
+      });
+      localStorage.setItem('biker_local_disputes', JSON.stringify(updated));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async resolveDispute(disputeId: string, action: 'approve' | 'deny', resolvedBy: string, notes: string): Promise<boolean> {
+    if (this.isOnline && !disputeId.startsWith('mock-dispute-')) {
+      const { error } = await dbResolveDisputeInDb(disputeId, action, resolvedBy, notes);
+      if (!error) return true;
+    }
+    
+    if (typeof window === 'undefined') return false;
+    const disputes = localStorage.getItem('biker_local_disputes');
+    if (!disputes) return false;
+    try {
+      const allDisputes = JSON.parse(disputes);
+      const dispute = allDisputes.find((d: any) => d.id === disputeId);
+      if (!dispute) return false;
+      
+      const orderId = dispute.request_id || dispute.order_id;
+      const targetStatus = action === 'approve' ? 'disputed_resolved' : (dispute.original_status || 'completed');
+      await this.updateOrderStatus(orderId, targetStatus);
+      
+      const updated = allDisputes.map((d: any) => {
+        if (d.id === disputeId) {
+          return {
+            ...d,
+            status: action === 'approve' ? 'resolved_customer_favor' : 'closed',
+            resolved_by: resolvedBy,
+            resolved_at: new Date().toISOString(),
+            resolution_notes: notes
+          };
+        }
+        return d;
+      });
+      localStorage.setItem('biker_local_disputes', JSON.stringify(updated));
+      return true;
+    } catch {
+      return false;
     }
   }
 };

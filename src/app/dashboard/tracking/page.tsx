@@ -8,6 +8,9 @@ import { EcoCashService, EcoCashTransaction } from '@/lib/ecocash';
 import { createClient } from '@/lib/supabase/client';
 import { getCounterOffersForOrder, respondToCounterOffer } from '../earnings/actions';
 import { FLAGS } from '@/lib/flags';
+import { CallSimulator } from '@/components/CallSimulator';
+import { ChatDrawer } from '@/components/ChatDrawer';
+import { useProfile } from '@/context/ProfileContext';
 import styles from './tracking.module.css';
 
 function TrackingContent() {
@@ -16,6 +19,8 @@ function TrackingContent() {
   const orderId = searchParams.get('id');
   const launchEcoCash = searchParams.get('pay') === 'ecocash';
   const ecocashPhoneParam = searchParams.get('phone') || '';
+
+  const { session } = useProfile();
 
   const [initialOrder, setInitialOrder] = useState<BikerOrder | null>(null);
   const [liveOrder, setLiveOrder] = useState<BikerOrder | null>(null);
@@ -53,6 +58,108 @@ function TrackingContent() {
 
   // Realtime subscription ref
   const subscriptionRef = useRef<any>(null);
+
+  // Safety & Trust states
+  const [showCallSimulator, setShowCallSimulator] = useState(false);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [activeAlerts, setActiveAlerts] = useState<any[]>([]);
+  
+  // Dispute submission form states
+  const [disputeType, setDisputeType] = useState('wrong_item');
+  const [disputeDescription, setDisputeDescription] = useState('');
+  const [disputeRefundAmount, setDisputeRefundAmount] = useState('');
+  const [disputeSeverity, setDisputeSeverity] = useState('medium');
+  const [disputeEvidence, setDisputeEvidence] = useState('');
+  const [submittingDispute, setSubmittingDispute] = useState(false);
+
+  // Poll safety alerts every 5 seconds
+  useEffect(() => {
+    if (!orderId) return;
+    
+    const loadAlerts = async () => {
+      try {
+        const alerts = await OrderService.getSafetyAlerts();
+        const currentAlerts = alerts.filter(
+          (a: any) => a.order_id === orderId && a.status === 'active'
+        );
+        setActiveAlerts(currentAlerts);
+      } catch (e) {
+        console.error('Failed to load safety alerts:', e);
+      }
+    };
+    
+    loadAlerts();
+    const interval = setInterval(loadAlerts, 5000);
+    return () => clearInterval(interval);
+  }, [orderId]);
+
+  const handleCustomerSos = async () => {
+    const order = liveOrder as BikerOrder;
+    if (!order) return;
+    if (!confirm('🚨 EMERGENCY WARNING: Are you sure you want to trigger a Red SOS Distress Alert? This will immediately alert Biker dispatch operations.')) {
+      return;
+    }
+    
+    try {
+      addSimulationLog('🆘 SOS EMERGENCY: Dispatching alert to Ops Control Center...');
+      const alert = await OrderService.createSafetyAlert({
+        order_id: order.id,
+        user_id: session?.user_id || 'customer',
+        type: 'sos_alert',
+        gps_lat: order.pickup_lat || -17.8292,
+        gps_lng: order.pickup_lng || 31.0522
+      });
+      if (alert) {
+        addSimulationLog('🆘 SOS Alert logged successfully. Active security dispatched.');
+        const alerts = await OrderService.getSafetyAlerts();
+        setActiveAlerts(alerts.filter((a: any) => a.order_id === order.id && a.status === 'active'));
+      }
+    } catch (e) {
+      console.error('Failed to trigger Customer SOS:', e);
+    }
+  };
+
+  const handleFileDispute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const order = liveOrder as BikerOrder;
+    if (!order || !session?.user_id) return;
+    setSubmittingDispute(true);
+    
+    try {
+      addSimulationLog(`⚖️ Filing dispute for order ${order.reference_code}...`);
+      const dispute = await OrderService.createDispute({
+        request_id: order.id,
+        initiated_by: session.user_id,
+        dispute_type: disputeType,
+        description: disputeDescription,
+        refund_amount: Number(disputeRefundAmount) || Number(order.total_amount || 0),
+        severity: disputeSeverity,
+        against_user_id: order.assigned_rider_id || undefined
+      });
+      
+      if (dispute) {
+        addSimulationLog('⚖️ Dispute filed successfully. Order status is now "disputed".');
+        
+        if (disputeEvidence.trim()) {
+          await OrderService.addDisputeEvidence(dispute.id, disputeEvidence.trim());
+          addSimulationLog(`⚖️ Attached evidence: ${disputeEvidence}`);
+        }
+        
+        const fresh = await OrderService.getOrderById(order.id);
+        setLiveOrder(fresh);
+        setShowDisputeModal(false);
+        setDisputeDescription('');
+        setDisputeRefundAmount('');
+        setDisputeEvidence('');
+      }
+    } catch (err: any) {
+      console.error('Failed to file dispute:', err);
+      alert('Failed to file dispute: ' + err.message);
+    } finally {
+      setSubmittingDispute(false);
+    }
+  };
 
   // Load Order Details
   useEffect(() => {
@@ -560,6 +667,21 @@ function TrackingContent() {
         </div>
       </div>
 
+      {/* Safety Distress Alert Banner */}
+      {activeAlerts.length > 0 && (
+        <div className="alert alert--danger" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', borderRadius: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+            <span>🆘 ACTIVE SAFETY ALERT</span>
+          </div>
+          {activeAlerts.map((alert) => (
+            <div key={alert.id} style={{ fontSize: '13px' }}>
+              • {alert.type === 'sos_alert' ? 'Distress SOS trigger signal received from device.' : 'Transit check-in missed by Biker rider.'} Status: Active Ops Dispatch.
+            </div>
+          ))}
+        </div>
+      )}
+
+
       {/* Tabs for mobile */}
       <div className={styles.tabs}>
         <button 
@@ -824,8 +946,20 @@ function TrackingContent() {
               </div>
 
               <div className={styles.riderActions}>
-                <a href={`tel:${order.rider?.phone || ''}`} className="btn btn--secondary btn--sm font-medium">📞 Call Rider</a>
-                <button className="btn btn--secondary btn--sm font-medium">💬 Message</button>
+                <button 
+                  type="button" 
+                  className="btn btn--secondary btn--sm font-medium"
+                  onClick={() => setShowCallSimulator(true)}
+                >
+                  📞 Call Rider
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn--secondary btn--sm font-medium"
+                  onClick={() => setShowChatDrawer(true)}
+                >
+                  💬 Message
+                </button>
               </div>
             </div>
           )}
@@ -913,7 +1047,23 @@ function TrackingContent() {
 
           {/* Actions */}
           <div className={styles.actions}>
-            <button className="btn btn--secondary btn--full">Report issue</button>
+            <button 
+              type="button" 
+              className="btn btn--secondary btn--full"
+              onClick={() => setShowDisputeModal(true)}
+            >
+              ⚖️ Report Issue / File Dispute
+            </button>
+            {order.status !== 'completed' && order.status !== 'cancelled' && (
+              <button 
+                type="button" 
+                className="btn btn--danger btn--full font-bold"
+                onClick={handleCustomerSos}
+                style={{ background: '#dc2626', color: '#ffffff', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)' }}
+              >
+                🆘 Trigger SOS Emergency
+              </button>
+            )}
             {!pinVerified && liveOrder?.status !== 'cancelled' && (
               <button 
                 className="btn btn--danger btn--full btn--sm"
@@ -1005,6 +1155,128 @@ function TrackingContent() {
                 Decline & Cancel Order
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {showCallSimulator && (
+        <CallSimulator
+          orderId={order.id}
+          callerId={session?.user_id || 'customer'}
+          callerRole="customer"
+          receiverName={order.rider?.full_name || 'Tinashe M.'}
+          receiverPhone={order.rider?.phone || '+263 77 482 9102'}
+          onClose={() => setShowCallSimulator(false)}
+        />
+      )}
+
+      {showChatDrawer && (
+        <ChatDrawer
+          orderId={order.id}
+          senderId={session?.user_id || 'customer'}
+          senderName={session?.full_name || 'Customer'}
+          onClose={() => setShowChatDrawer(false)}
+        />
+      )}
+
+      {showDisputeModal && (
+        <div className={styles.ecocashOverlay} style={{ zIndex: 1060 }}>
+          <div className={styles.ecocashModal} style={{ maxWidth: '440px' }}>
+            <div className={styles.ecocashHeader}>
+              <div className={styles.ecocashBrandIcon}>⚖️</div>
+              <div>
+                <div className={styles.ecocashTitle}>File Order Dispute</div>
+                <div className={styles.ecocashSubtitle}>Submit claim for Biker resolution</div>
+              </div>
+            </div>
+            
+            <form onSubmit={handleFileDispute}>
+              <div className={styles.ecocashBody} style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Dispute Reason</label>
+                  <select 
+                    className="select" 
+                    value={disputeType}
+                    onChange={(e) => setDisputeType(e.target.value)}
+                    style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', padding: '8px', color: 'var(--text-primary)' }}
+                  >
+                    <option value="wrong_item">Wrong Item / Incorrect Package</option>
+                    <option value="damaged">Damaged Package / Broken Content</option>
+                    <option value="never_arrived">Never Arrived / Missed Delivery</option>
+                    <option value="overcharged">Incorrect Pricing / Overcharged</option>
+                    <option value="other">Other Issue</option>
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Severity Level</label>
+                  <select 
+                    className="select" 
+                    value={disputeSeverity}
+                    onChange={(e) => setDisputeSeverity(e.target.value)}
+                    style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', padding: '8px', color: 'var(--text-primary)' }}
+                  >
+                    <option value="low">Low (Minor Delay/Pricing dispute)</option>
+                    <option value="medium">Medium (Damaged/Wrong Item)</option>
+                    <option value="high">High (Lost package/Fraud)</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Refund Claimed Amount ($ USD)</label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    className="input" 
+                    placeholder={`Max $${(order.total_amount || 0).toFixed(2)}`}
+                    value={disputeRefundAmount}
+                    onChange={(e) => setDisputeRefundAmount(e.target.value)}
+                    style={{ width: '100%', padding: '8px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Description / Explanation</label>
+                  <textarea 
+                    className="input" 
+                    rows={3}
+                    placeholder="Provide details about the issue..."
+                    value={disputeDescription}
+                    onChange={(e) => setDisputeDescription(e.target.value)}
+                    required
+                    style={{ width: '100%', minHeight: '80px', padding: '8px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Evidence File URL or Text Description</label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    placeholder="Enter image link, photo evidence description, or text link"
+                    value={disputeEvidence}
+                    onChange={(e) => setDisputeEvidence(e.target.value)}
+                    style={{ width: '100%', padding: '8px' }}
+                  />
+                </div>
+              </div>
+              
+              <div className={styles.ecocashActions} style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                <button 
+                  type="submit" 
+                  className="btn btn--primary btn--full"
+                  disabled={submittingDispute}
+                >
+                  {submittingDispute ? 'Submitting...' : 'File Dispute'}
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn--secondary btn--full"
+                  onClick={() => setShowDisputeModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

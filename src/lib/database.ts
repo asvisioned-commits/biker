@@ -260,6 +260,281 @@ export async function getDisputes(userId: string) {
   return { data, error };
 }
 
+export async function getDisputeById(disputeId: string) {
+  const { data, error } = await supabase
+    .from('disputes')
+    .select(`*, request:delivery_requests(*), initiator:profiles!disputes_initiated_by_fkey(full_name, email), against:profiles!disputes_against_user_id_fkey(full_name, email)`)
+    .eq('id', disputeId)
+    .single();
+  return { data, error };
+}
+
+export async function getAllDisputes() {
+  const { data, error } = await supabase
+    .from('disputes')
+    .select(`*, request:delivery_requests(reference_code, service_type, status), initiator:profiles!disputes_initiated_by_fkey(full_name), against:profiles!disputes_against_user_id_fkey(full_name)`)
+    .order('created_at', { ascending: false });
+  return { data, error };
+}
+
+export async function addDisputeEvidence(disputeId: string, fileUrl: string) {
+  const { data: dispute } = await supabase.from('disputes').select('evidence').eq('id', disputeId).single();
+  const currentEvidence = dispute?.evidence || [];
+  const updatedEvidence = [...currentEvidence, fileUrl];
+  
+  const { data, error } = await supabase
+    .from('disputes')
+    .update({ evidence: updatedEvidence })
+    .eq('id', disputeId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function withdrawDisputeInDb(disputeId: string) {
+  const { data: dispute } = await supabase.from('disputes').select('request_id, original_status').eq('id', disputeId).single();
+  if (!dispute) return { error: new Error('Dispute not found') };
+  
+  const originalStatus = dispute.original_status || 'completed';
+  
+  await supabase.from('delivery_requests').update({ status: originalStatus }).eq('id', dispute.request_id);
+  
+  const { data, error } = await supabase
+    .from('disputes')
+    .update({ status: 'closed', resolution_notes: 'Dispute withdrawn by claimant.' })
+    .eq('id', disputeId)
+    .select()
+    .single();
+    
+  return { data, error };
+}
+
+export async function resolveDisputeInDb(disputeId: string, action: 'approve' | 'deny', resolvedBy: string, notes: string) {
+  const { data: dispute, error: fetchErr } = await supabase
+    .from('disputes')
+    .select('*')
+    .eq('id', disputeId)
+    .single();
+    
+  if (fetchErr || !dispute) return { error: fetchErr || new Error('Dispute not found') };
+  
+  const orderId = dispute.request_id;
+  const customerId = dispute.initiated_by;
+  const refundAmount = Number(dispute.refund_amount || 0);
+  const originalStatus = dispute.original_status || 'completed';
+  
+  if (action === 'approve') {
+    const { data: updatedDispute, error: disputeErr } = await supabase
+      .from('disputes')
+      .update({
+        status: 'resolved_customer_favor',
+        resolved_by: resolvedBy,
+        resolved_at: new Date().toISOString(),
+        resolution_notes: notes
+      })
+      .eq('id', disputeId)
+      .select()
+      .single();
+      
+    if (disputeErr) return { error: disputeErr };
+    
+    await supabase.from('delivery_requests').update({ status: 'disputed_resolved' }).eq('id', orderId);
+    
+    let customerEscrowId = null;
+    const { data: escrowAcc } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('owner_id', customerId)
+      .eq('account_name', 'customer_escrow')
+      .single();
+      
+    if (escrowAcc) {
+      customerEscrowId = escrowAcc.id;
+    } else {
+      const { data: newEscrow } = await supabase
+        .from('accounts')
+        .insert({ owner_id: customerId, account_type: 'liability', account_name: 'customer_escrow', balance: 0 })
+        .select('id')
+        .single();
+      if (newEscrow) customerEscrowId = newEscrow.id;
+    }
+    
+    let refundExpenseId = null;
+    const { data: refundAcc } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('account_name', 'refund_expense')
+      .single();
+      
+    if (refundAcc) {
+      refundExpenseId = refundAcc.id;
+    } else {
+      const { data: newRefund } = await supabase
+        .from('accounts')
+        .insert({ owner_id: null, account_type: 'expense', account_name: 'refund_expense', balance: 0 })
+        .select('id')
+        .single();
+      if (newRefund) refundExpenseId = newRefund.id;
+    }
+    
+    if (customerEscrowId && refundExpenseId && refundAmount > 0) {
+      const { data: journalEntry } = await supabase
+        .from('journal_entries')
+        .insert({
+          account_id: customerId,
+          request_id: orderId,
+          entry_type: 'dispute_refund',
+          amount: refundAmount,
+          description: `Dispute approved refund: ${notes}`
+        })
+        .select('id')
+        .single();
+        
+      if (journalEntry) {
+        await supabase.from('journal_lines').insert([
+          { journal_entry_id: journalEntry.id, account_id: refundExpenseId, debit: refundAmount, credit: 0 },
+          { journal_entry_id: journalEntry.id, account_id: customerEscrowId, debit: 0, credit: refundAmount }
+        ]);
+        
+        await supabase.rpc('increment_account_balance', { acc_id: refundExpenseId, amount: refundAmount });
+        await supabase.rpc('increment_account_balance', { acc_id: customerEscrowId, amount: refundAmount });
+      }
+    }
+    
+    return { data: updatedDispute };
+  } else {
+    const { data: updatedDispute, error: disputeErr } = await supabase
+      .from('disputes')
+      .update({
+        status: 'closed',
+        resolved_by: resolvedBy,
+        resolved_at: new Date().toISOString(),
+        resolution_notes: notes
+      })
+      .eq('id', disputeId)
+      .select()
+      .single();
+      
+    if (disputeErr) return { error: disputeErr };
+    
+    await supabase.from('delivery_requests').update({ status: originalStatus }).eq('id', orderId);
+    
+    return { data: updatedDispute };
+  }
+}
+
+// ─── Safety Alerts ──────────────────────────────────────────────────
+
+export async function createSafetyAlert(alert: {
+  order_id: string;
+  user_id: string;
+  type: 'sos_alert' | 'missed_checkin';
+  gps_lat?: number;
+  gps_lng?: number;
+}) {
+  if (alert.type === 'sos_alert' && alert.gps_lat && alert.gps_lng) {
+    try {
+      await supabase.from('rider_location_checkpoints').insert({
+        rider_id: alert.user_id,
+        order_id: alert.order_id,
+        event_type: 'sos_triggered',
+        lat: alert.gps_lat,
+        lng: alert.gps_lng
+      });
+    } catch (e) {
+      console.error('Failed to log location checkpoint for SOS:', e);
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('safety_alerts')
+    .insert({ ...alert, status: 'active' })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function getSafetyAlerts() {
+  const { data, error } = await supabase
+    .from('safety_alerts')
+    .select(`*, order:delivery_requests(reference_code, status), user:profiles(full_name, phone)`)
+    .order('created_at', { ascending: false });
+  return { data, error };
+}
+
+export async function resolveSafetyAlert(alertId: string, resolvedBy: string, opsNotes: string) {
+  const { data, error } = await supabase
+    .from('safety_alerts')
+    .update({
+      status: 'resolved',
+      resolved_by: resolvedBy,
+      resolved_at: new Date().toISOString(),
+      ops_notes: opsNotes
+    })
+    .eq('id', alertId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+// ─── Fraud Prevention ───────────────────────────────────────────────
+
+export async function logDeviceFingerprint(userId: string | null, fingerprint: string, ipAddress?: string, userAgent?: string) {
+  const { data, error } = await supabase
+    .from('device_fingerprints')
+    .insert({ user_id: userId, fingerprint, ip_address: ipAddress, user_agent: userAgent })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function checkOrderVelocity(userId: string | null, fingerprint: string): Promise<{ allowed: boolean; details?: string }> {
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  
+  let recentCount = 0;
+  
+  try {
+    if (userId) {
+      const { count } = await supabase
+        .from('delivery_requests')
+        .select('id', { count: 'exact' })
+        .eq('customer_id', userId)
+        .gte('created_at', tenMinutesAgo);
+      recentCount = count || 0;
+    } else if (fingerprint) {
+      const { count } = await supabase
+        .from('fraud_prevention_logs')
+        .select('id', { count: 'exact' })
+        .eq('fingerprint', fingerprint)
+        .eq('action_type', 'order_creation')
+        .eq('status', 'allowed')
+        .gte('created_at', tenMinutesAgo);
+      recentCount = count || 0;
+    }
+  } catch (e) {
+    console.error('Error checking velocity counts:', e);
+  }
+  
+  const allowed = recentCount < 3;
+  
+  try {
+    await supabase.from('fraud_prevention_logs').insert({
+      user_id: userId,
+      fingerprint,
+      action_type: 'order_creation',
+      status: allowed ? 'allowed' : 'blocked',
+      details: allowed ? `Placed ${recentCount} orders in 10 mins.` : `Velocity limit breached: attempted 4th order in 10 mins.`
+    });
+  } catch (e) {
+    console.error('Failed to log fraud prevention log:', e);
+  }
+  
+  return {
+    allowed,
+    details: allowed ? undefined : 'Booking limit exceeded. You can only place up to 3 orders every 10 minutes.'
+  };
+}
+
 // ─── Rider ─────────────────────────────────────────────────────────
 
 export async function getRiderProfile(userId: string) { 
