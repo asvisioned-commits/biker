@@ -9,15 +9,13 @@ import NotificationsDropdown from '@/components/notifications';
 import LocationPermissionBanner from '@/components/LocationPermissionBanner';
 import type { UserRole } from '@/types';
 
-import { ProfileProvider, useProfile } from '@/context/ProfileContext';
+import { useProfile } from '@/context/ProfileContext';
 import { setActiveRole as dbSetActiveRole } from '@/lib/database';
 import { ToastProvider } from '@/components/ToastProvider';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ProfileProvider>
-      <DashboardLayoutContent>{children}</DashboardLayoutContent>
-    </ProfileProvider>
+    <DashboardLayoutContent>{children}</DashboardLayoutContent>
   );
 }
 

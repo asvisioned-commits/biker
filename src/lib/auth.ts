@@ -117,23 +117,24 @@ export async function signInWithEmail(email: string, password: string) {
 /**
  * Sign in with phone OTP
  */
-export async function signInWithPhone(phone: string) {
+export async function signInWithPhone(phone: string, countryPrefix = '+263') {
   if (IS_DEV) {
     return { data: { user: null, session: null }, error: null };
   }
 
   const supabase = createClient();
-  const { data, error } = await supabase.auth.signInWithOtp({ phone: `+263${phone}` });
+  const formattedPhone = phone.startsWith('+') ? phone : `${countryPrefix}${phone}`;
+  const { data, error } = await supabase.auth.signInWithOtp({ phone: formattedPhone });
   return { data, error };
 }
 
 /**
  * Verify phone OTP
  */
-export async function verifyPhoneOtp(phone: string, token: string) {
+export async function verifyPhoneOtp(phone: string, token: string, countryPrefix = '+263') {
+  const formattedPhone = phone.startsWith('+') ? phone : `${countryPrefix}${phone}`;
   if (IS_DEV) {
     let mockSession: BikerSession | null = null;
-    const formattedPhone = phone.startsWith('+') ? phone : `+263${phone}`;
     
     if (typeof window !== 'undefined') {
       try {
@@ -150,7 +151,7 @@ export async function verifyPhoneOtp(phone: string, token: string) {
     
     if (!mockSession) {
       let role = 'customer';
-      if (phone.includes('771') || phone.includes('772') || phone.includes('biker') || phone.includes('rider')) role = 'rider';
+      if (phone.includes('771') || phone.includes('772') || phone.includes('971') || phone.includes('961') || phone.includes('biker') || phone.includes('rider')) role = 'rider';
       else if (phone.includes('888') || phone.includes('merchant')) role = 'merchant';
 
       mockSession = {
@@ -173,7 +174,7 @@ export async function verifyPhoneOtp(phone: string, token: string) {
 
   const supabase = createClient();
   const { data, error } = await supabase.auth.verifyOtp({
-    phone: `+263${phone}`,
+    phone: formattedPhone,
     token,
     type: 'sms',
   });
@@ -284,7 +285,7 @@ export async function resendVerificationEmail(email: string) {
  */
 export async function verifyEmailOtp(email: string, token: string) {
   if (IS_DEV) {
-    // Standard mock verification code is "123456"
+    // Standard mock verification code is \"123456\"
     if (token !== '123456') {
       return { data: null, error: { message: 'Invalid verification code' } as any };
     }
@@ -392,7 +393,7 @@ export async function updateUserEmail(email: string) {
 
 /**
  * Get current session — merges auth user with profile + roles from DB
- * This is the single source of truth for "who is the current user"
+ * This is the single source of truth for \"who is the current user\"
  */
 export async function getSession(): Promise<BikerSession | null> {
   if (IS_DEV) {
@@ -450,4 +451,36 @@ export async function getSession(): Promise<BikerSession | null> {
     is_suspended: profile?.is_suspended || false,
     is_google: isGoogle,
   };
+}
+
+/**
+ * Permanently delete the user account and sign out
+ */
+export async function deleteAccount(userId: string) {
+  if (IS_DEV) {
+    if (typeof window !== 'undefined') {
+      try {
+        const registryStr = localStorage.getItem('biker_mock_users_registry') || '[]';
+        const registry = JSON.parse(registryStr);
+        const filtered = registry.filter((u: any) => u.session?.user_id !== userId);
+        localStorage.setItem('biker_mock_users_registry', JSON.stringify(filtered));
+      } catch (e) {
+        console.error(e);
+      }
+      localStorage.removeItem('biker_mock_session');
+      window.location.href = '/';
+    }
+    return { success: true, error: null };
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.rpc('delete_user_account');
+  if (!error) {
+    await supabase.auth.signOut();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/';
+    }
+    return { success: true, error: null };
+  }
+  return { success: false, error };
 }

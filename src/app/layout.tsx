@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { ProfileProvider } from '@/context/ProfileContext';
 
 export const metadata: Metadata = {
   title: 'Biker — Send, Buy, Deliver Anything Safely',
@@ -51,7 +52,9 @@ export default function RootLayout({
         />
       </head>
       <body>
-        {children}
+        <ProfileProvider>
+          {children}
+        </ProfileProvider>
       </body>
     </html>
   );
