@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { 
   getRiderSubscription, 
@@ -774,7 +774,8 @@ export default function JobsPage() {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px'
-                  }}>\n                    {sub.status === 'active' 
+                  }}>
+                    {sub.status === 'active' 
                       ? `🔓 Unlocked (~${estJobsLeft} deliveries left)`
                       : `⏳ Grace Period Active`
                     }
@@ -863,7 +864,8 @@ export default function JobsPage() {
                       color: '#34d399',
                       marginBottom: '0.75rem',
                       boxShadow: '0 0 15px rgba(16, 185, 129, 0.1)'
-                    }}>\n                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
+                    }}>
+                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
                     </div>
                   )}
 
@@ -913,7 +915,8 @@ export default function JobsPage() {
                       color: '#f87171',
                       lineHeight: '1.4',
                       textAlign: 'left'
-                    }}>\n                      ⚠️ <strong>Cash Collection Limit Warning</strong>
+                    }}>
+                      ⚠️ <strong>Cash Collection Limit Warning</strong>
                       <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
                         You are near your cash collection limit (${cashBalance.toFixed(2)}/${cashLimit.toFixed(2)}). 
                         Please remit collected cash to platform operations before accepting more COD orders.
@@ -929,7 +932,8 @@ export default function JobsPage() {
                       >
                         {accepting === job.id ? (
                           <>
-                            <span className="spinner" /> Accepting...\n                          </>
+                            <span className="spinner" /> Accepting...
+                          </>
                         ) : (
                           `Accept — $${job.payout.toFixed(2)}`
                         )}
@@ -956,10 +960,10 @@ export default function JobsPage() {
                       </button>
                     </div>
                   )}
-                </div>
-              ))}
-            </div>
-          </>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </>
       )}
@@ -1083,7 +1087,8 @@ export default function JobsPage() {
                       marginTop: '0.5rem',
                       marginBottom: '1rem',
                       fontWeight: 600
-                    }}>\n                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
+                    }}>
+                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
                     </div>
                   )}
                   <div className={styles.quizNav}>
