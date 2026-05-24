@@ -1,5 +1,8 @@
+'use client';
+
 import Link from 'next/link';
 import styles from './page.module.css';
+import { useProfile } from '@/context/ProfileContext';
 
 const SERVICES = [
   {
@@ -108,6 +111,15 @@ const HOW_IT_WORKS = [
 ];
 
 export default function LandingPage() {
+  const { country } = useProfile();
+  const isZM = country === 'ZM';
+  const countryName = isZM ? 'Zambia' : 'Zimbabwe';
+  const cityName = isZM ? 'Lusaka' : 'Harare';
+  const pickupPreset = isZM ? 'Manda Hill Mall' : "Sam Levy's Village";
+  const dropoffPreset = isZM ? 'Woodlands Shopping Mall' : 'Borrowdale Brooke';
+  const paymentPreset = isZM ? 'MTN MoMo, Airtel Money, cards' : 'EcoCash, OneMoney, cards';
+  const paymentFaqPreset = isZM ? 'MTN MoMo, Airtel Money, Visa, Mastercard, and cash' : 'EcoCash, OneMoney, InnBucks, Visa, Mastercard, and cash';
+
   return (
     <div className={styles.page}>
       {/* ---- HEADER ---- */}
@@ -138,14 +150,14 @@ export default function LandingPage() {
         <div className={styles.heroContent}>
           <div className={styles.heroBadge}>
             <span className={styles.heroBadgeDot} />
-            Now live in Harare
+            Now live in {cityName}
           </div>
           <h1 className={styles.heroTitle}>
             Send, Buy, Deliver<br />
             <span className={styles.heroGradient}>Anything Safely</span>
           </h1>
           <p className={styles.heroSubtitle}>
-            Zimbabwe&apos;s trusted platform for errands, deliveries, and local commerce.
+            {countryName}&apos;s trusted platform for errands, deliveries, and local commerce.
             Protected payments. Verified riders. Every delivery provable.
           </p>
           <div className={styles.heroCtas}>
@@ -183,7 +195,7 @@ export default function LandingPage() {
                     <div className={styles.heroRouteDot} style={{ background: 'var(--color-primary-500)' }} />
                     <div>
                       <div className={styles.heroRouteLabel}>Pickup</div>
-                      <div className={styles.heroRouteAddress}>Sam Levy&apos;s Village</div>
+                      <div className={styles.heroRouteAddress}>{pickupPreset}</div>
                     </div>
                   </div>
                   <div className={styles.heroRouteLine} />
@@ -191,7 +203,7 @@ export default function LandingPage() {
                     <div className={styles.heroRouteDot} style={{ background: 'var(--color-success-500)' }} />
                     <div>
                       <div className={styles.heroRouteLabel}>Deliver to</div>
-                      <div className={styles.heroRouteAddress}>Borrowdale Brooke</div>
+                      <div className={styles.heroRouteAddress}>{dropoffPreset}</div>
                     </div>
                   </div>
                 </div>
@@ -325,7 +337,7 @@ export default function LandingPage() {
             </p>
             <ul className={styles.merchantFeatures}>
               <li>✦ Shareable delivery links — no app needed for your customer</li>
-              <li>✦ Protected payments via EcoCash, OneMoney, cards</li>
+              <li>✦ Protected payments via {paymentPreset}</li>
               <li>✦ Proof of delivery archive for every order</li>
               <li>✦ Ready signal — rider comes only when you&apos;re packed</li>
               <li>✦ Batch morning, afternoon, evening pickups</li>
@@ -406,17 +418,9 @@ export default function LandingPage() {
           </div>
           <div className={styles.faqGrid}>
             <div className={styles.faqItem}>
-              <h3 className={styles.faqQuestion}>How is my money protected?</h3>
+              <h3 className={styles.faqQuestion}>{isZM ? 'What payment options are supported?' : 'Can I pay with EcoCash?'}</h3>
               <p className={styles.faqAnswer}>
-                When you place an order, your payment goes into Biker&apos;s secure holding.
-                Funds are only released to the rider after you confirm delivery with your unique PIN.
-                If something goes wrong, you can file a dispute and get refunded.
-              </p>
-            </div>
-            <div className={styles.faqItem}>
-              <h3 className={styles.faqQuestion}>Can I pay with EcoCash?</h3>
-              <p className={styles.faqAnswer}>
-                Yes. Biker supports EcoCash, OneMoney, InnBucks, Visa, Mastercard, and cash.
+                Yes. Biker supports {paymentFaqPreset}.
                 Protection is optional — add it if you want the full escrow guarantee.
               </p>
             </div>
@@ -461,7 +465,7 @@ export default function LandingPage() {
               Biker<span className={styles.logoDot}>.</span>
             </div>
             <p className={styles.footerTagline}>
-              Zimbabwe&apos;s trust operating system for<br />
+              {countryName}&apos;s trust operating system for<br />
               errands, deliveries, and local commerce.
             </p>
           </div>
@@ -475,15 +479,15 @@ export default function LandingPage() {
             </div>
             <div className={styles.footerColumn}>
               <h4 className={styles.footerColumnTitle}>Company</h4>
-              <a href="#">About</a>
+              <Link href="/about">About</Link>
               <a href="#">Careers</a>
               <a href="#">Contact</a>
             </div>
             <div className={styles.footerColumn}>
               <h4 className={styles.footerColumnTitle}>Legal</h4>
-              <a href="#">Terms of Service</a>
-              <a href="#">Privacy Policy</a>
-              <a href="#">Dispute Policy</a>
+              <Link href="/terms">Terms of Service</Link>
+              <Link href="/privacy">Privacy Policy</Link>
+              <Link href="/disputes-policy">Dispute Policy</Link>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './login.module.css';
+import { useProfile } from '@/context/ProfileContext';
 import {
   signInWithGoogle,
   signInWithEmail,
@@ -19,6 +20,8 @@ const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { country } = useProfile();
+  const dialPrefix = country === 'ZM' ? '+260' : '+263';
   const redirect = searchParams.get('redirect') || '/dashboard';
   const authError = searchParams.get('error');
 
@@ -32,6 +35,30 @@ function LoginContent() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(authError === 'auth_callback_failed' ? 'Authentication failed. Please try again.' : '');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const handleQuickLogin = async (role: string) => {
+    setLoading(true);
+    setError('');
+    const emailAddr = `${role}@biker.com`;
+    const formattedPhone = country === 'ZM' 
+      ? `+260${role === 'rider' ? '971' : role === 'merchant' ? '961' : '951'}000001`
+      : `+263${role === 'rider' ? '771' : role === 'merchant' ? '888' : '773'}000001`;
+
+    const mockSession = {
+      user_id: `mock-user-${role}-${Date.now()}`,
+      full_name: `Test ${role.toUpperCase()}`,
+      email: emailAddr,
+      phone: formattedPhone,
+      role: role,
+      roles: [role, 'customer'],
+    };
+    
+    localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
+    router.push(redirect);
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
   
   // Verification and Cooldown States
   const [unconfirmedEmail, setUnconfirmedEmail] = useState('');
@@ -65,7 +92,7 @@ function LoginContent() {
     setError('');
     setSuccessMsg('');
     setOtp('');
-    const { error: phoneError } = await signInWithPhone(phone);
+    const { error: phoneError } = await signInWithPhone(phone, dialPrefix);
     if (phoneError) {
       setError(typeof phoneError === 'string' ? phoneError : (phoneError as { message?: string }).message || 'Failed to send OTP');
       setLoading(false);
@@ -83,7 +110,7 @@ function LoginContent() {
     if (resendCooldown > 0) return;
     setLoading(true);
     setError('');
-    const { error: phoneError } = await signInWithPhone(phone);
+    const { error: phoneError } = await signInWithPhone(phone, dialPrefix);
     setLoading(false);
     if (phoneError) {
       setError(typeof phoneError === 'string' ? phoneError : (phoneError as { message?: string }).message || 'Failed to resend OTP');
@@ -160,7 +187,7 @@ function LoginContent() {
     setLoading(true);
     setError('');
     setSuccessMsg('');
-    const { error: otpError } = await verifyPhoneOtp(phone, otp);
+    const { error: otpError } = await verifyPhoneOtp(phone, otp, dialPrefix);
     setLoading(false);
     if (otpError) {
       setError(typeof otpError === 'string' ? otpError : (otpError as { message?: string }).message || 'Invalid OTP');
@@ -250,8 +277,18 @@ function LoginContent() {
                   <p style={{ marginTop: '4px', fontWeight: 600, color: 'var(--color-primary-500)' }}>
                     Type <strong>unconfirmed@biker.com</strong> to test email lock & confirmation.
                   </p>
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)' }}>⚡ Quick Login:</span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('customer')}>Customer</button>
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('rider')}>Rider</button>
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('merchant')}>Merchant</button>
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('ops')}>Ops</button>
+                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('admin')}>Admin</button>
+                    </div>
+                  </div>
                   {hudMessage && (
-                    <div className={styles.hudToast}>
+                    <div className={styles.hudToast} style={{ marginTop: '12px' }}>
                       🚀 {hudMessage}
                     </div>
                   )}
@@ -341,12 +378,12 @@ function LoginContent() {
                 <div className="input-group">
                   <label className="input-label" htmlFor="phone">Phone number</label>
                   <div className={styles.phoneInput}>
-                    <span className={styles.phonePrefix}>+263</span>
-                    <input id="phone" type="tel" className="input" placeholder="77 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} required style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} />
+                    <span className={styles.phonePrefix}>{dialPrefix}</span>
+                    <input id="phone" type="tel" className="input" placeholder={country === 'ZM' ? '97 123 4567' : '77 123 4567'} value={phone} onChange={(e) => setPhone(e.target.value)} required style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} />
                   </div>
                 </div>
                 <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
-                  {loading ? <span className="spinner" /> : 'Send OTP'}
+                  {loading ? <span className="spinner" /> : 'Send OTP'}\
                 </button>
               </form>
             )}
@@ -358,7 +395,7 @@ function LoginContent() {
                   <input id="email" type="email" className="input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div className="input-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
                     <label className="input-label" htmlFor="password">Password</label>
                     <button 
                       type="button" 
@@ -371,7 +408,7 @@ function LoginContent() {
                   <input id="password" type="password" className="input" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
                 <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
-                  {loading ? <span className="spinner" /> : 'Log in'}
+                  {loading ? <span className="spinner" /> : 'Log in'}\
                 </button>
               </form>
             )}
@@ -388,7 +425,7 @@ function LoginContent() {
                   ))}
                 </div>
                 <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading || otp.length < 6}>
-                  {loading ? <span className="spinner" /> : 'Verify'}
+                  {loading ? <span className="spinner" /> : 'Verify'}\
                 </button>
                 <div className={styles.otpActionRow}>
                   <button 
@@ -416,7 +453,7 @@ function LoginContent() {
                   ))}
                 </div>
                 <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading || otp.length < 6}>
-                  {loading ? <span className="spinner" /> : 'Confirm Code'}
+                  {loading ? <span className="spinner" /> : 'Confirm Code'}\
                 </button>
                 <div className={styles.otpActionRow}>
                   <button 
@@ -439,7 +476,7 @@ function LoginContent() {
                   <input id="reset-email" type="email" className="input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
-                  {loading ? <span className="spinner" /> : 'Send Recovery Link'}
+                  {loading ? <span className="spinner" /> : 'Send Recovery Link'}\
                 </button>
                 <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                   {resendCooldown > 0 && (

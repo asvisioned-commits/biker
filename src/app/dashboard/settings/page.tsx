@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from './settings.module.css';
-import { signOut, updateUserPassword, updateUserEmail } from '@/lib/auth';
+import { signOut, updateUserPassword, updateUserEmail, deleteAccount } from '@/lib/auth';
 import { updateProfile } from '@/lib/database';
 import type { UserRole } from '@/types';
 import { useProfile } from '@/context/ProfileContext';
@@ -32,6 +32,29 @@ export default function SettingsPage() {
   const [updatingPw, setUpdatingPw] = useState(false);
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState('');
+
+  // Account Deletion States
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDeleteAccount = async () => {
+    if (!session) return;
+    if (deleteConfirmationText !== 'DELETE') return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const { success, error } = await deleteAccount(session.user_id);
+      if (!success && error) {
+        setDeleteError(error.message || 'Failed to delete account. Please try again.');
+        setDeleting(false);
+      }
+    } catch (err: any) {
+      setDeleteError(err.message || 'An unexpected error occurred.');
+      setDeleting(false);
+    }
+  };
 
   // Reactively populate form states from global profile session as soon as it is available
   useEffect(() => {
@@ -542,25 +565,93 @@ export default function SettingsPage() {
           <div className={styles.dangerZone}>
             <h3 className={styles.dangerTitle}>⚠️ Danger Zone</h3>
             <p className={styles.dangerDesc}>These actions are irreversible. Please be careful.</p>
+
+            {deleteError && (
+              <div className={styles.errorMsg} style={{ marginBottom: 'var(--space-4)' }}>
+                ❌ {deleteError}
+              </div>
+            )}
+
             <div className={styles.dangerCard}>
               <div>
                 <strong>Sign out everywhere</strong>
                 <p>This will sign you out of all devices and sessions.</p>
               </div>
-              <button className="btn btn--secondary btn--sm" onClick={() => signOut()}>
+              <button className="btn btn--secondary btn--sm" onClick={() => signOut()} disabled={deleting}>
                 Sign out all
               </button>
             </div>
-            <div className={styles.dangerCard}>
-              <div>
-                <strong>Delete account</strong>
-                <p>
-                  Permanently delete your Biker account and all associated data. This cannot be
-                  undone.
-                </p>
+
+            {!showConfirmDelete ? (
+              <div className={styles.dangerCard}>
+                <div>
+                  <strong>Delete account</strong>
+                  <p>
+                    Permanently delete your Biker account and all associated data. This cannot be
+                    undone.
+                  </p>
+                </div>
+                <button className="btn btn--danger btn--sm" onClick={() => setShowConfirmDelete(true)} disabled={deleting}>
+                  Delete account
+                </button>
               </div>
-              <button className="btn btn--danger btn--sm">Delete account</button>
-            </div>
+            ) : (
+              <div className={styles.dangerConfirmBox} style={{
+                border: '1px solid var(--color-danger-200)',
+                background: 'rgba(239, 68, 68, 0.05)',
+                padding: 'var(--space-4)',
+                borderRadius: 'var(--radius-lg)',
+                marginTop: 'var(--space-4)'
+              }}>
+                <h4 style={{ color: 'var(--color-danger-700)', fontWeight: 600, marginBottom: '8px' }}>
+                  Confirm Permanent Account Deletion
+                </h4>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                  This action is irreversible. All of your delivery history, transactions, profile details, and active roles will be permanently destroyed.
+                </p>
+                <div className="input-group" style={{ marginBottom: '16px' }}>
+                  <label className="input-label" htmlFor="deleteConfirmInput" style={{ fontSize: '0.85rem' }}>
+                    Type <strong style={{ color: 'var(--text-primary)' }}>DELETE</strong> to confirm:
+                  </label>
+                  <input
+                    id="deleteConfirmInput"
+                    type="text"
+                    className="input"
+                    placeholder="Type DELETE"
+                    value={deleteConfirmationText}
+                    onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                    disabled={deleting}
+                    style={{ maxWidth: '300px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    className="btn btn--danger"
+                    onClick={handleDeleteAccount}
+                    disabled={deleting || deleteConfirmationText !== 'DELETE'}
+                  >
+                    {deleting ? (
+                      <>
+                        <span className="spinner" /> Deleting...
+                      </>
+                    ) : (
+                      'Yes, permanently delete my account'
+                    )}
+                  </button>
+                  <button
+                    className="btn btn--ghost"
+                    onClick={() => {
+                      setShowConfirmDelete(false);
+                      setDeleteConfirmationText('');
+                      setDeleteError('');
+                    }}
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

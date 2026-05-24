@@ -7,10 +7,13 @@ import styles from './signup.module.css';
 import { signInWithGoogle, signUpWithEmail, getSession, verifyEmailOtp, resendVerificationEmail, type BikerSession } from '@/lib/auth';
 import type { UserRole, VehicleType } from '@/types';
 import { updateProfile, createRiderProfile, createMerchantProfile, setActiveRole } from '@/lib/database';
+import { useProfile } from '@/context/ProfileContext';
 
 function SignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { country } = useProfile();
+  const activePrefix = country === 'ZM' ? '+260' : '+263';
   const preselectedRole = searchParams.get('role') as UserRole | null;
 
   const [step, setStep] = useState<'role' | 'details' | 'rider_kyc' | 'merchant_details' | 'verify_email'>('role');
@@ -55,6 +58,30 @@ function SignupContent() {
   const [businessType, setBusinessType] = useState('general');
   const [whatsapp, setWhatsapp] = useState('');
 
+  const operatingZones = country === 'ZM' ? [
+    { value: 'lusaka_cbd', label: 'Lusaka CBD' },
+    { value: 'woodlands', label: 'Woodlands' },
+    { value: 'kabulonga', label: 'Kabulonga' },
+    { value: 'roma_olympia', label: 'Roma / Olympia' },
+    { value: 'northmead_rhodes_park', label: 'Northmead / Rhodes Park' },
+    { value: 'makeni', label: 'Makeni' },
+    { value: 'chelstone', label: 'Chelstone' },
+    { value: 'chilenje', label: 'Chilenje' },
+    { value: 'lilayi', label: 'Lilayi' },
+    { value: 'matero', label: 'Matero' },
+  ] : [
+    { value: 'harare_cbd', label: 'Harare CBD' },
+    { value: 'avondale_Milton Park', label: 'Avondale / Milton Park' },
+    { value: 'borrowdale', label: 'Borrowdale' },
+    { value: 'mount_pleasant', label: 'Mount Pleasant' },
+    { value: 'eastlea_belvedere', label: 'Eastlea / Belvedere' },
+    { value: 'westgate_kuwadzana', label: 'Westgate / Kuwadzana' },
+    { value: 'glen_view_budiriro', label: 'Glen View / Budiriro' },
+    { value: 'chitungwiza', label: 'Chitungwiza' },
+    { value: 'norton', label: 'Norton' },
+    { value: 'bulawayo', label: 'Bulawayo' },
+  ];
+
   // Auto-fill and check for existing Google session on mount
   useEffect(() => {
     async function checkAuth() {
@@ -68,8 +95,8 @@ function SignupContent() {
           setEmail(sess.email || '');
           
           if (sess.phone) {
-            // Strip Zimbabwe prefix for visual editing
-            setPhone(sess.phone.replace(/^\+263/, ''));
+            // Strip country prefix for visual editing
+            setPhone(sess.phone.replace(/^\+(263|260)/, ''));
           }
 
           // Check if Google OAuth onboarding is requested
@@ -155,7 +182,7 @@ function SignupContent() {
             parsed.role = selectedRole;
             parsed.roles = [selectedRole];
             parsed.full_name = fullName || parsed.full_name;
-            parsed.phone = phone ? '+263' + phone : parsed.phone;
+            parsed.phone = phone ? activePrefix + phone : parsed.phone;
 
             if (selectedRole === 'rider') {
               parsed.vehicle_type = vehicleType;
@@ -166,7 +193,7 @@ function SignupContent() {
             } else if (selectedRole === 'merchant') {
               parsed.business_name = businessName;
               parsed.business_type = businessType;
-              parsed.whatsapp = whatsapp ? '+263' + whatsapp : null;
+              parsed.whatsapp = whatsapp ? activePrefix + whatsapp : null;
             }
             localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
           }
@@ -174,7 +201,7 @@ function SignupContent() {
           // Live Supabase update
           if (phone || fullName) {
             const { error: profileErr } = await updateProfile(currentUser.user_id, {
-              phone: phone ? '+263' + phone : undefined,
+              phone: phone ? activePrefix + phone : undefined,
               full_name: fullName || undefined,
             });
             if (profileErr) throw profileErr;
@@ -194,7 +221,7 @@ function SignupContent() {
               user_id: currentUser.user_id,
               business_name: businessName,
               business_type: businessType as any,
-              whatsapp_number: whatsapp ? '+263' + whatsapp : undefined,
+              whatsapp_number: whatsapp ? activePrefix + whatsapp : undefined,
             });
             if (merchErr) throw merchErr;
           }
@@ -217,7 +244,7 @@ function SignupContent() {
     // Flow B: Standard Email Signup
     const metadata: Record<string, unknown> = {
       full_name: fullName,
-      phone: '+263' + phone,
+      phone: activePrefix + phone,
       role: selectedRole,
     };
 
@@ -230,9 +257,9 @@ function SignupContent() {
     } else if (selectedRole === 'merchant') {
       metadata.business_name = businessName;
       metadata.business_type = businessType;
-      metadata.whatsapp = whatsapp ? '+263' + whatsapp : null;
+      metadata.whatsapp = whatsapp ? activePrefix + whatsapp : null;
     }
-    const targetEmail = email || `${phone}@biker.co.zw`;
+    const targetEmail = email;
     const { data: signUpData, error: signUpError } = await signUpWithEmail(
       targetEmail,
       password,
@@ -320,7 +347,7 @@ function SignupContent() {
       try {
         if (phone || fullName) {
           await updateProfile(sess.user_id, {
-            phone: phone ? '+263' + phone : undefined,
+            phone: phone ? activePrefix + phone : undefined,
             full_name: fullName || undefined,
           });
         }
@@ -338,7 +365,7 @@ function SignupContent() {
             user_id: sess.user_id,
             business_name: businessName,
             business_type: businessType as any,
-            whatsapp_number: whatsapp ? '+263' + whatsapp : undefined,
+            whatsapp_number: whatsapp ? activePrefix + whatsapp : undefined,
           });
         }
 
@@ -383,7 +410,7 @@ function SignupContent() {
               Biker<span className={styles.logoDot}>.</span>
             </Link>
             <h2 className={styles.brandTitle}>
-              Join Zimbabwe&apos;s trust operating system
+              Join {country === 'ZM' ? 'Zambia' : 'Zimbabwe'}&apos;s trust operating system
             </h2>
             <p className={styles.brandSubtitle}>
               Whether you&apos;re sending, earning, or selling — we&apos;ve got you.
@@ -499,7 +526,7 @@ function SignupContent() {
                   <div className="input-group">
                     <label className="input-label input-label--required" htmlFor="sPhone">Phone number</label>
                     <div className={styles.phoneInput}>
-                      <span className={styles.phonePrefix}>+263</span>
+                      <span className={styles.phonePrefix}>{activePrefix}</span>
                       <input
                         id="sPhone"
                         type="tel"
@@ -513,7 +540,7 @@ function SignupContent() {
                     </div>
                   </div>
                   <div className="input-group">
-                    <label className="input-label" htmlFor="sEmail">Email (optional)</label>
+                    <label className="input-label input-label--required" htmlFor="sEmail">Email</label>
                     <input
                       id="sEmail"
                       type="email"
@@ -521,6 +548,7 @@ function SignupContent() {
                       placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      required
                     />
                   </div>
                   <div className="input-group">
@@ -622,16 +650,9 @@ function SignupContent() {
                       required
                     >
                       <option value="">Select zone</option>
-                      <option value="harare_cbd">Harare CBD</option>
-                      <option value="avondale_Milton Park">Avondale / Milton Park</option>
-                      <option value="borrowdale">Borrowdale</option>
-                      <option value="mount_pleasant">Mount Pleasant</option>
-                      <option value="eastlea_belvedere">Eastlea / Belvedere</option>
-                      <option value="westgate_kuwadzana">Westgate / Kuwadzana</option>
-                      <option value="glen_view_budiriro">Glen View / Budiriro</option>
-                      <option value="chitungwiza">Chitungwiza</option>
-                      <option value="norton">Norton</option>
-                      <option value="bulawayo">Bulawayo</option>
+                      {operatingZones.map((z) => (
+                        <option key={z.value} value={z.value}>{z.label}</option>
+                      ))}
                     </select>
                   </div>
 
@@ -698,7 +719,7 @@ function SignupContent() {
                   <div className="input-group">
                     <label className="input-label" htmlFor="wa">WhatsApp number</label>
                     <div className={styles.phoneInput}>
-                      <span className={styles.phonePrefix}>+263</span>
+                      <span className={styles.phonePrefix}>{activePrefix}</span>
                       <input
                         id="wa"
                         type="tel"
