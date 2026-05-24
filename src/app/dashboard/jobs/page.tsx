@@ -774,8 +774,7 @@ export default function JobsPage() {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px'
-                  }}>
-                    {sub.status === 'active' 
+                  }}>\n                    {sub.status === 'active' 
                       ? `🔓 Unlocked (~${estJobsLeft} deliveries left)`
                       : `⏳ Grace Period Active`
                     }
@@ -864,8 +863,7 @@ export default function JobsPage() {
                       color: '#34d399',
                       marginBottom: '0.75rem',
                       boxShadow: '0 0 15px rgba(16, 185, 129, 0.1)'
-                    }}>
-                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
+                    }}>\n                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
                     </div>
                   )}
 
@@ -915,8 +913,7 @@ export default function JobsPage() {
                       color: '#f87171',
                       lineHeight: '1.4',
                       textAlign: 'left'
-                    }}>
-                      ⚠️ <strong>Cash Collection Limit Warning</strong>
+                    }}>\n                      ⚠️ <strong>Cash Collection Limit Warning</strong>
                       <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
                         You are near your cash collection limit (${cashBalance.toFixed(2)}/${cashLimit.toFixed(2)}). 
                         Please remit collected cash to platform operations before accepting more COD orders.
@@ -932,8 +929,7 @@ export default function JobsPage() {
                       >
                         {accepting === job.id ? (
                           <>
-                            <span className="spinner" /> Accepting...
-                          </>
+                            <span className="spinner" /> Accepting...\n                          </>
                         ) : (
                           `Accept — $${job.payout.toFixed(2)}`
                         )}
@@ -961,10 +957,11 @@ export default function JobsPage() {
                     </div>
                   )}
                 </div>
-                ))}
-              </div>
-            </>
+              ))}
+            </div>
+          </>
           )}
+        </>
       )}
 
       {/* Guard Lock Modal for Grace Period */}
@@ -1086,8 +1083,7 @@ export default function JobsPage() {
                       marginTop: '0.5rem',
                       marginBottom: '1rem',
                       fontWeight: 600
-                    }}>
-                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
+                    }}>\n                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
                     </div>
                   )}
                   <div className={styles.quizNav}>
@@ -1194,7 +1190,7 @@ export default function JobsPage() {
                   step="0.10"
                   className={styles.bidInputField}
                   value={bidAmount}
-                  onChange={(e) => setBedAmount ? setBidAmount(e.target.value) : setBidAmount(e.target.value)}
+                  onChange={(e) => setBidAmount(e.target.value)}
                   placeholder="0.00"
                 />
               </div>
