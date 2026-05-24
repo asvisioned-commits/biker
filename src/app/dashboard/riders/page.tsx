@@ -409,7 +409,7 @@ export default function RidersQueuePage() {
                   style={{ 
                     padding: '20px', 
                     display: 'flex', 
-                    justifyContent: 'between', 
+                    justifyContent: 'space-between', 
                     alignItems: 'center', 
                     cursor: 'pointer',
                     flexWrap: 'wrap',

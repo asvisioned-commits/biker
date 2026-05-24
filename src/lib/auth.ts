@@ -21,6 +21,7 @@ export interface BikerSession {
   business_name?: string;
   is_suspended?: boolean;
   is_google?: boolean;
+  national_id_number?: string | null;
 }
 
 /**
@@ -420,7 +421,7 @@ export async function getSession(): Promise<BikerSession | null> {
   const [profileRes, rolesRes] = await Promise.all([
     supabase
       .from('profiles')
-      .select('full_name, phone, avatar_url, trust_score, active_role, is_suspended')
+      .select('full_name, phone, avatar_url, trust_score, active_role, is_suspended, national_id_number')
       .eq('id', user.id)
       .single(),
     supabase
@@ -450,6 +451,7 @@ export async function getSession(): Promise<BikerSession | null> {
     trust_score: profile?.trust_score || 50,
     is_suspended: profile?.is_suspended || false,
     is_google: isGoogle,
+    national_id_number: profile?.national_id_number || undefined,
   };
 }
 

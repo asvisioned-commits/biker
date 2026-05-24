@@ -395,7 +395,7 @@ function LoginContent() {
                   <input id="email" type="email" className="input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div className="input-group">
-                  <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <label className="input-label" htmlFor="password">Password</label>
                     <button 
                       type="button" 

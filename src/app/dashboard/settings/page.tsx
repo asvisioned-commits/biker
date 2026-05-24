@@ -9,7 +9,7 @@ import { useProfile } from '@/context/ProfileContext';
 import { createClient } from '@/lib/supabase/client';
 
 export default function SettingsPage() {
-  const { session, loading: sessionLoading, refreshSession } = useProfile();
+  const { session, loading: sessionLoading, refreshSession, country } = useProfile();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'danger' | 'verification'>('profile');
   const [role, setRole] = useState<UserRole>('customer');
@@ -1288,11 +1288,11 @@ export default function SettingsPage() {
                           <div className={`${styles.checkpointDot} ${kycLivenessStep === 'align' ? styles.checkpointDotActive : styles.checkpointDotSuccess}`}>
                             {kycLivenessStep !== 'align' ? '✓' : '1'} Align
                           </div>
-                          <div className={`${styles.checkpointDot} ${kycLivenessStep === 'blink' ? styles.checkpointDotActive : (kycLivenessStep === 'turn' || kycLivenessStep === 'captured' ? styles.checkpointDotSuccess : '')}`}>
-                            {kycLivenessStep === 'turn' || kycLivenessStep === 'captured' ? '✓' : '2'} Blink
+                          <div className={`${styles.checkpointDot} ${kycLivenessStep === 'blink' ? styles.checkpointDotActive : (kycLivenessStep === 'turn' ? styles.checkpointDotSuccess : '')}`}>
+                            {kycLivenessStep === 'turn' ? '✓' : '2'} Blink
                           </div>
-                          <div className={`${styles.checkpointDot} ${kycLivenessStep === 'turn' ? styles.checkpointDotActive : (kycLivenessStep === 'captured' ? styles.checkpointDotSuccess : '')}`}>
-                            {kycLivenessStep === 'captured' ? '✓' : '3'} Turn
+                          <div className={`${styles.checkpointDot} ${kycLivenessStep === 'turn' ? styles.checkpointDotActive : ''}`}>
+                            3 Turn
                           </div>
                         </div>
                       )}

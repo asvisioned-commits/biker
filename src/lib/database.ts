@@ -625,7 +625,9 @@ export async function createRiderProfile(profile: {
   national_id_card_url?: string | null;
   vehicle_registration_url?: string | null;
   license_card_url?: string | null;
+  selfie_url?: string | null;
   kyc_status?: string;
+  kyc_rejection_reason?: string | null;
 }) {
   const { data, error } = await supabase.from('rider_profiles').insert(profile).select().single();
   if (!error) { await supabase.from('user_roles').upsert({ user_id: profile.user_id, role: 'rider', is_active: true }, { onConflict: 'user_id,role' }); }
