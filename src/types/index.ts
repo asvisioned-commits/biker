@@ -201,6 +201,11 @@ export interface RiderProfile {
   maintenance_wallet_balance: number;
   fuel_wallet_balance: number;
   active_since: string;
+  kyc_status: 'unverified' | 'pending_face_scan' | 'pending_ops_approval' | 'approved' | 'rejected';
+  national_id_card_url: string | null;
+  vehicle_registration_url: string | null;
+  license_card_url: string | null;
+  kyc_rejection_reason: string | null;
 }
 
 export interface MerchantProfile {

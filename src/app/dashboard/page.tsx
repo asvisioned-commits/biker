@@ -65,6 +65,10 @@ export default function DashboardHome() {
 
   const toggleRiderAvailability = async () => {
     if (!profile) return;
+    if (riderStats?.kycStatus !== 'approved') {
+      alert('Verification required. Your account must be Biker Approved to go online.');
+      return;
+    }
     setUpdatingOnlineStatus(true);
     
     const nextVal = !riderOnline;
@@ -146,6 +150,55 @@ export default function DashboardHome() {
 
       {role === 'rider' && (
         <div className="flex flex-col gap-6 mb-8">
+          {/* KYC Verification Banners */}
+          {riderStats?.kycStatus !== 'approved' && (
+            <div style={{
+              background: riderStats?.kycStatus === 'rejected' ? 'rgba(239, 68, 68, 0.06)' : 'rgba(245, 158, 11, 0.06)',
+              border: `1px solid ${riderStats?.kycStatus === 'rejected' ? '#ef4444' : '#f59e0b'}`,
+              borderRadius: '16px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.75rem' }}>
+                  {riderStats?.kycStatus === 'rejected' ? '❌' : riderStats?.kycStatus === 'pending_ops_approval' ? '⏳' : '⚠️'}
+                </span>
+                <div>
+                  <h3 style={{ fontWeight: 800, margin: 0, fontSize: '15px', color: 'var(--text-primary)' }}>
+                    {riderStats?.kycStatus === 'rejected' ? 'Verification Rejected' : 
+                     riderStats?.kycStatus === 'pending_ops_approval' ? 'Verification Under Review' :
+                     riderStats?.kycStatus === 'pending_face_scan' ? 'Face Scan Required (Phase 2)' : 
+                     'Verification Required'}
+                  </h3>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                    {riderStats?.kycStatus === 'rejected' ? `Ops rejected your documents. Reason: "${riderStats?.rejectionReason || 'Invalid documents uploaded.'}"` :
+                     riderStats?.kycStatus === 'pending_ops_approval' ? 'Our operations team is currently reviewing your ID card, vehicle documents, and live face scan. (Usually takes under 24 hours).' :
+                     riderStats?.kycStatus === 'pending_face_scan' ? 'Please complete your live face scan verification to finish onboarding.' :
+                     'Please complete your document onboarding to activate your biker account.'}
+                  </p>
+                </div>
+              </div>
+
+              {(riderStats?.kycStatus === 'unverified' || riderStats?.kycStatus === 'rejected') && (
+                <div>
+                  <Link href="/signup?google_onboarding=1" className="btn btn--primary btn--sm" style={{ display: 'inline-block' }}>
+                    Verify Identity & Vehicle Documents
+                  </Link>
+                </div>
+              )}
+              {riderStats?.kycStatus === 'pending_face_scan' && (
+                <div>
+                  <Link href="/signup?google_onboarding=1" className="btn btn--primary btn--sm" style={{ display: 'inline-block' }}>
+                    Start Live Face Scan Verification
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick Metrics (Online status + active console link) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="card p-6 md:col-span-2 flex flex-col justify-between" style={{ minHeight: '160px' }}>
@@ -158,11 +211,11 @@ export default function DashboardHome() {
                 </div>
 
                 <button 
-                  className={`btn ${riderOnline ? 'btn--success' : 'btn--secondary'} btn--sm`}
+                  className={`btn ${riderOnline && riderStats?.kycStatus === 'approved' ? 'btn--success' : 'btn--secondary'} btn--sm`}
                   onClick={toggleRiderAvailability}
-                  disabled={updatingOnlineStatus}
+                  disabled={updatingOnlineStatus || riderStats?.kycStatus !== 'approved'}
                 >
-                  {updatingOnlineStatus ? 'Updating...' : riderOnline ? '🟢 Online' : '🔴 Offline'}
+                  {updatingOnlineStatus ? 'Updating...' : riderStats?.kycStatus !== 'approved' ? '🔒 Locked' : riderOnline ? '🟢 Online' : '🔴 Offline'}
                 </button>
               </div>
 

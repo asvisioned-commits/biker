@@ -66,7 +66,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   // If user is authenticated and trying to access login/signup, redirect to dashboard
-  if (user && (pathname === '/login' || pathname === '/signup')) {
+  // Exception: Allow access to /signup if completing Google onboarding
+  if (user && (pathname === '/login' || (pathname === '/signup' && !searchParams.has('google_onboarding')))) {
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);

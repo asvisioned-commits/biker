@@ -15,7 +15,18 @@ export async function getProfile(userId: string) {
   return { data, error };
 }
 
-export async function updateProfile(userId: string, updates: { full_name?: string; avatar_url?: string; phone?: string; email?: string; }) {
+export async function updateProfile(
+  userId: string, 
+  updates: { 
+    full_name?: string; 
+    avatar_url?: string; 
+    phone?: string; 
+    email?: string;
+    national_id_number?: string | null;
+    active_role?: string;
+    national_id_verified?: boolean;
+  }
+) {
   const { data, error } = await supabase.from('profiles').update(updates).eq('id', userId).select().single();
   return { data, error };
 }
@@ -542,7 +553,25 @@ export async function getRiderProfile(userId: string) {
   return { data, error };
 }
 
-export async function updateRiderProfile(userId: string, updates: { vehicle_type?: VehicleType; vehicle_registration?: string; license_number?: string; operating_zone?: string; is_available?: boolean; }) {
+export async function updateRiderProfile(
+  userId: string, 
+  updates: { 
+    vehicle_type?: VehicleType; 
+    vehicle_registration?: string; 
+    license_number?: string; 
+    operating_zone?: string; 
+    is_available?: boolean;
+    national_id_card_url?: string | null;
+    vehicle_registration_url?: string | null;
+    license_card_url?: string | null;
+    selfie_url?: string | null;
+    kyc_status?: 'unverified' | 'pending_face_scan' | 'pending_ops_approval' | 'approved' | 'rejected';
+    kyc_rejection_reason?: string | null;
+    vehicle_verified?: boolean;
+    license_verified?: boolean;
+    selfie_verified?: boolean;
+  }
+) {
   const { data, error } = await supabase.from('rider_profiles').update(updates).eq('user_id', userId).select().single();
   return { data, error };
 }
@@ -587,7 +616,17 @@ export async function submitRating(rating: { request_id: string; from_user_id: s
 
 // ─── Rider Profile ────────────────────────────────────────────────
 
-export async function createRiderProfile(profile: { user_id: string; vehicle_type?: 'bicycle' | 'motorcycle' | 'car' | 'van'; vehicle_registration?: string; license_number?: string; operating_zone?: string; }) {
+export async function createRiderProfile(profile: {
+  user_id: string;
+  vehicle_type?: 'bicycle' | 'motorcycle' | 'car' | 'van';
+  vehicle_registration?: string;
+  license_number?: string;
+  operating_zone?: string;
+  national_id_card_url?: string | null;
+  vehicle_registration_url?: string | null;
+  license_card_url?: string | null;
+  kyc_status?: string;
+}) {
   const { data, error } = await supabase.from('rider_profiles').insert(profile).select().single();
   if (!error) { await supabase.from('user_roles').upsert({ user_id: profile.user_id, role: 'rider', is_active: true }, { onConflict: 'user_id,role' }); }
   return { data, error };
@@ -903,6 +942,8 @@ export async function getRiderDashboardStats(riderId: string) {
     rating: profile?.avg_rating ? Number(profile.avg_rating) : 0.0,
     trustScore,
     tier: profile?.tier ?? 'starter',
+    kycStatus: profile?.kyc_status ?? 'unverified',
+    rejectionReason: profile?.kyc_rejection_reason ?? null,
     subscription: subscription ? {
       status: subscription.status,
       earningCap: Number(subscription.earning_cap),
