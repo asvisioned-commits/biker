@@ -669,3 +669,74 @@
   color: var(--color-danger-500);
   margin-bottom: var(--space-2);
 }
+
+/* ============================================================
+   Rider Available Jobs Map Styles
+   ============================================================ */
+
+.jobsMapContainer {
+  width: 100%;
+  height: 280px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  margin-bottom: var(--space-6);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-md);
+  position: relative;
+}
+
+.jobsMap {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.mapMarkerPopup {
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.mapMarkerPopup h4 {
+  font-weight: 800;
+  margin: 0 0 4px 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.mapMarkerPopup p {
+  margin: 0 0 8px 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.popupActions {
+  display: flex;
+  gap: 6px;
+}
+
+.popupBtn {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: none;
+}
+
+.popupBtnPrimary {
+  background: var(--color-primary-500);
+  color: white;
+}
+
+.popupBtnSecondary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+}
+
+.jobCardHighlighted {
+  border-color: var(--color-primary-500) !important;
+  box-shadow: 0 0 0 2px var(--color-primary-200), var(--shadow-lg) !important;
+  background: linear-gradient(135deg, var(--bg-card), rgba(59, 130, 246, 0.02)) !important;
+}

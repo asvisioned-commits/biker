@@ -170,7 +170,7 @@ const QUIZ_SLIDES = [
 ];
 
 export default function JobsPage() {
-  const { session, loading: profileLoading } = useProfile();
+  const { session, loading: profileLoading, country } = useProfile();
   const userId = session?.user_id;
 
   const [jobs, setJobs] = useState<any[]>([]);
@@ -200,6 +200,214 @@ export default function JobsPage() {
   const [bidAmount, setBidAmount] = useState<string>('');
   const [submittingBid, setSubmittingBid] = useState(false);
   const [activeBids, setActiveBids] = useState<Record<string, number>>({});
+
+  // Map and Leaflet States
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
+  const [riderCoords, setRiderCoords] = useState<[number, number]>(
+    country === 'ZM' ? [-15.3875, 28.3228] : [-17.8292, 31.0522]
+  );
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+
+  const jobsMapRef = useRef<any>(null);
+  const riderMarkerRef = useRef<any>(null);
+  const jobMarkersRef = useRef<Record<string, any>>({});
+  const routePolylineRef = useRef<any>(null);
+
+  // Load Leaflet libraries dynamically
+  useEffect(() => {
+    if ((window as any).L) {
+      setLeafletLoaded(true);
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = () => setLeafletLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // Initialize Rider Map
+  useEffect(() => {
+    if (!leafletLoaded || !isOnline) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    const mapElement = document.getElementById('jobs-leaflet-map');
+    if (!mapElement) return;
+
+    if (jobsMapRef.current) {
+      jobsMapRef.current.remove();
+      jobsMapRef.current = null;
+    }
+
+    const map = L.map('jobs-leaflet-map', {
+      zoomControl: true,
+      scrollWheelZoom: true
+    }).setView(riderCoords, 13);
+    jobsMapRef.current = map;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Get rider current location
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        setRiderCoords([latitude, longitude]);
+        map.setView([latitude, longitude], 14);
+      }, () => {});
+    }
+
+    return () => {
+      if (jobsMapRef.current) {
+        jobsMapRef.current.remove();
+        jobsMapRef.current = null;
+      }
+    };
+  }, [leafletLoaded, isOnline]);
+
+  // Update Rider Location Marker
+  useEffect(() => {
+    if (!leafletLoaded || !jobsMapRef.current || !isOnline) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    if (riderMarkerRef.current) {
+      riderMarkerRef.current.setLatLng(riderCoords);
+    } else {
+      const riderIcon = L.divIcon({
+        html: `<div style="font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🏍️</div>`,
+        className: 'leaflet-rider-marker',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+      riderMarkerRef.current = L.marker(riderCoords, { icon: riderIcon })
+        .addTo(jobsMapRef.current)
+        .bindPopup('<b>My Location</b> (Online & Ready)');
+    }
+  }, [riderCoords, leafletLoaded, isOnline]);
+
+  // Update job markers on map when jobs list changes
+  useEffect(() => {
+    if (!leafletLoaded || !jobsMapRef.current || !isOnline) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    // Clear old job markers
+    Object.values(jobMarkersRef.current).forEach((m: any) => m.remove());
+    jobMarkersRef.current = {};
+
+    if (routePolylineRef.current) {
+      routePolylineRef.current.remove();
+      routePolylineRef.current = null;
+    }
+
+    jobs.forEach(job => {
+      // Pick coordinates
+      const lat = job.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292) + (job.reference_code.length % 10) / 100;
+      const lng = job.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522) + (job.reference_code.length % 8) / 100;
+
+      const jobIcon = L.divIcon({
+        html: `<div style="font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); transition: transform 0.2s;">📦</div>`,
+        className: 'leaflet-job-marker',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+
+      const popupContent = document.createElement('div');
+      popupContent.className = styles.mapMarkerPopup;
+      popupContent.innerHTML = `
+        <h4>${job.reference_code}</h4>
+        <p><strong>Offer:</strong> ${country === 'ZM' ? `ZK ${(job.payout * 25).toFixed(0)}` : `$${job.payout.toFixed(2)}`}</p>
+        <p><strong>From:</strong> ${job.pickup_address}</p>
+        <p><strong>Distance:</strong> ${job.distance}</p>
+        <div class="${styles.popupActions}">
+          <button class="${styles.popupBtn} ${styles.popupBtnPrimary}" id="popup-accept-${job.id}">Accept</button>
+          <button class="${styles.popupBtn} ${styles.popupBtnSecondary}" id="popup-bid-${job.id}">Bid Higher</button>
+        </div>
+      `;
+
+      const marker = L.marker([lat, lng], { icon: jobIcon })
+        .addTo(jobsMapRef.current)
+        .bindPopup(popupContent);
+
+      // Listen to popup open to attach buttons event listeners
+      marker.on('popupopen', () => {
+        setSelectedJobId(job.id);
+
+        // Highlight route for selected job (from pickup to dropoff)
+        const dropLat = job.dropoff_lat || lat + 0.02;
+        const dropLng = job.dropoff_lng || lng + 0.02;
+
+        if (routePolylineRef.current) {
+          routePolylineRef.current.remove();
+        }
+
+        const fetchRoute = async () => {
+          try {
+            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${lng},${lat};${dropLng},${dropLat}?geometries=geojson&overview=full`);
+            const data = await res.json();
+            if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+              const coords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
+              routePolylineRef.current = L.polyline(coords, { color: '#3b82f6', weight: 4 }).addTo(jobsMapRef.current);
+              return;
+            }
+          } catch {}
+          routePolylineRef.current = L.polyline([[lat, lng], [dropLat, dropLng]], { color: '#3b82f6', weight: 4 }).addTo(jobsMapRef.current);
+        };
+        fetchRoute();
+
+        // Attach buttons handlers
+        setTimeout(() => {
+          document.getElementById(`popup-accept-${job.id}`)?.addEventListener('click', () => {
+            handleAcceptJob(job.id);
+          });
+
+          document.getElementById(`popup-bid-${job.id}`)?.addEventListener('click', () => {
+            if (!safetyQuizCompleted) {
+              setShowQuiz(true);
+              setQuizStep(0);
+              return;
+            }
+            setBiddingJob(job);
+            setBidAmount((job.payout * 1.15).toFixed(2));
+            setShowBidModal(true);
+          });
+        }, 100);
+      });
+
+      jobMarkersRef.current[job.id] = marker;
+    });
+
+    // Zoom bounds to contain rider location + jobs
+    if (jobs.length > 0) {
+      const boundsPoints = [riderCoords];
+      jobs.forEach(job => {
+        const lat = job.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292) + (job.reference_code.length % 10) / 100;
+        const lng = job.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522) + (job.reference_code.length % 8) / 100;
+        boundsPoints.push([lat, lng]);
+      });
+      jobsMapRef.current.fitBounds(L.latLngBounds(boundsPoints), { padding: [40, 40] });
+    }
+
+  }, [jobs, leafletLoaded, isOnline]);
+
+  // Handle selected job card scroll into view
+  useEffect(() => {
+    if (selectedJobId) {
+      const cardEl = document.getElementById(`job-card-${selectedJobId}`);
+      if (cardEl) {
+        cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [selectedJobId]);
 
   const formatOrderTime = (timeStr: string) => {
     if (!timeStr) return 'Just now';
@@ -566,7 +774,8 @@ export default function JobsPage() {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px'
-                  }}>\n                    {sub.status === 'active' 
+                  }}>
+                    {sub.status === 'active' 
                       ? `🔓 Unlocked (~${estJobsLeft} deliveries left)`
                       : `⏳ Grace Period Active`
                     }
@@ -596,12 +805,32 @@ export default function JobsPage() {
           )}
 
           {isOnline && (
-            <div className={styles.jobsList}>
-              {jobs.map((job) => (
-                <div
-                  key={job.id}
-                  className={`${styles.jobCard} ${job.fulfillment_mode === 'jet' ? styles.jobCardJet : ''}`}
-                >
+            <>
+              {/* Rider available jobs Leaflet map */}
+              <div className={styles.jobsMapContainer}>
+                <div id="jobs-leaflet-map" className={styles.jobsMap} />
+                {!leafletLoaded && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', zIndex: 10 }}>
+                    <span className="spinner" style={{ marginRight: '8px' }} /> Loading Map...
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.jobsList}>
+                {jobs.map((job) => (
+                  <div
+                    key={job.id}
+                    id={`job-card-${job.id}`}
+                    className={`${styles.jobCard} ${job.fulfillment_mode === 'jet' ? styles.jobCardJet : ''} ${selectedJobId === job.id ? styles.jobCardHighlighted : ''}`}
+                    onClick={() => {
+                      setSelectedJobId(job.id);
+                      const marker = jobMarkersRef.current[job.id];
+                      if (marker && jobsMapRef.current) {
+                        jobsMapRef.current.setView(marker.getLatLng(), 14);
+                        marker.openPopup();
+                      }
+                    }}
+                  >
                   {job.fulfillment_mode === 'jet' && (
                     <div className={styles.jetBadge}>⚡ JET — Priority Delivery</div>
                   )}
@@ -635,7 +864,8 @@ export default function JobsPage() {
                       color: '#34d399',
                       marginBottom: '0.75rem',
                       boxShadow: '0 0 15px rgba(16, 185, 129, 0.1)'
-                    }}>\n                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
+                    }}>
+                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
                     </div>
                   )}
 
@@ -685,7 +915,8 @@ export default function JobsPage() {
                       color: '#f87171',
                       lineHeight: '1.4',
                       textAlign: 'left'
-                    }}>\n                      ⚠️ <strong>Cash Collection Limit Warning</strong>
+                    }}>
+                      ⚠️ <strong>Cash Collection Limit Warning</strong>
                       <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
                         You are near your cash collection limit (${cashBalance.toFixed(2)}/${cashLimit.toFixed(2)}). 
                         Please remit collected cash to platform operations before accepting more COD orders.
@@ -701,7 +932,8 @@ export default function JobsPage() {
                       >
                         {accepting === job.id ? (
                           <>
-                            <span className="spinner" /> Accepting...\n                          </>
+                            <span className="spinner" /> Accepting...
+                          </>
                         ) : (
                           `Accept — $${job.payout.toFixed(2)}`
                         )}
@@ -729,10 +961,10 @@ export default function JobsPage() {
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
-        </>
       )}
 
       {/* Guard Lock Modal for Grace Period */}
@@ -854,7 +1086,8 @@ export default function JobsPage() {
                       marginTop: '0.5rem',
                       marginBottom: '1rem',
                       fontWeight: 600
-                    }}>\n                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
+                    }}>
+                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
                     </div>
                   )}
                   <div className={styles.quizNav}>
@@ -961,7 +1194,7 @@ export default function JobsPage() {
                   step="0.10"
                   className={styles.bidInputField}
                   value={bidAmount}
-                  onChange={(e) => setBidAmount(e.target.value)}
+                  onChange={(e) => setBedAmount ? setBidAmount(e.target.value) : setBidAmount(e.target.value)}
                   placeholder="0.00"
                 />
               </div>

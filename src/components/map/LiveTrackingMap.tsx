@@ -3,6 +3,13 @@
 import { useEffect, useState, useRef } from 'react';
 import styles from './live-tracking-map.module.css';
 
+export interface NearbyRider {
+  id: string;
+  lat: number;
+  lng: number;
+  name: string;
+}
+
 interface LiveTrackingMapProps {
   pickupCoords: [number, number];
   dropoffCoords: [number, number];
@@ -10,6 +17,7 @@ interface LiveTrackingMapProps {
   riderHeading?: number | null;
   riderName?: string;
   className?: string;
+  nearbyRiders?: NearbyRider[] | null;
 }
 
 export default function LiveTrackingMap({
@@ -19,6 +27,7 @@ export default function LiveTrackingMap({
   riderHeading = null,
   riderName = 'Rider',
   className = '',
+  nearbyRiders = null,
 }: LiveTrackingMapProps) {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
@@ -28,6 +37,7 @@ export default function LiveTrackingMap({
   const pickupMarkerRef = useRef<any>(null);
   const dropoffMarkerRef = useRef<any>(null);
   const riderMarkerRef = useRef<any>(null);
+  const nearbyMarkersRef = useRef<any[]>([]);
   const routePolylineRef = useRef<any>(null);
   const mapId = useRef(`live-tracking-map-${Math.random().toString(36).substr(2, 9)}`);
 
@@ -158,6 +168,8 @@ export default function LiveTrackingMap({
         mapRef.current.remove();
         mapRef.current = null;
       }
+      nearbyMarkersRef.current.forEach(m => m.remove());
+      nearbyMarkersRef.current = [];
     };
   }, [leafletLoaded]);
 
@@ -213,6 +225,30 @@ export default function LiveTrackingMap({
       }
     }
 
+    // Update nearby rider markers
+    nearbyMarkersRef.current.forEach(m => m.remove());
+    nearbyMarkersRef.current = [];
+
+    if (nearbyRiders && nearbyRiders.length > 0) {
+      nearbyRiders.forEach(r => {
+        const icon = L.divIcon({
+          html: `
+            <div class="${styles.nearbyRiderIconContainer}">
+              <div class="${styles.nearbyRiderDot}"></div>
+              <div class="${styles.nearbyRiderIcon}">🏍️</div>
+            </div>
+          `,
+          className: 'leaflet-nearby-rider-icon',
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        });
+        const m = L.marker([r.lat, r.lng], { icon })
+          .addTo(mapRef.current)
+          .bindPopup(`<b>${r.name}</b> (Nearby Rider)`);
+        nearbyMarkersRef.current.push(m);
+      });
+    }
+
     // Adjust bounds if coordinates update
     const boundsPoints = [pickupCoords, dropoffCoords];
     if (riderCoords) {
@@ -221,7 +257,7 @@ export default function LiveTrackingMap({
     const bounds = L.latLngBounds(boundsPoints);
     mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
 
-  }, [pickupCoords, dropoffCoords, riderCoords, riderHeading, routeCoords, leafletLoaded, riderName]);
+  }, [pickupCoords, dropoffCoords, riderCoords, riderHeading, routeCoords, leafletLoaded, riderName, nearbyRiders]);
 
   return (
     <div className={`${styles.mapWrapper} ${className}`}>

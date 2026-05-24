@@ -53,16 +53,28 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
   return `Location at ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
+import { searchLocalPlaces } from './geocoding-dictionary';
+
 /**
  * Forward geocodes an address query to coordinates using OpenStreetMap Nominatim.
- * Restricts queries to Zimbabwe (countrycodes=zw) for local accuracy.
+ * Prioritizes local dictionary spots before calling OpenStreetMap.
  */
-export async function searchAddress(query: string): Promise<GeocodeResult[]> {
-  if (!query || query.trim().length < 3) return [];
+export async function searchAddress(query: string, country: 'ZW' | 'ZM' = 'ZW'): Promise<GeocodeResult[]> {
+  if (!query || query.trim().length < 2) return [];
 
+  // 1. First lookup in our local fast dictionary
+  const localMatches = searchLocalPlaces(query, country);
+  const localResults: GeocodeResult[] = localMatches.map(place => ({
+    address: place.name,
+    lat: place.lat,
+    lng: place.lng
+  }));
+
+  // 2. Fetch from OpenStreetMap Nominatim for custom queries
   try {
+    const countryCode = country.toLowerCase();
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=zw&limit=5&addressdetails=1`,
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=${countryCode}&limit=5&addressdetails=1`,
       {
         headers: {
           'Accept': 'application/json',
@@ -77,8 +89,7 @@ export async function searchAddress(query: string): Promise<GeocodeResult[]> {
 
     const data = await response.json();
     if (Array.isArray(data)) {
-      return data.map((item: any) => {
-        // Clean up overly long search addresses
+      const osmResults: GeocodeResult[] = data.map((item: any) => {
         const parts = item.display_name.split(',');
         const conciseAddress = parts.slice(0, 4).map((p: string) => p.trim()).join(', ');
         return {
@@ -87,10 +98,22 @@ export async function searchAddress(query: string): Promise<GeocodeResult[]> {
           lng: parseFloat(item.lon),
         };
       });
+
+      // Merge results, filtering out near-duplicates and prioritizing local dictionary
+      const merged = [...localResults];
+      for (const osm of osmResults) {
+        const isDuplicate = merged.some(
+          r => Math.abs(r.lat - osm.lat) < 0.0005 && Math.abs(r.lng - osm.lng) < 0.0005
+        );
+        if (!isDuplicate) {
+          merged.push(osm);
+        }
+      }
+      return merged.slice(0, 6);
     }
   } catch (error) {
     console.warn('Forward geocoding search failed:', error);
   }
 
-  return [];
+  return localResults;
 }

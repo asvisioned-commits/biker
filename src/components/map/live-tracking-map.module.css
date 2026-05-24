@@ -127,3 +127,38 @@
     stroke-dashoffset: -1000px;
   }
 }
+
+.nearbyRiderIconContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px !important;
+  height: 36px !important;
+}
+
+.nearbyRiderIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card, #ffffff);
+  border: 2px solid var(--text-secondary, #475569);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+.nearbyRiderDot {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(71, 85, 105, 0.08);
+  border: 1px dashed rgba(71, 85, 105, 0.3);
+  animation: pulseRadar 3s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
