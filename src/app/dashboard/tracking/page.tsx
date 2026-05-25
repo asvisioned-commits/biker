@@ -1,798 +1,1521 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { useProfile } from '@/context/ProfileContext';
+import { Suspense, useEffect, useState, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { OrderService, BikerOrder } from '@/lib/order-service';
+import { EcoCashService, EcoCashTransaction } from '@/lib/ecocash';
 import { createClient } from '@/lib/supabase/client';
-import LiveTrackingMap, { NearbyRider } from '@/components/map/LiveTrackingMap';
+import { getCounterOffersForOrder, respondToCounterOffer } from '../earnings/actions';
 import { FLAGS } from '@/lib/flags';
+import { CallSimulator } from '@/components/CallSimulator';
+import { ChatDrawer } from '@/components/ChatDrawer';
+import { useProfile } from '@/context/ProfileContext';
+import LiveTrackingMap from '@/components/map/LiveTrackingMap';
 import styles from './tracking.module.css';
 
-// Active delivery interface
-interface ActiveDelivery {
-  id: string;
-  reference_code: string;
-  pickup_address: string;
-  pickup_lat: number;
-  pickup_lng: number;
-  dropoff_address: string;
-  dropoff_lat: number;
-  dropoff_lng: number;
-  estimated_distance_km: number;
-  estimated_duration_minutes: number;
-  service_type: string;
-  delivery_fee: number;
-  insurance_fee: number;
-  total_amount: number;
-  fulfillment_mode: string;
-  protection_level: string;
-  payment_method: string;
-  item_description: string;
-  status: string;
-  assigned_rider_id?: string | null;
-  created_at: string;
-  verification_pin?: string;
-  dispute_filed?: boolean;
-  dispute_reason?: string;
-  dispute_status?: string;
-}
-
-const MOCK_NEARBY_RIDERS: NearbyRider[] = [
-  { id: 'nr-1', lat: -17.8210, lng: 31.0560, name: 'Blessing M.' },
-  { id: 'nr-2', lat: -17.8340, lng: 31.0420, name: 'Tatenda K.' },
-  { id: 'nr-3', lat: -17.8150, lng: 31.0630, name: 'Gift C.' },
-];
-
-export default function TrackingPage() {
-  const router = useRouter();
-  const { session, country } = useProfile();
-  const userId = session?.user_id;
-
-  const [delivery, setDelivery] = useState<ActiveDelivery | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [cancelling, setCancelling] = useState(false);
-  const [simulating, setSimulating] = useState(false);
-  
-  // simulated rider path tracking
-  const [riderCoords, setRiderCoords] = useState<[number, number] | null>(null);
-  const [riderHeading, setRiderHeading] = useState<number | null>(null);
-  const [nearbyRiders, setNearbyRiders] = useState<NearbyRider[] | null>(null);
-
-  // dispute popup logic
-  const [showDisputeModal, setShowDisputeModal] = useState(false);
-  const [disputeReason, setDisputeReason] = useState('');
-  const [disputeMessage, setDisputeMessage] = useState('');
-  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
-
-  // USSD payment simulator
-  const [ussdSimStatus, setUssdSimStatus] = useState<'idle' | 'triggered' | 'paying' | 'success' | 'failed'>('idle');
-  const [selectedMobileOperator, setSelectedMobileOperator] = useState<string>('');
-  const [phoneNumber, setPhoneNumber] = useState<string>('');
-  const [simulatedLogs, setSimulatedLogs] = useState<string[]>([]);
-  const simulatedLogsEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (simulatedLogsEndRef.current) {
-      simulatedLogsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [simulatedLogs]);
-
-  const addSimLog = (msg: string) => {
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setSimulatedLogs(prev => [...prev, `[${time}] ${msg}`]);
-  };
-
-  const getRiderInfo = () => {
-    if (delivery?.assigned_rider_id === 'mock-rider-id') {
+const getModalStyles = (method: string) => {
+  switch (method) {
+    case 'mtn_momo':
       return {
-        full_name: 'Farai Moyo',
-        rating: 4.9,
-        motorcycle: 'Yamaha Crux 110 (AEE-4392)',
-        phone: '+263 77 123 4567',
-        avatar_url: null,
+        modal: { background: '#FFCC00', color: '#000000', borderColor: '#E6B800' },
+        title: { color: '#000000' },
+        subtitle: { color: 'rgba(0, 0, 0, 0.6)' },
+        body: { color: '#000000' },
+        details: { background: 'rgba(0, 0, 0, 0.05)', color: '#000000' },
+        detailLabel: { color: 'rgba(0, 0, 0, 0.6)' },
+        detailValue: { color: '#000000' },
+        statusBox: { background: 'rgba(0, 0, 0, 0.03)', borderColor: 'rgba(0, 0, 0, 0.2)', color: '#000000' },
+        statusTitle: { color: '#000000' },
+        statusDesc: { color: 'rgba(0, 0, 0, 0.6)' },
+        timer: { color: '#000000' },
+        sandboxBadge: { background: 'rgba(0, 0, 0, 0.1)', color: '#000000' },
+        brandIcon: { background: '#000000', color: '#FFCC00' },
+        primaryBtn: { background: '#000000', color: '#FFCC00', border: 'none' },
+        secondaryBtn: { background: 'transparent', color: '#000000', border: '1px solid rgba(0, 0, 0, 0.3)' }
       };
+    case 'airtel_money':
+      return {
+        modal: { background: '#E11900', color: '#FFFFFF', borderColor: '#B31400' },
+        title: { color: '#FFFFFF' },
+        subtitle: { color: 'rgba(255, 255, 255, 0.7)' },
+        body: { color: '#FFFFFF' },
+        details: { background: 'rgba(255, 255, 255, 0.1)', color: '#FFFFFF' },
+        detailLabel: { color: 'rgba(255, 255, 255, 0.7)' },
+        detailValue: { color: '#FFFFFF' },
+        statusBox: { background: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.3)', color: '#FFFFFF' },
+        statusTitle: { color: '#FFFFFF' },
+        statusDesc: { color: 'rgba(255, 255, 255, 0.7)' },
+        timer: { color: '#FFFFFF' },
+        sandboxBadge: { background: 'rgba(255, 255, 255, 0.2)', color: '#FFFFFF' },
+        brandIcon: { background: '#FFFFFF', color: '#E11900' },
+        primaryBtn: { background: '#FFFFFF', color: '#E11900', border: 'none' },
+        secondaryBtn: { background: 'transparent', color: '#FFFFFF', border: '1px solid rgba(255, 255, 255, 0.5)' }
+      };
+    default: // ecocash
+      return {
+        modal: {},
+        title: {},
+        subtitle: {},
+        body: {},
+        details: {},
+        detailLabel: {},
+        detailValue: {},
+        statusBox: {},
+        statusTitle: {},
+        statusDesc: {},
+        timer: {},
+        sandboxBadge: {},
+        brandIcon: {},
+        primaryBtn: {},
+        secondaryBtn: {}
+      };
+  }
+};
+
+function TrackingContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const orderId = searchParams.get('id');
+  
+  const { session, country } = useProfile();
+  
+  const launchPay = searchParams.get('pay');
+  const launchEcoCash = launchPay === 'ecocash';
+  const launchMtnMomo = launchPay === 'mtn_momo';
+  const launchAirtelMoney = launchPay === 'airtel_money';
+  const ecocashPhoneParam = searchParams.get('phone') || '';
+
+  const formatPrice = (usdVal: number) => {
+    if (country === 'ZM') {
+      return `ZK ${(usdVal * 25).toFixed(2)}`;
     }
-    return {
-      full_name: 'Farai Moyo',
-      rating: 4.9,
-      motorcycle: 'Yamaha Crux 110 (AEE-4392)',
-      phone: '+263 77 123 4567',
-      avatar_url: null,
-    };
+    return `$${usdVal.toFixed(2)}`;
   };
 
-  const fetchActiveDelivery = async () => {
-    if (!FLAGS.useLiveDb) {
-      // Mock tracking state
-      const mockDelivery: ActiveDelivery = {
-        id: 'mock-del-123',
-        reference_code: 'BKR-M8T5V3',
-        pickup_address: "Sam Levy's Village, Borrowdale",
-        pickup_lat: -17.7502,
-        pickup_lng: 31.0858,
-        dropoff_address: 'Avondale Shops, King George Rd',
-        dropoff_lat: -17.7994,
-        dropoff_lng: 31.0378,
-        estimated_distance_km: 7.2,
-        estimated_duration_minutes: 18,
-        service_type: 'send_item',
-        delivery_fee: 4.80,
-        insurance_fee: 0.50,
-        total_amount: 5.30,
-        fulfillment_mode: 'standard',
-        protection_level: 'protected',
-        payment_method: 'wallet',
-        item_description: 'Business documents package',
-        status: 'searching',
-        created_at: new Date().toISOString(),
-        verification_pin: '4932',
-      };
-      setDelivery(mockDelivery);
-      setNearbyRiders(MOCK_NEARBY_RIDERS);
+  const [initialOrder, setInitialOrder] = useState<BikerOrder | null>(null);
+  const [liveOrder, setLiveOrder] = useState<BikerOrder | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
+  // Active Tab (mobile view)
+  const [activeTab, setActiveTab] = useState<'map' | 'details'>('map');
+
+  // EcoCash Simulator Overlay States
+  const [showEcoCashOverlay, setShowEcoCashOverlay] = useState(false);
+  const [isProcessingEcoCash, setIsProcessingEcoCash] = useState(false);
+  const [ecocashPhone, setEcocashPhone] = useState(ecocashPhoneParam);
+  const [ecocashTimer, setEcocashTimer] = useState(30);
+  const [ecocashError, setEcocashError] = useState('');
+  const [activeTxId, setActiveTxId] = useState<string | null>(null);
+
+  // Escrow Verification PIN States
+  const [verificationPin, setVerificationPin] = useState('');
+  const [pinVerified, setPinVerified] = useState(false);
+  const [pinError, setPinError] = useState('');
+  const [submittingPin, setSubmittingPin] = useState(false);
+
+  // Counter Offers State
+  const [counterOffers, setCounterOffers] = useState<any[]>([]);
+  const [respondingToOfferId, setRespondingToOfferId] = useState<string | null>(null);
+
+  // Simulation controls
+  const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
+  const [scanningTime, setScanningTime] = useState(0);
+
+  // Increment scanning time when order is in scanning phase
+  useEffect(() => {
+    if (!liveOrder || liveOrder.status !== 'payment_held') {
+      setScanningTime(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setScanningTime(t => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [liveOrder?.status]);
+
+  const getScanningStatusText = () => {
+    if (scanningTime < 5) return 'Scanning for nearby riders...';
+    if (scanningTime < 10) return 'Expanding search radius...';
+    if (scanningTime < 15) return 'Optimizing route dispatch...';
+    return 'Deep scan initiated. Contacting premium riders...';
+  };
+
+  const getNearbyRiders = () => {
+    const lat = liveOrder?.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292);
+    const lng = liveOrder?.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522);
+    return [
+      { id: 'nr1', name: 'Tinashe M.', lat: lat + 0.003, lng: lng - 0.004 },
+      { id: 'nr2', name: 'Farai K.', lat: lat - 0.002, lng: lng + 0.003 },
+      { id: 'nr3', name: 'Alfonso Z.', lat: lat + 0.004, lng: lng + 0.002 }
+    ];
+  };
+  
+  // Map markers & state tracking
+  const [riderLocation, setRiderLocation] = useState<{ lat: number; lng: number; heading?: number | null } | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const markerRef = useRef<any>(null);
+
+  // Realtime subscription ref
+  const subscriptionRef = useRef<any>(null);
+
+  // Safety & Trust states
+  const [showCallSimulator, setShowCallSimulator] = useState(false);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [activeAlerts, setActiveAlerts] = useState<any[]>([]);
+  
+  // Dispute submission form states
+  const [disputeType, setDisputeType] = useState('wrong_item');
+  const [disputeDescription, setDisputeDescription] = useState('');
+  const [disputeRefundAmount, setDisputeRefundAmount] = useState('');
+  const [disputeSeverity, setDisputeSeverity] = useState('medium');
+  const [disputeEvidence, setDisputeEvidence] = useState('');
+  const [submittingDispute, setSubmittingDispute] = useState(false);
+
+  // Poll safety alerts every 5 seconds
+  useEffect(() => {
+    if (!orderId) return;
+    
+    const loadAlerts = async () => {
+      try {
+        const alerts = await OrderService.getSafetyAlerts();
+        const currentAlerts = alerts.filter(
+          (a: any) => a.order_id === orderId && a.status === 'active'
+        );
+        setActiveAlerts(currentAlerts);
+      } catch (e) {
+        console.error('Failed to load safety alerts:', e);
+      }
+    };
+    
+    loadAlerts();
+    const interval = setInterval(loadAlerts, 5000);
+    return () => clearInterval(interval);
+  }, [orderId]);
+
+  const handleCustomerSos = async () => {
+    const order = liveOrder as BikerOrder;
+    if (!order) return;
+    if (!confirm('🚨 EMERGENCY WARNING: Are you sure you want to trigger a Red SOS Distress Alert? This will immediately alert Biker dispatch operations.')) {
+      return;
+    }
+    
+    try {
+      addSimulationLog('🆘 SOS EMERGENCY: Dispatching alert to Ops Control Center...');
+      const alert = await OrderService.createSafetyAlert({
+        order_id: order.id,
+        user_id: session?.user_id || 'customer',
+        type: 'sos_alert',
+        gps_lat: order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+        gps_lng: order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)
+      });
+      if (alert) {
+        addSimulationLog('🆘 SOS Alert logged successfully. Active security dispatched.');
+        const alerts = await OrderService.getSafetyAlerts();
+        setActiveAlerts(alerts.filter((a: any) => a.order_id === order.id && a.status === 'active'));
+      }
+    } catch (e) {
+      console.error('Failed to trigger Customer SOS:', e);
+    }
+  };
+
+  const handleFileDispute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const order = liveOrder as BikerOrder;
+    if (!order || !session?.user_id) return;
+    setSubmittingDispute(true);
+    
+    try {
+      addSimulationLog(`⚖️ Filing dispute for order ${order.reference_code}...`);
+      const dispute = await OrderService.createDispute({
+        request_id: order.id,
+        initiated_by: session.user_id,
+        dispute_type: disputeType,
+        description: disputeDescription,
+        refund_amount: Number(disputeRefundAmount) || Number(order.total_amount || 0),
+        severity: disputeSeverity,
+        against_user_id: order.assigned_rider_id || undefined
+      });
+      
+      if (dispute) {
+        addSimulationLog('⚖️ Dispute filed successfully. Order status is now "disputed".');
+        
+        if (disputeEvidence.trim()) {
+          await OrderService.addDisputeEvidence(dispute.id, disputeEvidence.trim());
+          addSimulationLog(`⚖️ Attached evidence: ${disputeEvidence}`);
+        }
+        
+        const fresh = await OrderService.getOrderById(order.id);
+        setLiveOrder(fresh);
+        setShowDisputeModal(false);
+        setDisputeDescription('');
+        setDisputeRefundAmount('');
+        setDisputeEvidence('');
+      }
+    } catch (err: any) {
+      console.error('Failed to file dispute:', err);
+      alert('Failed to file dispute: ' + err.message);
+    } finally {
+      setSubmittingDispute(false);
+    }
+  };
+
+  // Load Order Details
+  useEffect(() => {
+    if (!orderId) {
+      setError('Missing order ID parameter');
       setLoading(false);
       return;
     }
 
-    try {
-      const supabase = createClient();
-      const currentId = userId || 'mock-customer';
-      const { data, error } = await supabase
-        .from('delivery_requests')
-        .select('*')
-        .eq('customer_id', currentId)
-        .in('status', ['searching', 'payment_pending', 'rider_assigned', 'at_pickup', 'in_transit'])
-        .order('created_at', { ascending: false })
-        .limit(1);
+    const currentOrderId = orderId as string;
 
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setDelivery(data[0] as ActiveDelivery);
-        if (data[0].status === 'searching') {
-          // Add nearby riders for visual pulsing radar search
-          setNearbyRiders(country === 'ZM' ? [
-            { id: 'nr-zm-1', lat: -15.3920, lng: 28.3100, name: 'Bwalya M.' },
-            { id: 'nr-zm-2', lat: -15.3850, lng: 28.3280, name: 'Chanda K.' }
-          ] : MOCK_NEARBY_RIDERS);
-        } else {
-          setNearbyRiders([]);
+    async function loadOrder() {
+      try {
+        const o = await OrderService.getOrderById(currentOrderId);
+        if (!o) {
+          // If not found in DB or LocalStorage, try to load simulated mocks for visualization
+          if (currentOrderId.startsWith('mock-')) {
+            const mockO: BikerOrder = {
+              id: currentOrderId,
+              reference_code: 'BKR-MOCK-99',
+              customer_id: 'mock-cust-123',
+              service_type: 'send_item',
+              fulfillment_mode: 'standard',
+              protection_level: 'none',
+              pickup_address: "Sam Levy's Village, Borrowdale",
+              dropoff_address: 'Avondale Shops, Harare',
+              status: 'rider_assigned',
+              created_at: new Date().toISOString(),
+              total_amount: 8.50,
+              delivery_fee: 7.62,
+              service_fee: 0.38,
+              protection_fee: 0.50,
+              payment_method: 'ecocash',
+              syncStatus: 'synced',
+              retryCount: 0
+            };
+            setInitialOrder(mockO);
+            setLiveOrder(mockO);
+            setLoading(false);
+            return;
+          }
+          setError('Order not found');
+          setLoading(false);
+          return;
         }
-      } else {
-        setDelivery(null);
+
+        setInitialOrder(o);
+        setLiveOrder(o);
+        
+        if (o.status === 'completed' || o.delivery_pin_verified) {
+          setPinVerified(true);
+        }
+
+        // Set default EcoCash phone if empty
+        if (!ecocashPhone && o.pickup_contact_phone) {
+          setEcocashPhone(o.pickup_contact_phone);
+        }
+
+        // Auto trigger payment checkout overlay if requested
+        if ((launchEcoCash || launchMtnMomo || launchAirtelMoney) && o.status === 'payment_pending') {
+          triggerEcoCashUSSDPush(o, ecocashPhoneParam || o.pickup_contact_phone || (country === 'ZM' ? '0971234567' : '0771234567'));
+        }
+
+        // Initialize rider location coordinates if rider is assigned
+        if (o.assigned_rider_id) {
+          setRiderLocation({
+            lat: o.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+            lng: o.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)
+          });
+        }
+
+        // Load active counter offers if order is in payment_held status
+        if (o.status === 'payment_held' || o.status === 'draft') {
+          const res = await getCounterOffersForOrder(currentOrderId);
+          if (res.success) {
+            setCounterOffers(res.data);
+          }
+        }
+      } catch (err: any) {
+        setError(err.message || 'Error loading order');
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to load tracking data:', err);
-    } finally {
-      setLoading(false);
     }
-  };
 
-  useEffect(() => {
-    fetchActiveDelivery();
-  }, [userId, country]);
+    loadOrder();
+  }, [orderId, launchEcoCash]);
 
-  // Real-time tracking channel subscriptions
+  // Real-time tracking dispatcher and Supabase Realtime channel subscription
   useEffect(() => {
-    if (!userId || !FLAGS.useLiveDb || !delivery) return;
+    if (!orderId || !OrderService.isOnline) return;
 
     const supabase = createClient();
+    
+    // Subscribe to updates for this order row
     const channel = supabase
-      .channel(`delivery-tracking-${delivery.id}`)
+      .channel(`order-tracking-${orderId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'delivery_requests',
-          filter: `id=eq.${delivery.id}`,
+          filter: `id=eq.${orderId}`
         },
-        (payload) => {
-          const updated = payload.new as ActiveDelivery;
-          setDelivery(updated);
-          
-          if (updated.status === 'completed') {
-            alert('Your biker completed the delivery safely! Payout escrow released.');
-            router.push('/dashboard');
+        async (payload) => {
+          const fresh = await OrderService.getOrderById(orderId);
+          if (fresh) {
+            setLiveOrder(fresh);
+            if (fresh.status === 'completed' || fresh.delivery_pin_verified) {
+              setPinVerified(true);
+            }
           }
-          if (updated.status === 'cancelled') {
-            alert('This delivery has been cancelled.');
-            setDelivery(null);
+          addSimulationLog(`⚡ Realtime DB Update: Status is now "${payload.new.status}"`);
+        }
+      )
+      .subscribe();
+
+    subscriptionRef.current = channel;
+
+    // Also listen to location updates of rider if assigned
+    let locationChannel: any = null;
+    let broadcastLocationChannel: any = null;
+    if (liveOrder?.assigned_rider_id) {
+      locationChannel = supabase
+        .channel(`rider-location-db-${liveOrder.assigned_rider_id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'rider_location_checkpoints',
+            filter: `rider_id=eq.${liveOrder.assigned_rider_id}`
+          },
+          (payload) => {
+            const cp = payload.new;
+            setRiderLocation({ lat: cp.lat, lng: cp.lng, heading: cp.heading });
+            addSimulationLog(`📍 Location Checkpoint received (DB): [${cp.lat.toFixed(5)}, ${cp.lng.toFixed(5)}]`);
           }
+        )
+        .subscribe();
+
+      broadcastLocationChannel = supabase
+        .channel(`rider-location-${orderId}`)
+        .on(
+          'broadcast',
+          { event: 'location' },
+          (payload) => {
+            const data = payload.payload;
+            if (data && data.lat && data.lng) {
+              setRiderLocation({ lat: data.lat, lng: data.lng, heading: data.heading });
+              addSimulationLog(`📍 Realtime Location Broadcast received: [${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}]`);
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    // Listen to new counter offers
+    const offersChannel = supabase
+      .channel(`order-offers-${orderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'order_offers',
+          filter: `order_id=eq.${orderId}`
+        },
+        async () => {
+          const res = await getCounterOffersForOrder(orderId);
+          if (res.success) {
+            setCounterOffers(res.data);
+          }
+          addSimulationLog(`⚡ Realtime DB Update: Counter offers updated`);
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (subscriptionRef.current) {
+        supabase.removeChannel(subscriptionRef.current);
+      }
+      if (locationChannel) {
+        supabase.removeChannel(locationChannel);
+      }
+      if (broadcastLocationChannel) {
+        supabase.removeChannel(broadcastLocationChannel);
+      }
+      if (offersChannel) {
+        supabase.removeChannel(offersChannel);
+      }
     };
-  }, [userId, delivery?.id]);
+  }, [orderId, liveOrder?.assigned_rider_id]);
 
-  // Simulate rider heading towards pickup & dropoff
+  // Simulated matching/negotiation trigger for developer sandbox / offline mode
   useEffect(() => {
-    if (!delivery || !delivery.assigned_rider_id) {
-      setRiderCoords(null);
-      setRiderHeading(null);
-      return;
-    }
+    if (OrderService.isOnline || !liveOrder || liveOrder.status !== 'payment_held' || liveOrder.assigned_rider_id) return;
 
-    let intervalId: any;
-    let step = 0;
-    const totalSteps = 20;
+    addSimulationLog('🤖 Match Engine: Broadcast dispatching order offers to nearby riders...');
 
-    const startLat = delivery.pickup_lat + 0.015;
-    const startLng = delivery.pickup_lng - 0.015;
+    // Trigger a counter-offer after 4 seconds
+    const counterOfferTimer = setTimeout(() => {
+      handleSimulateCounterOffer();
+      addSimulationLog('🚴 Rider Tinashe M. proposed a counter-bid of ' + formatPrice(Number(liveOrder.delivery_fee || 5.0) * 1.3) + '.');
+    }, 4000);
 
-    const runSimulation = () => {
-      intervalId = setInterval(() => {
-        step++;
-        if (step <= 10) {
-          // Heading to pickup point
-          const t = step / 10;
-          const lat = startLat + (delivery.pickup_lat - startLat) * t;
-          const lng = startLng + (delivery.pickup_lng - startLng) * t;
-          setRiderCoords([lat, lng]);
-          setRiderHeading(45); // approximate angle
-          
-          if (step === 10 && FLAGS.useLiveDb) {
-            updateLiveStatus('at_pickup');
+    // Trigger auto-accept of the base price at 22 seconds if the user declined the bid
+    const autoAcceptTimer = setTimeout(async () => {
+      const fresh = await OrderService.getOrderById(orderId as string);
+      if (fresh && fresh.status === 'payment_held' && !fresh.assigned_rider_id) {
+        addSimulationLog('🚴 Match Engine: Rider "Farai K." accepted the base offer.');
+        const updated = {
+          ...fresh,
+          status: 'rider_assigned',
+          assigned_rider_id: 'mock-rider-farai',
+          rider: {
+            full_name: 'Farai K.',
+            avatar_url: '',
+            phone: country === 'ZM' ? '+260 97 999 8888' : '+263 77 999 8888'
           }
-        } else if (step <= 20) {
-          // Heading to dropoff point
-          const t = (step - 10) / 10;
-          const lat = delivery.pickup_lat + (delivery.dropoff_lat - delivery.pickup_lat) * t;
-          const lng = delivery.pickup_lng + (delivery.dropoff_lng - delivery.pickup_lng) * t;
-          setRiderCoords([lat, lng]);
-          setRiderHeading(135);
-          
-          if (step === 11 && FLAGS.useLiveDb) {
-            updateLiveStatus('in_transit');
-          }
-
-          if (step === 20) {
-            clearInterval(intervalId);
-            setRiderHeading(null);
-            // End simulation, wait for client verification PIN entry
-          }
-        }
-      }, 4000);
-    };
-
-    if (simulating) {
-      runSimulation();
-    }
+        };
+        await OrderService.updateOrderStatus(fresh.id, 'rider_assigned', 'Rider Farai K. accepted base offer');
+        setLiveOrder(updated);
+        setRiderLocation({
+          lat: fresh.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+          lng: fresh.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)
+        });
+        addSimulationLog('🟢 Status Changed: "Rider Assigned" (Farai K. is en route to pickup)');
+      }
+    }, 22000);
 
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      clearTimeout(counterOfferTimer);
+      clearTimeout(autoAcceptTimer);
     };
-  }, [delivery?.id, delivery?.assigned_rider_id, simulating]);
+  }, [liveOrder?.status, liveOrder?.assigned_rider_id]);
 
-  const updateLiveStatus = async (status: string) => {
-    if (!delivery || !FLAGS.useLiveDb) return;
-    try {
-      const supabase = createClient();
-      await supabase
-        .from('delivery_requests')
-        .update({ status })
-        .eq('id', delivery.id);
-    } catch {}
+  // Simulated rider en-route checkpoints tracker
+  useEffect(() => {
+    if (!liveOrder || liveOrder.status !== 'rider_assigned' || !riderLocation) return;
+
+    // Simulate rider movement toward pickup point in 10s
+    const moveTimer = setTimeout(async () => {
+      addSimulationLog('🚴 Rider status: Arrived at Pickup Point.');
+      const updated = {
+        ...liveOrder,
+        status: 'at_pickup'
+      };
+      await OrderService.updateOrderStatus(liveOrder.id, 'at_pickup', 'Rider arrived at pickup');
+      setLiveOrder(updated);
+      setRiderLocation({
+        lat: liveOrder.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292),
+        lng: liveOrder.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522),
+        heading: 180
+      });
+      addSimulationLog('🟢 Status Changed: "At Pickup"');
+    }, 12000);
+
+    return () => clearTimeout(moveTimer);
+  }, [liveOrder?.status]);
+
+  // Helper to append developer/sandbox logs
+  const addSimulationLog = (msg: string) => {
+    setSimulationLogs(prev => [
+      `[${new Date().toLocaleTimeString()}] ${msg}`,
+      ...prev.slice(0, 19)
+    ]);
   };
 
-  const handleCancelDelivery = async () => {
-    if (!delivery) return;
-    const confirm = window.confirm('Are you sure you want to cancel this delivery request? Any held wallet balance will be refunded.');
-    if (!confirm) return;
-
-    setCancelling(true);
-    
-    if (!FLAGS.useLiveDb) {
-      setTimeout(() => {
-        setDelivery(null);
-        setCancelling(false);
-        alert('Booking request cancelled successfully.');
-      }, 1000);
-      return;
-    }
-
+  const handleRespondToOffer = async (offerId: string, action: 'accept' | 'decline') => {
+    setRespondingToOfferId(offerId);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('delivery_requests')
-        .update({ status: 'cancelled' })
-        .eq('id', delivery.id);
-
-      if (error) throw error;
-      alert('Request cancelled successfully.');
-      setDelivery(null);
-    } catch (err: any) {
-      console.error(err);
-      alert('Cancellation failed: ' + err.message);
-    } finally {
-      setCancelling(false);
-    }
-  };
-
-  const handleTriggerUssdPush = () => {
-    if (!phoneNumber || !selectedMobileOperator) {
-      alert('Please fill operator and phone details for sandbox USSD push');
-      return;
-    }
-
-    setUssdSimStatus('triggered');
-    setSimulatedLogs([]);
-    addSimLog(`Initiating billing flow for ${selectedMobileOperator} account: ${phoneNumber}`);
-    addSimLog(`Sending C2B push notification trigger request to network switch...`);
-
-    // Stage 1: Trigger network
-    setTimeout(() => {
-      setUssdSimStatus('paying');
-      addSimLog(`Network responded: Switch handshake established successfully.`);
-      addSimLog(`[USSD STK Push] Sent payload challenge to device — Awaiting PIN confirmation...`);
-    }, 1500);
-
-    // Stage 2: Prompt payment confirmation simulation
-    setTimeout(async () => {
-      addSimLog(`Rider escrow balance successfully settled. PIN confirmation returned by operator.`);
-      setUssdSimStatus('success');
-
-      if (FLAGS.useLiveDb && delivery) {
-        try {
-          const supabase = createClient();
-          await supabase
-            .from('delivery_requests')
-            .update({ status: 'searching' })
-            .eq('id', delivery.id);
-          
-          setDelivery(prev => prev ? { ...prev, status: 'searching' } : null);
-        } catch (err) {
-          console.error(err);
+      const res = await respondToCounterOffer(offerId, action);
+      if (res.success) {
+        addSimulationLog(`Offer ${action}ed successfully!`);
+        // Refresh order
+        const fresh = await OrderService.getOrderById(orderId as string);
+        if (fresh) {
+          setLiveOrder(fresh);
+        }
+        // Refresh counter offers
+        const offersRes = await getCounterOffersForOrder(orderId as string);
+        if (offersRes.success) {
+          setCounterOffers(offersRes.data);
         }
       } else {
-        setDelivery(prev => prev ? { ...prev, status: 'searching' } : null);
+        alert(res.message || `Failed to ${action} offer.`);
       }
-    }, 4500);
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to ${action} offer.`);
+    } finally {
+      setRespondingToOfferId(null);
+    }
   };
 
-  const handleSOSAlert = () => {
-    const rName = getRiderInfo().full_name;
-    const msg = `🚨 SOS CRITICAL ALERT: Platform dispatchers and security teams have been notified of emergency status for Biker trip ${delivery?.reference_code}. Rider (${rName}) GPS coordinates are locked. Emergency support details will be sent via SMS.`;
-    alert(msg);
+  const handleSimulateCounterOffer = async () => {
+    addSimulationLog('🚴 Simulating rider counter offer...');
+    const key = `biker_order_offers_${orderId}`;
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(key);
+      const offers = stored ? JSON.parse(stored) : [];
+      const newOffer = {
+        id: `offer-${Date.now()}`,
+        order_id: orderId,
+        rider_id: 'mock-rider-tinashe',
+        status: 'counter_offered',
+        counter_offer_amount: Number(order.delivery_fee || 5.0) * 1.3,
+        estimated_rider_payout: Number(order.delivery_fee || 5.0) * 1.3,
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 120 * 1000).toISOString(),
+        rider_name: 'Tinashe M. (Simulated Bid)',
+        rider_rating: 4.9,
+        rider_avatar: ''
+      };
+      offers.push(newOffer);
+      localStorage.setItem(key, JSON.stringify(offers));
+      
+      // Update local state
+      const res = await getCounterOffersForOrder(orderId as string);
+      if (res.success) {
+        setCounterOffers(res.data);
+      }
+    }
   };
 
-  const handleFileDispute = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!disputeReason) {
-      alert('Please state the nature or reason of your dispute request.');
-      return;
-    }
+  // Poll counter offers in offline mode
+  useEffect(() => {
+    if (!orderId || OrderService.isOnline) return;
+    
+    const interval = setInterval(async () => {
+      if (liveOrder?.status === 'payment_held') {
+        const res = await getCounterOffersForOrder(orderId as string);
+        if (res.success) {
+          setCounterOffers(res.data);
+        }
+      }
+    }, 3000);
+    
+    return () => clearInterval(interval);
+  }, [orderId, liveOrder?.status]);
 
-    setDisputeSubmitting(true);
-
-    if (!FLAGS.useLiveDb) {
-      setTimeout(() => {
-        setDisputeSubmitting(false);
-        setShowDisputeModal(false);
-        setDelivery(prev => prev ? { ...prev, dispute_filed: true, dispute_reason: disputeReason, dispute_status: 'review_pending' } : null);
-        alert('Dispute successfully filed. Escalating escrow hold to platform admins.');
-      }, 1000);
-      return;
+  // USSD PUSH INITIATION FLOW
+  const triggerEcoCashUSSDPush = async (ord: BikerOrder, phone: string) => {
+    setEcocashError('');
+    setShowEcoCashOverlay(true);
+    setEcocashTimer(30);
+    
+    const method = ord.payment_method || (launchMtnMomo ? 'mtn_momo' : launchAirtelMoney ? 'airtel_money' : 'ecocash');
+    const providerName = method === 'mtn_momo' ? 'MTN MoMo' : method === 'airtel_money' ? 'Airtel Money' : 'EcoCash';
+    
+    addSimulationLog(`📱 Initiating ${providerName} USSD Push request for ${phone}...`);
+    
+    try {
+      const tx = await EcoCashService.initiatePayment(
+        ord.id,
+        phone,
+        ord.total_amount || 5.00,
+        ord.reference_code,
+        method
+      );
+      setActiveTxId(tx.id);
+      addSimulationLog(`📱 USSD Push prompt dispatched. TxRef: ${tx.id}. Status: Awaiting PIN.`);
+    } catch (e: any) {
+      setEcocashError(e.message || 'Failed to dispatch USSD Push prompt');
+      addSimulationLog(`❌ Payment Error: ${e.message}`);
     }
+  };
+
+  // Simulated EcoCash Countdown timer
+  useEffect(() => {
+    if (!showEcoCashOverlay || ecocashTimer <= 0 || isProcessingEcoCash) return;
+    
+    const interval = setInterval(() => {
+      setEcocashTimer(t => {
+        if (t <= 1) {
+          clearInterval(interval);
+          handleEcoCashTimeout();
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [showEcoCashOverlay, ecocashTimer, isProcessingEcoCash]);
+
+  const handleEcoCashTimeout = async () => {
+    setEcocashError('USSD push transaction timed out. Please try booking again.');
+    addSimulationLog('❌ EcoCash Error: Awaiting customer PIN authorization timed out.');
+    if (activeTxId && initialOrder) {
+      await EcoCashService.cancelPayment(initialOrder.id, activeTxId);
+    }
+  };
+
+  const handleApprovePayment = async () => {
+    if (!initialOrder || !activeTxId) return;
+    setIsProcessingEcoCash(true);
+    setEcocashError('');
+    
+    addSimulationLog('📱 Simulating Customer USSD PIN confirmation...');
+    
+    const method = initialOrder.payment_method || (launchMtnMomo ? 'mtn_momo' : launchAirtelMoney ? 'airtel_money' : 'ecocash');
+    
+    // Add 1.5s delay to make ledger writing visual
+    setTimeout(async () => {
+      try {
+        const res = await EcoCashService.confirmPayment(initialOrder.id, activeTxId, method);
+        if (res.success) {
+          addSimulationLog('💸 Double-Entry Ledger updated: debited central gateway, credited customer escrow.');
+          addSimulationLog('🔒 Payment Held: Funds secured in multi-sig escrow wallet.');
+          
+          const fresh = await OrderService.getOrderById(initialOrder.id);
+          setLiveOrder(fresh);
+          setShowEcoCashOverlay(false);
+        } else {
+          setEcocashError(res.error || 'Failed to process payment');
+          addSimulationLog(`❌ Ledger Error: ${res.error}`);
+        }
+      } catch (err: any) {
+        setEcocashError(err.message || 'Payment confirm error');
+      } finally {
+        setIsProcessingEcoCash(false);
+      }
+    }, 2000);
+  };
+
+  const handleDeclinePayment = async () => {
+    if (!initialOrder || !activeTxId) return;
+    setIsProcessingEcoCash(true);
+    
+    addSimulationLog('❌ Simulated Customer USSD PIN declined.');
+    
+    try {
+      await EcoCashService.cancelPayment(initialOrder.id, activeTxId);
+      await OrderService.updateOrderStatus(initialOrder.id, 'cancelled', 'EcoCash USSD payment declined by customer');
+      
+      const fresh = await OrderService.getOrderById(initialOrder.id);
+      setLiveOrder(fresh);
+      setShowEcoCashOverlay(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsProcessingEcoCash(false);
+    }
+  };
+
+  // CLIENT RELEASE ESCROW VIA PIN CODE
+  const handleVerifyEscrowReleasePin = async () => {
+    if (!liveOrder || !verificationPin) return;
+    setSubmittingPin(true);
+    setPinError('');
+
+    addSimulationLog(`🛡️ Verifying Escrow PIN handover for ${liveOrder.reference_code}...`);
 
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('delivery_requests')
-        .update({
-          dispute_filed: true,
-          dispute_reason: disputeReason,
-          dispute_status: 'review_pending'
-        })
-        .eq('id', delivery?.id);
-
-      if (error) throw error;
-      alert('Dispute successfully filed. Escalating escrow hold to platform admins.');
-      setShowDisputeModal(false);
-      setDelivery(prev => prev ? { ...prev, dispute_filed: true, dispute_reason: disputeReason, dispute_status: 'review_pending' } : null);
-    } catch (err: any) {
-      console.error(err);
-      alert('Failed to register dispute. Please retry: ' + err.message);
+      const res = await OrderService.verifyDeliveryPin(liveOrder.id, verificationPin);
+      if (res.success) {
+        setPinVerified(true);
+        addSimulationLog('🔒 Escrow verification succeeded!');
+        addSimulationLog('💸 Ledger updated: debited customer escrow, credited rider wallet.');
+        
+        const fresh = await OrderService.getOrderById(liveOrder.id);
+        setLiveOrder(fresh);
+      } else {
+        setPinError(res.error || 'Invalid PIN code');
+        addSimulationLog(`❌ Escrow Error: ${res.error}`);
+      }
+    } catch (e: any) {
+      setPinError(e.message || 'Error releasing escrow');
     } finally {
-      setDisputeSubmitting(false);
+      setSubmittingPin(false);
     }
   };
 
   if (loading) {
     return (
-      <div className={styles.loadingContainer}>
-        <span className="spinner" />
-        <p>Loading interactive tracking center...</p>
+      <div className="flex items-center justify-center min-h-screen p-6">
+        <span className="spinner spinner--lg" />
       </div>
     );
   }
 
-  if (!delivery) {
+  if (error || !liveOrder) {
     return (
-      <div className={styles.noActiveContainer}>
-        <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>🏍️</div>
-        <h2>No Active Deliveries</h2>
-        <p>Book a local biker to transport items or buy items dynamically.</p>
-        <Link href="/dashboard/order/new" className="btn btn--primary btn--lg" style={{ marginTop: '1rem' }}>
-          Book a Biker Now
+      <div className="container max-w-lg p-6 text-center" style={{ marginTop: '10vh' }}>
+        <div style={{ fontSize: '4rem', marginBottom: '20px' }}>⚠️</div>
+        <h2 className="title" style={{ marginBottom: '10px' }}>Tracking Error</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>{error || 'Unable to trace this order'}</p>
+        <Link href="/dashboard" className="btn btn--primary">
+          Return to Dashboard
         </Link>
       </div>
     );
   }
 
-  const formatPrice = (val: number) => {
-    if (country === 'ZM') {
-      return `ZK ${(val * 25).toFixed(0)}`;
+  const order = liveOrder as BikerOrder;
+
+  // Compute Timeline Items based on current status
+  const getTimeline = () => {
+    const steps: { status: string; description: string; completed: boolean; time?: string }[] = [
+      { status: 'booked', description: 'Order created', completed: true },
+      { status: 'payment_held', description: 'EcoCash Escrow secured', completed: ['payment_held', 'rider_assigned', 'rider_en_route_pickup', 'at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
+      { status: 'rider_assigned', description: 'Biker matched', completed: ['rider_assigned', 'rider_en_route_pickup', 'at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
+      { status: 'at_pickup', description: 'Package picked up', completed: ['at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
+      { status: 'at_delivery', description: 'Arrived at destination', completed: ['at_delivery', 'completed'].includes(order.status) },
+      { status: 'completed', description: 'Funds released to Rider', completed: order.status === 'completed' }
+    ];
+    
+    // For cash orders, skip the payment_held state or adjust names
+    if (order.payment_method === 'cash') {
+      steps[1] = { status: 'payment_held', description: 'COD Cash Collection confirmed', completed: order.status === 'completed' };
     }
-    return `$${val.toFixed(2)}`;
+    
+    return steps;
   };
 
-  const rider = getRiderInfo();
+  const timeline = getTimeline();
 
   return (
-    <div className={styles.page}>
-      
-      {/* Tracking Map first booking frame */}
-      <div className={styles.mapGrid}>
-        
-        {/* Radar tracking map component */}
-        <div className={styles.mapFrame}>
-          <LiveTrackingMap
-            pickupCoords={[delivery.pickup_lat, delivery.pickup_lng]}
-            dropoffCoords={[delivery.dropoff_lat, delivery.dropoff_lng]}
-            riderCoords={riderCoords}
-            riderHeading={riderHeading}
-            riderName={rider.full_name}
-            nearbyRiders={nearbyRiders}
-            className={styles.leafletTrackingMap}
-          />
+    <div className={`container ${styles.page}`}>
+      {/* Header */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <Link href="/dashboard" className="btn btn--secondary btn--sm">
+            ←
+          </Link>
+          <div>
+            <h1 className={styles.title}>Track Package</h1>
+            <span className={styles.refCode}>{order.reference_code}</span>
+          </div>
         </div>
 
-        {/* Tracking control cards */}
-        <div className={styles.sidebar}>
-          
-          {/* Main trip state card */}
-          <div className={styles.statusCard}>
-            <div className={styles.statusHeader}>
-              <div>
-                <span className={styles.statusLabel}>REF CODE</span>
-                <h2 className={styles.refCode}>{delivery.reference_code}</h2>
-              </div>
-              <div className={`${styles.statusBadge} ${styles[`status_${delivery.status}`]}`}>
-                {delivery.status.replace('_', ' ').toUpperCase()}
-              </div>
-            </div>
-
-            {/* Pulsing Match Overlay for searching state */}
-            {delivery.status === 'searching' && (
-              <div className={styles.radarMatchContainer}>
-                <div className={styles.radarPulsingRing} />
-                <div className={styles.radarWaveLine} />
-                <span style={{ fontSize: '1.25rem', marginBottom: '0.25rem', zIndex: 1 }}>📡</span>
-                <strong>Pulsing Dispatch Radar...</strong>
-                <p>Matching your request with nearest regional bikers. Keep map active.</p>
-                <button
-                  onClick={() => {
-                    // Sandbox instant assign simulation
-                    if (FLAGS.useLiveDb) {
-                      updateLiveStatus('rider_assigned');
-                      setDelivery(prev => prev ? { ...prev, status: 'rider_assigned', assigned_rider_id: 'mock-rider-id' } : null);
-                    } else {
-                      setDelivery(prev => prev ? { ...prev, status: 'rider_assigned', assigned_rider_id: 'mock-rider-id' } : null);
-                    }
-                    setSimulating(true);
-                  }}
-                  className="btn btn--secondary btn--sm"
-                  style={{ marginTop: '0.75rem', zIndex: 1 }}
-                >
-                  [Sandbox Mode] Instant Rider Assign
-                </button>
-              </div>
-            )}
-
-            {/* Cash Payment Pending Box */}
-            {delivery.status === 'payment_pending' && (
-              <div className={styles.ussdTriggerContainer}>
-                <span>🔐 Escrow Lock</span>
-                <h4>Payment Pre-authorization Required</h4>
-                <p>
-                  To secure Biker Protect escrow payouts, you must authorize mobile money payment via your operator.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                  <select
-                    className="input"
-                    value={selectedMobileOperator}
-                    onChange={(e) => setSelectedMobileOperator(e.target.value)}
-                    style={{ fontSize: '13px', height: '36px' }}
-                  >
-                    <option value="">Select Mobile Money Operator</option>
-                    {country === 'ZM' ? (
-                      <>
-                        <option value="mtn_zambia">MTN Mobile Money Zambia</option>
-                        <option value="airtel_zambia">Airtel Money Zambia</option>
-                        <option value="zamtel_zambia">Zamtel Kwacha</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="ecocash_zim">EcoCash Zimbabwe</option>
-                        <option value="onemoney_zim">OneMoney NetOne</option>
-                        <option value="telecash_zim">Telecash Telecel</option>
-                      </>
-                    )}
-                  </select>
-
-                  <input
-                    type="tel"
-                    className="input"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="e.g. +263 77 000 0000"
-                    style={{ fontSize: '13px', height: '36px' }}
-                  />
-
-                  {ussdSimStatus === 'idle' && (
-                    <button onClick={handleTriggerUssdPush} className="btn btn--primary btn--md">
-                      Send USSD pre-auth push
-                    </button>
-                  )}
-
-                  {/* Pre-auth progress bar */}
-                  {ussdSimStatus === 'triggered' && (
-                    <div style={{ textAlign: 'center', padding: '6px' }}>
-                      <span className="spinner" style={{ marginRight: '6px' }} />
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Pre-authorizing network...</span>
-                    </div>
-                  )}
-
-                  {ussdSimStatus === 'paying' && (
-                    <div style={{ textAlign: 'center', padding: '6px' }}>
-                      <div className={styles.preAuthProgress}>
-                        <div className={styles.preAuthProgressFill} />
-                      </div>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                        STK Push payload challenge sent to device. Awaiting operator PIN...
-                      </span>
-                    </div>
-                  )}
-
-                  {ussdSimStatus === 'success' && (
-                    <div style={{ color: 'var(--color-success-600)', fontWeight: 700, fontSize: '12px', textAlign: 'center' }}>
-                      ✅ Pre-auth Success! Escrow locked. Starting rider dispatch.
-                    </div>
-                  )}
-                </div>
-
-                {simulatedLogs.length > 0 && (
-                  <div className={styles.ussdLogTerminal}>
-                    <div className={styles.terminalHeader}>
-                      <span>CONSOLE LOGGER</span>
-                    </div>
-                    <div className={styles.terminalBody}>
-                      {simulatedLogs.map((log, index) => (
-                        <div key={index} className={styles.logLine}>{log}</div>
-                      ))}
-                      <div ref={simulatedLogsEndRef} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Rider profile if assigned */}
-            {delivery.assigned_rider_id && (
-              <div className={styles.riderCard}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div className={styles.riderAvatar}>
-                    {rider.full_name[0]}
-                  </div>
-                  <div>
-                    <h3 className={styles.riderName}>{rider.full_name}</h3>
-                    <div className={styles.riderRate}>⭐ {rider.rating}</div>
-                  </div>
-                  <a href={`tel:${rider.phone}`} className={styles.phoneBtn}>📞 Call</a>
-                </div>
-                
-                <div className={styles.vehicleDetails}>
-                  <p><strong>Motorcycle:</strong> {rider.motorcycle}</p>
-                </div>
-
-                {/* Safety quiz overlay / SOS emergency switch */}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                  <button onClick={handleSOSAlert} className={`${styles.bottomControlBtn} ${styles.sosBtn}`}>
-                    ⚠️ Trigger SOS Alert
-                  </button>
-                  {delivery.dispute_filed ? (
-                    <div className={styles.disputeStatusLabel}>
-                      ⚖️ Escrow Held: Dispute Registered
-                    </div>
-                  ) : (
-                    <button onClick={() => setShowDisputeModal(true)} className={`${styles.bottomControlBtn} ${styles.disputeBtn}`}>
-                      🛡️ File Escrow Dispute
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Trip endpoints */}
-            <div className={styles.routeDetails}>
-              <div className={styles.endpoint}>
-                <span className={styles.endpointDot} data-type="pickup" />
-                <div>
-                  <span className={styles.endpointLabel}>PICKUP</span>
-                  <p className={styles.endpointAddr}>{delivery.pickup_address}</p>
-                </div>
-              </div>
-
-              <div className={styles.endpoint}>
-                <span className={styles.endpointDot} data-type="dropoff" />
-                <div>
-                  <span className={styles.endpointLabel}>DROPOFF</span>
-                  <p className={styles.endpointAddr}>{delivery.dropoff_address}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Details & Pin */}
-            <div className={styles.tripMetaGrid}>
-              <div>
-                <span className={styles.metaLabel}>Fulfillment</span>
-                <p className={styles.metaVal}>{delivery.fulfillment_mode.toUpperCase()}</p>
-              </div>
-              <div>
-                <span className={styles.metaLabel}>Protection</span>
-                <p className={styles.metaVal}>{delivery.protection_level.toUpperCase()}</p>
-              </div>
-              <div>
-                <span className={styles.metaLabel}>Distance</span>
-                <p className={styles.metaVal}>{delivery.estimated_distance_km} km</p>
-              </div>
-              <div>
-                <span className={styles.metaLabel}>Total Payout</span>
-                <p className={styles.metaVal} style={{ fontWeight: 800, color: 'var(--color-primary-600)' }}>
-                  {formatPrice(delivery.total_amount)}
-                </p>
-              </div>
-            </div>
-
-            {/* Item description */}
-            <div className={styles.itemBox}>
-              <span className={styles.metaLabel}>Delivering Parcel:</span>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', fontWeight: 600 }}>{delivery.item_description}</p>
-            </div>
-
-            {/* PIN release instructions */}
-            {delivery.status !== 'searching' && delivery.status !== 'payment_pending' && (
-              <div className={styles.pinBox}>
-                <div style={{ flex: 1 }}>
-                  <h4>Verification PIN</h4>
-                  <p>Provide this 4-digit PIN to the rider only after package inspection at dropoff to release escrow.</p>
-                </div>
-                <div className={styles.pinCode}>{delivery.verification_pin || '----'}</div>
-              </div>
-            )}
-
-            {/* Actions */}
-            {delivery.status === 'searching' && (
-              <button
-                onClick={handleCancelDelivery}
-                className="btn btn--secondary btn--lg"
-                style={{ width: '100%', marginTop: '16px' }}
-                disabled={cancelling}
-              >
-                {cancelling ? <span className="spinner" /> : 'Cancel Delivery Booking'}
-              </button>
-            )}
-
-            {/* Simulation Dispatch Tool */}
-            {delivery.assigned_rider_id && !simulating && (
-              <div className={styles.simDispatchPanel}>
-                <h4>Sandbox simulation dispatcher</h4>
-                <p>Simulate the biker driving live on the map from pickup to dropoff.</p>
-                <button
-                  onClick={() => setSimulating(true)}
-                  className="btn btn--primary btn--md"
-                  style={{ width: '100%', marginTop: '8px' }}
-                >
-                  🚀 Run GPS simulation
-                </button>
-              </div>
-            )}
-
-            {simulating && (
-              <div className={styles.simDispatchPanel}>
-                <h4 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span className="animate-pulse" style={{ color: 'var(--color-success-500)' }}>●</span>
-                  GPS Simulator active...
-                </h4>
-                <p>Biker is currently driving on routing path. Watch the map live.</p>
-                
-                {/* Visual simulator controls for verification validation */}
-                <button
-                  onClick={async () => {
-                    setSimulating(false);
-                    setRiderCoords([delivery.dropoff_lat, delivery.dropoff_lng]);
-                    
-                    if (FLAGS.useLiveDb) {
-                      try {
-                        const supabase = createClient();
-                        await supabase
-                          .from('delivery_requests')
-                          .update({ status: 'completed' })
-                          .eq('id', delivery.id);
-                        setDelivery(prev => prev ? { ...prev, status: 'completed' } : null);
-                        alert('Pre-simulation complete. Escape lock validation approved.');
-                        router.push('/dashboard');
-                      } catch {}
-                    } else {
-                      setDelivery(prev => prev ? { ...prev, status: 'completed' } : null);
-                      alert('Pre-simulation complete. Escape lock validation approved.');
-                      router.push('/dashboard');
-                    }
-                  }}
-                  className="btn btn--secondary btn--sm"
-                  style={{ width: '100%', marginTop: '8px' }}
-                >
-                  [Sandbox Mode] Auto Complete Trip
-                </button>
-              </div>
-            )}
-
-          </div>
-
+        <div className={styles.headerRight}>
+          <span className="badge badge--success" style={{ textTransform: 'capitalize' }}>
+            {order.status.replace(/_/g, ' ')}
+          </span>
+          {order.syncStatus !== 'synced' && (
+            <span className="badge badge--warning">Syncing...</span>
+          )}
         </div>
       </div>
 
-      {/* Escrow dispute Modal */}
-      {showDisputeModal && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h3>File Escrow Dispute</h3>
-              <button onClick={() => setShowDisputeModal(false)} className={styles.modalClose}>×</button>
+      {/* Safety Distress Alert Banner */}
+      {activeAlerts.length > 0 && (
+        <div className="alert alert--danger" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', borderRadius: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+            <span>🆘 ACTIVE SAFETY ALERT</span>
+          </div>
+          {activeAlerts.map((alert) => (
+            <div key={alert.id} style={{ fontSize: '13px' }}>
+              • {alert.type === 'sos_alert' ? 'Distress SOS trigger signal received from device.' : 'Transit check-in missed by Biker rider.'} Status: Active Ops Dispatch.
             </div>
-            <form onSubmit={handleFileDispute}>
-              <div className={styles.modalBody}>
-                <p>
-                  Filing a dispute pauses the release of Biker Protect escrow payouts to the rider. The platform administration will inspect and mediate.
+          ))}
+        </div>
+      )}
+
+
+      {/* Tabs for mobile */}
+      <div className={styles.tabs}>
+        <button 
+          className={`${styles.tab} ${activeTab === 'map' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('map')}
+        >
+          📍 Map Tracker
+        </button>
+        <button 
+          className={`${styles.tab} ${activeTab === 'details' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('details')}
+        >
+          📋 Details
+        </button>
+      </div>
+
+      <div className={styles.content}>
+        {/* Left Column: Map Tracker (Dynamic) */}
+        <div className={`${styles.mapArea} ${activeTab === 'map' ? styles.mapAreaVisible : ''}`} style={{ minHeight: '350px', position: 'relative' }}>
+          <LiveTrackingMap
+            pickupCoords={[order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292), order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)]}
+            dropoffCoords={[order.dropoff_lat || (country === 'ZM' ? -15.3994 : -17.7994), order.dropoff_lng || (country === 'ZM' ? 28.3078 : 31.0378)]}
+            riderCoords={riderLocation ? [riderLocation.lat, riderLocation.lng] : null}
+            riderHeading={riderLocation?.heading ?? null}
+            riderName={order.rider?.full_name || 'Tinashe M.'}
+            nearbyRiders={order.status === 'payment_held' ? getNearbyRiders() : null}
+          />
+
+          {/* Floating Top-Center Payment Pending Card */}
+          {order.status === 'payment_pending' && (
+            <div className={styles.topPaymentBanner}>
+              <div className={styles.topPaymentCard}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+                  <div style={{ flex: 1, textAlign: 'left' }}>
+                    <div style={{ fontWeight: 850, fontSize: '13px', color: 'var(--text-primary)' }}>Awaiting Payment Escrow</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Approve the MoMo/EcoCash push prompt to secure escrow and scan riders.
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  className="btn btn--primary btn--xs"
+                  onClick={() => triggerEcoCashUSSDPush(order, ecocashPhone || (country === 'ZM' ? '0971234567' : '0771234567'))}
+                  style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '6px', fontWeight: 'bold' }}
+                >
+                  📱 Open USSD Push Simulator
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Floating Bids Overlay (InDrive layout on map) */}
+          {order.status === 'payment_held' && counterOffers.length > 0 && (
+            <div className={styles.floatingBidsContainer}>
+              {counterOffers.map((offer) => (
+                <div key={offer.id} className={styles.floatingBidCard}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.5rem' }}>🏍️</span>
+                      <div style={{ textAlign: 'left' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>{offer.rider_name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>⭐ {offer.rider_rating} rating</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--color-success-500)' }}>
+                        {formatPrice(Number(offer.counter_offer_amount))}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>counter offer</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <button
+                      className="btn btn--success btn--sm btn--full"
+                      style={{ fontSize: '12px', padding: '6px' }}
+                      disabled={respondingToOfferId !== null}
+                      onClick={() => handleRespondToOffer(offer.id, 'accept')}
+                    >
+                      {respondingToOfferId === offer.id ? 'Accepting...' : 'Accept'}
+                    </button>
+                    <button
+                      className="btn btn--secondary btn--sm"
+                      style={{ fontSize: '12px', padding: '6px 12px' }}
+                      disabled={respondingToOfferId !== null}
+                      onClick={() => handleRespondToOffer(offer.id, 'decline')}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pulsing Radar Scanning Overlay over Map */}
+          {order.status === 'payment_held' && (
+            <div className={styles.radarOverlay}>
+              {/* Giant transparent radial pulsing lines centered on map area */}
+              <div className={styles.largeRadarSweep}></div>
+              <div className={`${styles.largeRadarCircle} ${styles.radarCircle1}`}></div>
+              <div className={`${styles.largeRadarCircle} ${styles.radarCircle2}`}></div>
+              <div className={`${styles.largeRadarCircle} ${styles.radarCircle3}`}></div>
+
+              {/* Compact Floating Matching Card */}
+              <div className={styles.radarCardCompact}>
+                <div className={styles.radarMiniPulse}>
+                  <div className={styles.miniCore}>🔍</div>
+                  <div className={styles.miniPulseCircle}></div>
+                </div>
+                <div className={styles.radarInfoCompact}>
+                  <h3 className={styles.scanStatusTitle}>{getScanningStatusText()}</h3>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                    <span className={styles.scanOfferBadge}>
+                      Offer: {formatPrice(order.delivery_fee ?? 5.0)}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--xs"
+                      onClick={async () => {
+                        await OrderService.updateOrderStatus(order.id, 'cancelled', 'Cancelled search by customer');
+                        router.push('/dashboard');
+                      }}
+                      style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 'bold' }}
+                    >
+                      Cancel Search
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Real-time simulation log ticker for transparency */}
+          <div className="card p-4" style={{ marginTop: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h4 style={{ fontWeight: 800, fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                Developer Console Log
+              </h4>
+              <span className="badge badge--primary btn--xs">SANDBOX</span>
+            </div>
+            
+            <div style={{
+              height: '90px',
+              overflowY: 'auto',
+              background: 'var(--bg-secondary)',
+              borderRadius: '6px',
+              padding: '8px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '11px',
+              color: 'var(--text-secondary)',
+              lineHeight: '1.4'
+            }}>
+              {simulationLogs.length === 0 ? (
+                <div style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Awaiting system events...</div>
+              ) : (
+                simulationLogs.map((log, index) => (
+                  <div key={index} style={{ marginBottom: '2px' }}>{log}</div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Information & Controls Panel */}
+        <div className={`${styles.infoPanel} ${activeTab === 'details' ? styles.infoPanelVisible : ''}`}>
+          
+          {/* EcoCash Payment Held Banner/Action */}
+          {order.status === 'payment_pending' && (
+            <div className="alert alert--warning" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontWeight: 700 }}>⚠️ Awaiting payment validation</div>
+              <p style={{ fontSize: '12px' }}>
+                Your order is currently pending payment. Confirm the EcoCash push request on your phone.
+              </p>
+              <button 
+                className="btn btn--primary btn--sm" 
+                onClick={() => triggerEcoCashUSSDPush(order, ecocashPhone || (country === 'ZM' ? '0971234567' : '0771234567'))}
+              >
+                Open USSD Push Simulator
+              </button>
+            </div>
+          )}
+
+          {/* Delivery Release PIN Verification Card (Customer View) */}
+          {order.status !== 'completed' && order.status !== 'cancelled' && order.status !== 'payment_pending' && (
+            <div className={styles.pinCard}>
+              <div className={styles.pinHeader}>
+                <span>🔒 Secure Escrow PIN</span>
+              </div>
+              
+              <div className={styles.pinDigits}>
+                {String(order.delivery_pin || '----').split('').map((char, i) => (
+                  <div key={i} className={styles.pinDigit}>{char}</div>
+                ))}
+              </div>
+
+              <p className={styles.pinNote}>
+                {order.payment_method === 'cash' 
+                  ? 'Give this 4-digit code to the rider only after they verify cash collection.' 
+                  : 'Give this 4-digit verification code to the rider upon receipt to release escrow funds.'}
+              </p>
+
+              {/* Developer Bypass simulation shortcut */}
+              <div className="divider" style={{ margin: '16px 0' }} />
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  🧑‍💻 Developer Escrow Release Simulator:
+                </div>
+                <input 
+                  type="text" 
+                  maxLength={6} 
+                  className="input" 
+                  placeholder="Enter PIN to complete delivery"
+                  value={verificationPin}
+                  onChange={(e) => setVerificationPin(e.target.value)}
+                  style={{ textAlign: 'center', fontSize: '14px', fontFamily: 'var(--font-mono)', height: '36px' }}
+                />
+                
+                {pinError && (
+                  <div className="alert alert--danger" style={{ fontSize: '11px', padding: '6px' }}>
+                    ⚠️ {pinError}
+                  </div>
+                )}
+                
+                <button 
+                  className="btn btn--success btn--full btn--sm"
+                  onClick={handleVerifyEscrowReleasePin}
+                  disabled={submittingPin || !verificationPin}
+                >
+                  {submittingPin ? 'Releasing Escrow...' : 'Release Escrow Funds'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Counter Offers Panel */}
+          {order.status === 'payment_held' && (
+            <div className="card p-5" style={{
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.03))',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: '16px',
+              marginBottom: '16px',
+              boxShadow: '0 8px 32px rgba(245, 158, 11, 0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '1.25rem' }}>🤝</span>
+                <h3 style={{ fontSize: '0.9375rem', fontWeight: 800, margin: 0, color: '#f59e0b' }}>
+                  Incoming Counter Bids ({counterOffers.length})
+                </h3>
+              </div>
+              
+              {counterOffers.length === 0 ? (
+                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px 0' }}>
+                  Awaiting counter-offers from nearby riders...
+                  {!OrderService.isOnline && (
+                    <button
+                      className="btn btn--secondary btn--xs btn--full"
+                      style={{ marginTop: '8px' }}
+                      onClick={handleSimulateCounterOffer}
+                    >
+                      💡 Simulate Rider Bid
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {counterOffers.map((offer) => (
+                    <div key={offer.id} style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--border-default)',
+                      borderRadius: '12px',
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--color-primary-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-primary-700)' }}>
+                            {offer.rider_name ? offer.rider_name[0] : 'R'}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 700 }}>{offer.rider_name || 'Rider'}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>⭐ {offer.rider_rating || '4.8'} rating</div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.9375rem', fontWeight: 800, color: 'var(--color-success-400)' }}>
+                            {formatPrice(Number(offer.counter_offer_amount))}
+                          </div>
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)' }}>payout</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button
+                          className="btn btn--success btn--sm btn--full"
+                          style={{ fontSize: '0.75rem', padding: '6px' }}
+                          disabled={respondingToOfferId !== null}
+                          onClick={() => handleRespondToOffer(offer.id, 'accept')}
+                        >
+                          {respondingToOfferId === offer.id ? 'Accepting...' : 'Accept Bid'}
+                        </button>
+                        <button
+                          className="btn btn--secondary btn--sm"
+                          style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                          disabled={respondingToOfferId !== null}
+                          onClick={() => handleRespondToOffer(offer.id, 'decline')}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Rider profile card */}
+          {order.assigned_rider_id && (
+            <div className={styles.riderCard}>
+              <div className={styles.riderInfo}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'var(--color-primary-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                  🚴
+                </div>
+                <div>
+                  <div className={styles.riderName}>{order.rider?.full_name || 'Tinashe M.'}</div>
+                  <div className={styles.riderMeta}>
+                    <span>⭐ 4.8</span>
+                    <span>•</span>
+                    <span className={styles.riderVehicle}>{order.rider?.phone || '+263 77 482 9102'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.riderActions}>
+                <button 
+                  type="button" 
+                  className="btn btn--secondary btn--sm font-medium"
+                  onClick={() => setShowCallSimulator(true)}
+                >
+                  📞 Call Rider
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn--secondary btn--sm font-medium"
+                  onClick={() => setShowChatDrawer(true)}
+                >
+                  💬 Message
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Route details */}
+          <div className={styles.routeCard}>
+            <div className={styles.routePoint}>
+              <div className={styles.routeDot} style={{ background: 'var(--color-primary-500)' }} />
+              <div>
+                <div className={styles.routeLabel}>PICKUP FROM</div>
+                <div className={styles.routeAddress}>{order.pickup_address}</div>
+                {order.pickup_contact_name && (
+                  <div className={styles.routeNote}>
+                    Contact: {order.pickup_contact_name} ({order.pickup_contact_phone})
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.routeLine} />
+
+            <div className={styles.routePoint}>
+              <div className={styles.routeDot} style={{ background: '#ec4899' }} />
+              <div>
+                <div className={styles.routeLabel}>DELIVER TO</div>
+                <div className={styles.routeAddress}>{order.dropoff_address}</div>
+                {order.dropoff_contact_name && (
+                  <div className={styles.routeNote}>
+                    Contact: {order.dropoff_contact_name} ({order.dropoff_contact_phone})
+                  </div>
+                )}
+                {order.dropoff_gate_color && (
+                  <div className={styles.routeNote} style={{ fontWeight: 600 }}>
+                    Gate description: {order.dropoff_gate_color}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline Section */}
+          <div className={styles.timelineSection}>
+            <div className={styles.timelineTitle}>Tracking History</div>
+            <div className="timeline">
+              {timeline.map((item, i) => (
+                <div key={i} className={`timeline-item ${item.completed ? 'timeline-item--completed' : ''}`}>
+                  <div className="timeline-badge-container">
+                    <div 
+                      className={`timeline-badge ${item.completed ? 'timeline-badge--completed' : ''}`} 
+                    />
+                    {i < timeline.length - 1 && (
+                      <div className={`timeline-line ${item.completed ? 'timeline-line--completed' : ''}`} />
+                    )}
+                  </div>
+                  <div className="timeline-content">
+                    <div className="timeline-title">{item.status}</div>
+                    <div className="timeline-description">{item.description}</div>
+                    {item.time && <div className="timeline-time">{item.time}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Price Summary */}
+          <div className={styles.priceSummary}>
+            <div className={styles.priceRow}>
+              <span>Delivery fee</span>
+              <span>{formatPrice(order.delivery_fee ?? 0)}</span>
+            </div>
+            <div className={styles.priceRow}>
+              <span>Service fee</span>
+              <span>{formatPrice(order.service_fee ?? 0)}</span>
+            </div>
+            <div className={styles.priceRow}>
+              <span>🛡️ Protection fee</span>
+              <span>{formatPrice(order.protection_fee ?? 0)}</span>
+            </div>
+            <hr className="divider" />
+            <div className={`${styles.priceRow} ${styles.priceTotal}`}>
+              <span>Total</span>
+              <span>{formatPrice(order.total_amount ?? 0)}</span>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className={styles.actions}>
+            <button 
+              type="button" 
+              className="btn btn--secondary btn--full"
+              onClick={() => setShowDisputeModal(true)}
+            >
+              ⚖️ Report Issue / File Dispute
+            </button>
+            {order.status !== 'completed' && order.status !== 'cancelled' && (
+              <button 
+                type="button" 
+                className="btn btn--danger btn--full font-bold"
+                onClick={handleCustomerSos}
+                style={{ background: '#dc2626', color: '#ffffff', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)' }}
+              >
+                🆘 Trigger SOS Emergency
+              </button>
+            )}
+            {!pinVerified && liveOrder?.status !== 'cancelled' && (
+              <button 
+                className="btn btn--danger btn--full btn--sm"
+                onClick={async () => {
+                  if (!liveOrder) return;
+                  if (confirm('Are you sure you want to cancel this order?')) {
+                    setLoading(true);
+                    await OrderService.updateOrderStatus(liveOrder.id, 'cancelled', 'Order cancelled by customer');
+                    const fresh = await OrderService.getOrderById(liveOrder.id);
+                    setLiveOrder(fresh);
+                    setLoading(false);
+                  }
+                }}
+              >
+                Cancel Order
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {showEcoCashOverlay && (() => {
+        const activeMethod = order.payment_method || (launchMtnMomo ? 'mtn_momo' : launchAirtelMoney ? 'airtel_money' : 'ecocash');
+        const theme = getModalStyles(activeMethod);
+        const providerName = activeMethod === 'mtn_momo' ? 'MTN MoMo' : activeMethod === 'airtel_money' ? 'Airtel Money' : 'EcoCash';
+        
+        return (
+          <div className={styles.ecocashOverlay}>
+            <div className={styles.ecocashModal} style={theme.modal}>
+              <div className={styles.ecocashHeader}>
+                <div className={styles.ecocashBrandIcon} style={theme.brandIcon}>
+                  {activeMethod === 'mtn_momo' ? '🟡' : activeMethod === 'airtel_money' ? '🔴' : '📱'}
+                </div>
+                <div>
+                  <div className={styles.ecocashTitle} style={theme.title}>{providerName} Payment</div>
+                  <div className={styles.ecocashSubtitle} style={theme.subtitle}>USSD Push Notification Simulator</div>
+                </div>
+              </div>
+              
+              <div className={styles.ecocashBody}>
+                <div className={styles.ecocashSandboxBadge} style={theme.sandboxBadge}>DEVELOPER SANDBOX</div>
+                <p style={{ fontSize: '13px', color: theme.body?.color || 'var(--text-secondary)', textAlign: 'center', lineHeight: '1.4' }}>
+                  A simulated USSD push prompt has been broadcasted to the customer's mobile device:
                 </p>
-                <div style={{ marginTop: '8px' }}>
-                  <label className="label">Reason for Dispute</label>
-                  <textarea
-                    className="input"
-                    value={disputeReason}
-                    onChange={(e) => setDisputeReason(e.target.value)}
-                    placeholder="e.g. Package damaged during transit, rider demanded extra cash, rider did not arrive..."
-                    rows={4}
+                
+                <div className={styles.ecocashDetails} style={theme.details}>
+                  <div className={styles.ecocashDetailRow}>
+                    <span className={styles.ecocashDetailLabel} style={theme.detailLabel}>Phone Number:</span>
+                    <span className={styles.ecocashDetailValue} style={theme.detailValue}>{ecocashPhone}</span>
+                  </div>
+                  <div className={styles.ecocashDetailRow}>
+                    <span className={styles.ecocashDetailLabel} style={theme.detailLabel}>Amount Due:</span>
+                    <span className={styles.ecocashDetailValue} style={theme.detailValue}>{formatPrice(order.total_amount ?? 0)}</span>
+                  </div>
+                  <div className={styles.ecocashDetailRow}>
+                    <span className={styles.ecocashDetailLabel} style={theme.detailLabel}>Reference Code:</span>
+                    <span className={styles.ecocashDetailValue} style={{ ...theme.detailValue, fontFamily: 'var(--font-mono)' }}>{order.reference_code}</span>
+                  </div>
+                </div>
+                
+                <div className={styles.ecocashStatusBox} style={theme.statusBox}>
+                  {isProcessingEcoCash ? (
+                    <>
+                      <div className="spinner spinner--md" style={{ color: activeMethod === 'mtn_momo' ? '#000' : activeMethod === 'airtel_money' ? '#fff' : 'var(--color-primary-500)' }} />
+                      <div className={styles.ecocashStatusTitle} style={{ ...theme.statusTitle, marginTop: '8px' }}>Processing Ledger Updates...</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className={styles.ecocashTimer} style={theme.timer}>{ecocashTimer}s</div>
+                      <div className={styles.ecocashStatusTitle} style={theme.statusTitle}>Awaiting USSD PIN authorization...</div>
+                      <p className={styles.ecocashStatusDesc} style={theme.statusDesc}>Please approve the {providerName} push prompt on the simulator device below</p>
+                    </>
+                  )}
+                </div>
+                
+                {ecocashError && (
+                  <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px' }}>
+                    ⚠️ {ecocashError}
+                  </div>
+                )}
+              </div>
+              
+              <div className={styles.ecocashActions}>
+                <button 
+                  className="btn btn--primary btn--full"
+                  onClick={handleApprovePayment}
+                  disabled={isProcessingEcoCash}
+                  style={theme.primaryBtn}
+                >
+                  {isProcessingEcoCash ? 'Please wait...' : 'Approve Simulated Payment'}
+                </button>
+                <button 
+                  className="btn btn--secondary btn--full"
+                  onClick={handleDeclinePayment}
+                  disabled={isProcessingEcoCash}
+                  style={theme.secondaryBtn}
+                >
+                  Decline & Cancel Order
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {showCallSimulator && (
+        <CallSimulator
+          orderId={order.id}
+          callerId={session?.user_id || 'customer'}
+          callerRole="customer"
+          receiverName={order.rider?.full_name || 'Tinashe M.'}
+          receiverPhone={order.rider?.phone || '+263 77 482 9102'}
+          onClose={() => setShowCallSimulator(false)}
+        />
+      )}
+
+      {showChatDrawer && (
+        <ChatDrawer
+          orderId={order.id}
+          senderId={session?.user_id || 'customer'}
+          senderName={session?.full_name || 'Customer'}
+          onClose={() => setShowChatDrawer(false)}
+        />
+      )}
+
+      {showDisputeModal && (
+        <div className={styles.ecocashOverlay} style={{ zIndex: 1060 }}>
+          <div className={styles.ecocashModal} style={{ maxWidth: '440px' }}>
+            <div className={styles.ecocashHeader}>
+              <div className={styles.ecocashBrandIcon}>⚖️</div>
+              <div>
+                <div className={styles.ecocashTitle}>File Order Dispute</div>
+                <div className={styles.ecocashSubtitle}>Submit claim for Biker resolution</div>
+              </div>
+            </div>
+            
+            <form onSubmit={handleFileDispute}>
+              <div className={styles.ecocashBody} style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Dispute Reason</label>
+                  <select 
+                    className="select" 
+                    value={disputeType}
+                    onChange={(e) => setDisputeType(e.target.value)}
+                    style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', padding: '8px', color: 'var(--text-primary)' }}
+                  >
+                    <option value="wrong_item">Wrong Item / Incorrect Package</option>
+                    <option value="damaged">Damaged Package / Broken Content</option>
+                    <option value="never_arrived">Never Arrived / Missed Delivery</option>
+                    <option value="overcharged">Incorrect Pricing / Overcharged</option>
+                    <option value="other">Other Issue</option>
+                  </select>
+                </div>
+                
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Severity Level</label>
+                  <select 
+                    className="select" 
+                    value={disputeSeverity}
+                    onChange={(e) => setDisputeSeverity(e.target.value)}
+                    style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', padding: '8px', color: 'var(--text-primary)' }}
+                  >
+                    <option value="low">Low (Minor Delay/Pricing dispute)</option>
+                    <option value="medium">Medium (Damaged/Wrong Item)</option>
+                    <option value="high">High (Lost package/Fraud)</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Refund Claimed Amount ($ USD)</label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    className="input" 
+                    placeholder={`Max $${(order.total_amount || 0).toFixed(2)}`}
+                    value={disputeRefundAmount}
+                    onChange={(e) => setDisputeRefundAmount(e.target.value)}
+                    style={{ width: '100%', padding: '8px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Description / Explanation</label>
+                  <textarea 
+                    className="input" 
+                    rows={3}
+                    placeholder="Provide details about the issue..."
+                    value={disputeDescription}
+                    onChange={(e) => setDisputeDescription(e.target.value)}
                     required
+                    style={{ width: '100%', minHeight: '80px', padding: '8px' }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label" style={{ display: 'block', marginBottom: '4px', fontWeight: 600 }}>Evidence File URL or Text Description</label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    placeholder="Enter image link, photo evidence description, or text link"
+                    value={disputeEvidence}
+                    onChange={(e) => setDisputeEvidence(e.target.value)}
+                    style={{ width: '100%', padding: '8px' }}
                   />
                 </div>
               </div>
-              <div className={styles.modalFooter}>
-                <button
-                  type="button"
+              
+              <div className={styles.ecocashActions} style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                <button 
+                  type="submit" 
+                  className="btn btn--primary btn--full"
+                  disabled={submittingDispute}
+                >
+                  {submittingDispute ? 'Submitting...' : 'File Dispute'}
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn--secondary btn--full"
                   onClick={() => setShowDisputeModal(false)}
-                  className="btn btn--secondary btn--md"
-                  disabled={disputeSubmitting}
                 >
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn--primary btn--md"
-                  disabled={disputeSubmitting}
-                >
-                  {disputeSubmitting ? 'Registering hold...' : 'Escalate Hold'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
+  );
+}
+
+export default function TrackingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center p-6">
+          <span className="spinner spinner--lg" />
+        </div>
+      }
+    >
+      <TrackingContent />
+    </Suspense>
   );
 }

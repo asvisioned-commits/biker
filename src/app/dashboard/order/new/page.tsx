@@ -1,74 +1,112 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+import { PricingService, PricingEstimate } from '@/lib/pricing';
+import { OrderService } from '@/lib/order-service';
 import Link from 'next/link';
-import { createDeliveryRequest, checkExistingActiveDelivery } from './actions';
 import { useProfile } from '@/context/ProfileContext';
-import { searchAddress, reverseGeocode, GeocodeResult } from '@/lib/geocoding';
-import styles from './order-new.module.css';
-import { FLAGS } from '@/lib/flags';
+import { reverseGeocode, searchAddress } from '@/lib/geocoding';
+import styles from './new-order.module.css';
+
+interface AutocompleteResult {
+  address: string;
+  lat: number;
+  lng: number;
+}
+
+interface NearbyRider {
+  id: string;
+  lat: number;
+  lng: number;
+  name: string;
+}
 
 export default function NewOrderPage() {
   const router = useRouter();
-  const { session, profile, country, balance } = useProfile();
-  
-  const userId = session?.user_id;
+  const { country } = useProfile();
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const [pickup, setPickup] = useState('');
-  const [dropoff, setDropoff] = useState('');
-  const [pickupCoords, setPickupCoords] = useState<[number, number] | null>(null);
+  // Page Step: 'location' (selecting points) or 'fare_details' (confirming bid & contact details)
+  const [step, setStep] = useState<'location' | 'fare_details'>('location');
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const hasGeolocatedRef = useRef(false);
+
+  // Map & Geolocation States
+  const [leafletLoaded, setLeafletLoaded] = useState(false);
+  const [pickupCoords, setPickupCoords] = useState<[number, number]>(
+    country === 'ZM' ? [-15.3875, 28.3228] : [-17.8292, 31.0522] // Defaults
+  );
   const [dropoffCoords, setDropoffCoords] = useState<[number, number] | null>(null);
-  const [fulfillmentMode, setFulfillmentMode] = useState<'standard' | 'jet' | 'scheduled_saver'>('standard');
-  const [protectionLevel, setProtectionLevel] = useState<'none' | 'protected' | 'premium_secure'>('none');
-  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'cash'>('wallet');
-  const [itemDescription, setItemDescription] = useState('');
+  const [nearbyRiders, setNearbyRiders] = useState<NearbyRider[]>([]);
 
-  const [pickupResults, setPickupResults] = useState<GeocodeResult[]>([]);
-  const [dropoffResults, setDropoffResults] = useState<GeocodeResult[]>([]);
+  // Address Inputs & Autocomplete States
+  const [pickupAddress, setPickupAddress] = useState('');
+  const [dropoffAddress, setDropoffAddress] = useState('');
+  const [pickupSearch, setPickupSearch] = useState('');
+  const [dropoffSearch, setDropoffSearch] = useState('');
+  const [pickupSuggestions, setPickupSuggestions] = useState<AutocompleteResult[]>([]);
+  const [dropoffSuggestions, setDropoffSuggestions] = useState<AutocompleteResult[]>([]);
+  const [isPickupFocused, setIsPickupFocused] = useState(false);
+  const [isDropoffFocused, setIsDropoffFocused] = useState(false);
   const [searchingPickup, setSearchingPickup] = useState(false);
   const [searchingDropoff, setSearchingDropoff] = useState(false);
+  const [isMapDragging, setIsMapDragging] = useState(false);
+
+  // Form States
+  const [itemCategory, setItemCategory] = useState<'document' | 'food' | 'parcel' | 'car_part'>('parcel');
+  const [cargoWeight, setCargoWeight] = useState<string>('1'); // for parcels/parts
+  const [itemDescription, setItemDescription] = useState('');
+  const [fulfillmentMode, setFulfillmentMode] = useState<'standard' | 'jet' | 'scheduled_saver'>('standard');
+  const [protectionLevel, setProtectionLevel] = useState<'protected' | 'none' | 'premium_secure'>('none');
   
-  const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
-  const [pricing, setPricing] = useState<{ baseFee: number; speedFee: number; insuranceFee: number; total: number } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [verifying, setVerifying] = useState(true);
+  const [pickupPhone, setPickupPhone] = useState('');
+  const [pickupName, setPickupName] = useState('');
+  const [dropoffPhone, setDropoffPhone] = useState('');
+  const [dropoffName, setDropoffName] = useState('');
+  const [dropoffGateColor, setDropoffGateColor] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'ecocash' | 'mtn_momo' | 'airtel_money' | 'cash'>('ecocash');
 
-  // Address lookup state control
-  const [showPickupDropdown, setShowPickupDropdown] = useState(false);
-  const [showDropoffDropdown, setShowDropoffDropdown] = useState(false);
+  // Bidding & Pricing States
+  const [suggestedBasePrice, setSuggestedBasePrice] = useState(5.0);
+  const [userOfferPrice, setUserOfferPrice] = useState<number>(5.0);
+  const [estimate, setEstimate] = useState<PricingEstimate | null>(null);
 
-  // Map state
-  const [leafletLoaded, setLeafletLoaded] = useState(false);
   const mapRef = useRef<any>(null);
   const pickupMarkerRef = useRef<any>(null);
   const dropoffMarkerRef = useRef<any>(null);
   const routePolylineRef = useRef<any>(null);
+  const nearbyRiderMarkersRef = useRef<any[]>([]);
+  const mapId = 'leaflet-booking-map';
 
-  // Check if user already has an active order
+  // Sync default payment mode and map center based on Country
   useEffect(() => {
-    const verifyActiveOrder = async () => {
-      if (!userId) {
-        setVerifying(false);
-        return;
-      }
-      try {
-        const hasActive = await checkExistingActiveDelivery(userId);
-        if (hasActive) {
-          alert('You have an ongoing delivery request. Redirecting to tracking...');
-          router.push('/dashboard/tracking');
-          return;
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setVerifying(false);
-      }
-    };
-    verifyActiveOrder();
-  }, [userId, router]);
+    if (hasGeolocatedRef.current) return;
+    if (country === 'ZM') {
+      setPaymentMethod('mtn_momo');
+      setPickupCoords([-15.3875, 28.3228]);
+    } else {
+      setPaymentMethod('ecocash');
+      setPickupCoords([-17.8292, 31.0522]);
+    }
+  }, [country]);
 
-  // Load Leaflet libraries dynamically
+  // Fetch logged in User
+  useEffect(() => {
+    async function getUser() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+      }
+    }
+    getUser();
+  }, []);
+
+  // Load Leaflet Libraries dynamically
   useEffect(() => {
     if ((window as any).L) {
       setLeafletLoaded(true);
@@ -87,557 +125,784 @@ export default function NewOrderPage() {
     document.head.appendChild(script);
   }, []);
 
-  // Initialize and update Map
+  // Initialize Map
   useEffect(() => {
     if (!leafletLoaded) return;
     const L = (window as any).L;
     if (!L) return;
 
-    const mapElement = document.getElementById('booking-leaflet-map');
-    if (!mapElement) return;
+    const map = L.map(mapId, {
+      zoomControl: false,
+      scrollWheelZoom: true,
+    }).setView(pickupCoords, 14);
 
-    if (!mapRef.current) {
-      // Default to Harare or Lusaka depending on regional country profile
-      const defaultCenter: [number, number] = country === 'ZM' ? [-15.3875, 28.3228] : [-17.8292, 31.0522];
-      
-      const map = L.map('booking-leaflet-map', {
-        zoomControl: true,
-        scrollWheelZoom: true
-      }).setView(defaultCenter, 13);
-      
-      mapRef.current = map;
+    mapRef.current = map;
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(map);
 
-      // Support map pin selection by clicking
-      map.on('click', async (e: any) => {
-        const { lat, lng } = e.latlng;
-        // Check which input was last focused or default to pickup, then dropoff
-        if (!pickupCoords) {
-          setLoading(true);
-          const address = await reverseGeocode(lat, lng);
-          setPickupCoords([lat, lng]);
-          setPickup(address);
-          setLoading(false);
-        } else if (!dropoffCoords) {
-          setLoading(true);
-          const address = await reverseGeocode(lat, lng);
-          setDropoffCoords([lat, lng]);
-          setDropoff(address);
-          setLoading(false);
+    // Setup map drag listeners for center pin address reverse-geocoding
+    map.on('movestart', () => {
+      setIsMapDragging(true);
+    });
+
+    map.on('moveend', async () => {
+      setIsMapDragging(false);
+      if (step === 'location') {
+        const center = map.getCenter();
+        const lat = center.lat;
+        const lng = center.lng;
+        setPickupCoords([lat, lng]);
+        hasGeolocatedRef.current = true;
+        
+        // Reverse Geocode centered coordinates
+        try {
+          const addr = await reverseGeocode(lat, lng);
+          setPickupAddress(addr);
+          setPickupSearch(addr);
+        } catch (e) {
+          console.error(e);
         }
+      }
+    });
+
+    // Auto GPS geolocation on mount
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude } = pos.coords;
+          map.setView([latitude, longitude], 15);
+          setPickupCoords([latitude, longitude]);
+          hasGeolocatedRef.current = true;
+          
+          try {
+            const addr = await reverseGeocode(latitude, longitude);
+            setPickupAddress(addr);
+            setPickupSearch(addr);
+          } catch (e) {
+            console.error(e);
+          }
+        },
+        () => {
+          // Fallback geocode default center if denied
+          reverseGeocode(pickupCoords[0], pickupCoords[1]).then(addr => {
+            setPickupAddress(addr);
+            setPickupSearch(addr);
+          });
+        }
+      );
+    } else {
+      reverseGeocode(pickupCoords[0], pickupCoords[1]).then(addr => {
+        setPickupAddress(addr);
+        setPickupSearch(addr);
       });
     }
 
-    const map = mapRef.current;
-
-    // Update Pickup Marker
-    if (pickupCoords) {
-      if (pickupMarkerRef.current) {
-        pickupMarkerRef.current.setLatLng(pickupCoords);
-      } else {
-        const pickupIcon = L.divIcon({
-          html: `<div style="font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🏪</div>`,
-          className: 'leaflet-pickup-marker',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
-        });
-        pickupMarkerRef.current = L.marker(pickupCoords, { icon: pickupIcon, draggable: true })
-          .addTo(map)
-          .bindPopup('<b>Pickup Location</b>')
-          .openPopup();
-
-        pickupMarkerRef.current.on('dragend', async (event: any) => {
-          const marker = event.target;
-          const position = marker.getLatLng();
-          setLoading(true);
-          const address = await reverseGeocode(position.lat, position.lng);
-          setPickupCoords([position.lat, position.lng]);
-          setPickup(address);
-          setLoading(false);
-        });
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
       }
-    } else if (pickupMarkerRef.current) {
-      pickupMarkerRef.current.remove();
-      pickupMarkerRef.current = null;
+    };
+  }, [leafletLoaded]);
+
+  // Generate & Render simulated nearby riders around pickup coordinates
+  useEffect(() => {
+    if (!leafletLoaded || !mapRef.current || step !== 'location') return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    // Remove old nearby rider markers
+    nearbyRiderMarkersRef.current.forEach(m => m.remove());
+    nearbyRiderMarkersRef.current = [];
+
+    // Generate stable offsets around pickup
+    const ridersData: NearbyRider[] = [
+      { id: 'nr1', name: 'Tinashe M.', lat: pickupCoords[0] + 0.003, lng: pickupCoords[1] - 0.004 },
+      { id: 'nr2', name: 'Farai K.', lat: pickupCoords[0] - 0.002, lng: pickupCoords[1] + 0.003 },
+      { id: 'nr3', name: 'Alfonso Z.', lat: pickupCoords[0] + 0.004, lng: pickupCoords[1] + 0.002 },
+      { id: 'nr4', name: 'Chipo D.', lat: pickupCoords[0] - 0.003, lng: pickupCoords[1] - 0.002 },
+    ];
+    setNearbyRiders(ridersData);
+
+    // Render riders on map
+    ridersData.forEach(r => {
+      const icon = L.divIcon({
+        html: `<div style="font-size: 24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25)); animation: floatRider 2s ease-in-out infinite alternate;">🏍️</div>`,
+        className: 'leaflet-nearby-rider-icon',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
+      const marker = L.marker([r.lat, r.lng], { icon })
+        .addTo(mapRef.current)
+        .bindPopup(`<b>${r.name}</b> (Nearby Rider)`);
+      nearbyRiderMarkersRef.current.push(marker);
+    });
+  }, [pickupCoords, step, leafletLoaded]);
+
+  // Draw Route Polyline & Bounds on transition to Step 2 (fare_details)
+  useEffect(() => {
+    if (!leafletLoaded || !mapRef.current) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    // Clear nearby rider markers in Step 2 to declutter map
+    if (step === 'fare_details') {
+      nearbyRiderMarkersRef.current.forEach(m => m.remove());
+      nearbyRiderMarkersRef.current = [];
     }
 
-    // Update Dropoff Marker
-    if (dropoffCoords) {
-      if (dropoffMarkerRef.current) {
-        dropoffMarkerRef.current.setLatLng(dropoffCoords);
-      } else {
-        const dropoffIcon = L.divIcon({
-          html: `<div style="font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🏠</div>`,
-          className: 'leaflet-dropoff-marker',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
-        });
-        dropoffMarkerRef.current = L.marker(dropoffCoords, { icon: dropoffIcon, draggable: true })
-          .addTo(map)
-          .bindPopup('<b>Dropoff Location</b>')
-          .openPopup();
+    // Manage standard markers
+    if (pickupMarkerRef.current) pickupMarkerRef.current.remove();
+    if (dropoffMarkerRef.current) dropoffMarkerRef.current.remove();
+    if (routePolylineRef.current) routePolylineRef.current.remove();
 
-        dropoffMarkerRef.current.on('dragend', async (event: any) => {
-          const marker = event.target;
-          const position = marker.getLatLng();
-          setLoading(true);
-          const address = await reverseGeocode(position.lat, position.lng);
-          setDropoffCoords([position.lat, position.lng]);
-          setDropoff(address);
-          setLoading(false);
-        });
-      }
-    } else if (dropoffMarkerRef.current) {
-      dropoffMarkerRef.current.remove();
-      dropoffMarkerRef.current = null;
-    }
+    if (step === 'fare_details' && dropoffCoords) {
+      // 1. Create Pickup & Dropoff Markers
+      const pickupIcon = L.divIcon({
+        html: `<div style="font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🏪</div>`,
+        className: 'leaflet-pickup-icon',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+      const dropoffIcon = L.divIcon({
+        html: `<div style="font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🏠</div>`,
+        className: 'leaflet-dropoff-icon',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
 
-    // Update Route Polyline and zoom bounds
-    if (pickupCoords && dropoffCoords) {
-      if (routePolylineRef.current) {
-        routePolylineRef.current.remove();
-      }
+      pickupMarkerRef.current = L.marker(pickupCoords, { icon: pickupIcon }).addTo(mapRef.current);
+      dropoffMarkerRef.current = L.marker(dropoffCoords, { icon: dropoffIcon }).addTo(mapRef.current);
 
-      const fetchOSRMRoute = async () => {
+      // 2. Fetch optimal street route from OSRM
+      const fetchRoute = async () => {
         try {
           const url = `https://router.project-osrm.org/route/v1/driving/${pickupCoords[1]},${pickupCoords[0]};${dropoffCoords[1]},${dropoffCoords[0]}?geometries=geojson&overview=full`;
           const res = await fetch(url);
           const data = await res.json();
           if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
             const coords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]);
-            routePolylineRef.current = L.polyline(coords, { color: '#3b82f6', weight: 4 }).addTo(map);
+            routePolylineRef.current = L.polyline(coords, {
+              color: '#3b82f6',
+              weight: 5,
+              opacity: 0.85,
+              className: 'movingRouteLine',
+            }).addTo(mapRef.current);
             return;
           }
-        } catch (err) {
-          console.warn('Failed OSRM route fetch, drawing direct line:', err);
+        } catch (e) {
+          console.warn('OSRM routing failed, drawing straight line', e);
         }
-        routePolylineRef.current = L.polyline([pickupCoords, dropoffCoords], { color: '#3b82f6', weight: 4 }).addTo(map);
+
+        // Direct straight line fallback
+        routePolylineRef.current = L.polyline([pickupCoords, dropoffCoords], {
+          color: '#3b82f6',
+          weight: 4,
+          opacity: 0.8,
+        }).addTo(mapRef.current);
       };
-      
-      fetchOSRMRoute();
 
-      const bounds = L.latLngBounds([pickupCoords, dropoffCoords]);
-      map.fitBounds(bounds, { padding: [50, 50] });
-    } else if (routePolylineRef.current) {
-      routePolylineRef.current.remove();
-      routePolylineRef.current = null;
-    }
-
-  }, [leafletLoaded, pickupCoords, dropoffCoords]);
-
-  // Geocoding query triggers with debounce
-  useEffect(() => {
-    if (pickup.length < 3 || pickupCoords) {
-      setPickupResults([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      setSearchingPickup(true);
-      const res = await searchAddress(pickup, country);
-      setPickupResults(res);
-      setSearchingPickup(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [pickup, country, pickupCoords]);
-
-  useEffect(() => {
-    if (dropoff.length < 3 || dropoffCoords) {
-      setDropoffResults([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      setSearchingDropoff(true);
-      const res = await searchAddress(dropoff, country);
-      setDropoffResults(res);
-      setSearchingDropoff(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [dropoff, country, dropoffCoords]);
-
-  // Pricing calculations
-  useEffect(() => {
-    if (!pickupCoords || !dropoffCoords) {
-      setRouteInfo(null);
-      setPricing(null);
-      return;
-    }
-
-    const calculateDistanceAndCost = async () => {
-      let distanceKm = 0;
-      let durationMin = 0;
-
-      // Estimate distance using OSRM or Fallback to Haversine
-      try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${pickupCoords[1]},${pickupCoords[0]};${dropoffCoords[1]},${dropoffCoords[0]}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.code === 'Ok' && data.routes?.[0]) {
-          distanceKm = Number((data.routes[0].distance / 1000).toFixed(2));
-          durationMin = Math.ceil(data.routes[0].duration / 60);
-        } else {
-          throw new Error('OSRM pricing estimate failed');
-        }
-      } catch (err) {
-        // Haversine fallback formula
-        const R = 6371;
-        const dLat = (dropoffCoords[0] - pickupCoords[0]) * Math.PI / 180;
-        const dLng = (dropoffCoords[1] - pickupCoords[1]) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(pickupCoords[0] * Math.PI / 180) * Math.cos(dropoffCoords[0] * Math.PI / 180) *
-          Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        distanceKm = Number((R * c * 1.25).toFixed(2)); // Apply 1.25 winding factor
-        durationMin = Math.ceil(distanceKm * 2.5); // Average 24km/h in African cities
-      }
-
-      setRouteInfo({ distanceKm, durationMin });
-
-      // Pricing structure
-      const isZambia = country === 'ZM';
-      const currencyMultiplier = isZambia ? 25 : 1; // ZK pricing
-      
-      const baseFee = (isZambia ? 15.00 : 2.50) + (distanceKm * (isZambia ? 3.00 : 0.40));
-      
-      let speedFee = 0;
-      if (fulfillmentMode === 'jet') {
-        speedFee = isZambia ? 20.00 : 2.00;
-      } else if (fulfillmentMode === 'scheduled_saver') {
-        speedFee = -(isZambia ? 5.00 : 0.50);
-      }
-
-      let insuranceFee = 0;
-      if (protectionLevel === 'protected') {
-        insuranceFee = isZambia ? 10.00 : 0.50;
-      } else if (protectionLevel === 'premium_secure') {
-        insuranceFee = isZambia ? 30.00 : 1.50;
-      }
-
-      const total = Math.max(isZambia ? 10.00 : 1.50, baseFee + speedFee + insuranceFee);
-
-      setPricing({
-        baseFee: Number(baseFee.toFixed(2)),
-        speedFee: Number(speedFee.toFixed(2)),
-        insuranceFee: Number(insuranceFee.toFixed(2)),
-        total: Number(total.toFixed(2)),
+      fetchRoute().then(() => {
+        // Zoom map bounds to fit both points
+        const bounds = L.latLngBounds([pickupCoords, dropoffCoords]);
+        mapRef.current.fitBounds(bounds, { padding: [60, 60] });
       });
-    };
-
-    calculateDistanceAndCost();
-  }, [pickupCoords, dropoffCoords, fulfillmentMode, protectionLevel, country]);
-
-  const handleSelectPickupResult = (res: GeocodeResult) => {
-    setPickup(res.address);
-    setPickupCoords([res.lat, res.lng]);
-    setPickupResults([]);
-    setShowPickupDropdown(false);
-  };
-
-  const handleSelectDropoffResult = (res: GeocodeResult) => {
-    setDropoff(res.address);
-    setDropoffCoords([res.lat, res.lng]);
-    setDropoffResults([]);
-    setShowDropoffDropdown(false);
-  };
-
-  const handleClearPickup = () => {
-    setPickup('');
-    setPickupCoords(null);
-    setPickupResults([]);
-    setRouteInfo(null);
-    setPricing(null);
-  };
-
-  const handleClearDropoff = () => {
-    setDropoff('');
-    setDropoffCoords(null);
-    setDropoffResults([]);
-    setRouteInfo(null);
-    setPricing(null);
-  };
-
-  const formatPrice = (val: number) => {
-    if (country === 'ZM') {
-      return `ZK ${val.toFixed(2)}`;
     }
-    return `$${val.toFixed(2)}`;
-  };
+  }, [step, pickupCoords, dropoffCoords, leafletLoaded]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pickupCoords || !dropoffCoords || !pricing) {
-      alert('Please fill out delivery routing details completely.');
+  // Debounced search query triggers for Autocomplete
+  useEffect(() => {
+    if (!pickupSearch || pickupSearch.length < 2 || !isPickupFocused) {
+      setPickupSuggestions([]);
       return;
     }
+    setSearchingPickup(true);
+    const delay = setTimeout(async () => {
+      const res = await searchAddress(pickupSearch, country || 'ZW');
+      setPickupSuggestions(res);
+      setSearchingPickup(false);
+    }, 400);
+    return () => clearTimeout(delay);
+  }, [pickupSearch, isPickupFocused]);
 
-    if (paymentMethod === 'wallet' && balance < pricing.total) {
-      alert('Insufficient wallet balance. Please top up or choose Cash on Delivery.');
+  useEffect(() => {
+    if (!dropoffSearch || dropoffSearch.length < 2 || !isDropoffFocused) {
+      setDropoffSuggestions([]);
+      return;
+    }
+    setSearchingDropoff(true);
+    const delay = setTimeout(async () => {
+      const res = await searchAddress(dropoffSearch, country || 'ZW');
+      setDropoffSuggestions(res);
+      setSearchingDropoff(false);
+    }, 400);
+    return () => clearTimeout(delay);
+  }, [dropoffSearch, isDropoffFocused]);
+
+  // Calculate pricing estimates when route coordinates change
+  useEffect(() => {
+    if (!dropoffCoords) return;
+
+    const est = PricingService.estimateFare({
+      pickupLat: pickupCoords[0],
+      pickupLng: pickupCoords[1],
+      dropoffLat: dropoffCoords[0],
+      dropoffLng: dropoffCoords[1],
+      fulfillmentMode,
+      protectionLevel,
+    });
+
+    setEstimate(est);
+    setSuggestedBasePrice(est.baseFare);
+    setUserOfferPrice(est.baseFare);
+  }, [pickupCoords, dropoffCoords, fulfillmentMode, protectionLevel]);
+
+  // Format prices with currency tags based on active region
+  const formatPrice = (usdVal: number) => {
+    if (country === 'ZM') {
+      return `ZK ${(usdVal * 25).toFixed(2)}`;
+    }
+    return `$${usdVal.toFixed(2)}`;
+  };
+
+  const handleSelectPickupSuggestion = (s: AutocompleteResult) => {
+    setPickupCoords([s.lat, s.lng]);
+    setPickupAddress(s.address);
+    setPickupSearch(s.address);
+    setPickupSuggestions([]);
+    setIsPickupFocused(false);
+    if (mapRef.current) {
+      mapRef.current.setView([s.lat, s.lng], 15);
+    }
+  };
+
+  const handleSelectDropoffSuggestion = (s: AutocompleteResult) => {
+    setDropoffCoords([s.lat, s.lng]);
+    setDropoffAddress(s.address);
+    setDropoffSearch(s.address);
+    setDropoffSuggestions([]);
+    setIsDropoffFocused(false);
+  };
+
+  // Pricing controls (Increment/Decrement)
+  const adjustBid = (amount: number) => {
+    setUserOfferPrice(prev => {
+      const next = prev + amount;
+      return next > 1.0 ? Math.round(next * 10) / 10 : prev;
+    });
+  };
+
+  const handleConfirmLocations = () => {
+    if (!pickupAddress || !dropoffCoords) {
+      setError('Please choose a valid pickup and dropoff point');
+      return;
+    }
+    setError('');
+    setStep('fare_details');
+  };
+
+  const handleSubmitBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) {
+      setError('You must be logged in to create an order');
+      return;
+    }
+    if (!pickupAddress || !dropoffCoords || !pickupPhone || !dropoffPhone) {
+      setError('Please fill in all contact phone numbers');
       return;
     }
 
     setLoading(true);
-    const mockRiderId = 'mock-rider-id';
+    setError('');
+
+    // Compute dynamic fees scaled to the user's custom bid payout
+    const bidScale = userOfferPrice / suggestedBasePrice;
+    const finalServiceFee = estimate ? Math.round(estimate.serviceFee * bidScale * 100) / 100 : 0.38;
+    const finalProtectionFee = estimate?.protectionFee ?? 0.0;
+    const finalTotal = userOfferPrice + finalServiceFee + finalProtectionFee;
+
+    // Custom items weight label formatting
+    const finalItemDesc = itemCategory === 'document' 
+      ? `📄 Document: ${itemDescription || 'Delivery papers'}`
+      : itemCategory === 'food'
+      ? `🍔 Food Order: ${itemDescription || 'Hot meal packaging'}`
+      : `${itemCategory === 'car_part' ? '⚙️ Car Part' : '📦 Parcel'} (${cargoWeight} kg): ${itemDescription || 'Cargo parcel'}`;
 
     try {
-      const res = await createDeliveryRequest({
-        customer_id: userId || 'mock-customer',
-        pickup_address: pickup,
-        pickup_lat: pickupCoords[0],
-        pickup_lng: pickupCoords[1],
-        dropoff_address: dropoff,
-        dropoff_lat: dropoffCoords[0],
-        dropoff_lng: dropoffCoords[1],
-        estimated_distance_km: routeInfo?.distanceKm || 0,
-        estimated_duration_minutes: routeInfo?.durationMin || 0,
-        service_type: 'send_item',
-        delivery_fee: pricing.baseFee + pricing.speedFee,
-        insurance_fee: pricing.insuranceFee,
-        total_amount: pricing.total,
-        rider_payout: (pricing.baseFee + pricing.speedFee) * 0.8, // 80% payout
+      const payload = {
+        customer_id: userId,
+        service_type: itemCategory === 'document' ? 'document_run' : itemCategory === 'food' ? 'pickup_order' : 'send_item',
         fulfillment_mode: fulfillmentMode,
         protection_level: protectionLevel,
+        pickup_address: pickupAddress,
+        pickup_contact_name: pickupName || 'Sender',
+        pickup_contact_phone: pickupPhone,
+        pickup_lat: pickupCoords[0],
+        pickup_lng: pickupCoords[1],
+        dropoff_address: dropoffAddress,
+        dropoff_contact_name: dropoffName || 'Recipient',
+        dropoff_contact_phone: dropoffPhone,
+        dropoff_lat: dropoffCoords[0],
+        dropoff_lng: dropoffCoords[1],
+        dropoff_gate_color: dropoffGateColor || undefined,
+        item_description: finalItemDesc,
+        delivery_fee: userOfferPrice,
+        service_fee: finalServiceFee,
+        protection_fee: finalProtectionFee,
+        total_amount: finalTotal,
         payment_method: paymentMethod,
-        item_description: itemDescription || 'Deliverable Package',
-      });
+      };
 
-      if (!res.success) {
-        throw new Error(res.error?.message || 'Database booking execution failed.');
+      const result = await OrderService.createOrder(payload);
+
+      if (result) {
+        // Redirect to tracking matching route, carrying payment trigger parameters
+        const payParam = paymentMethod === 'cash' ? 'cash' : paymentMethod;
+        router.push(`/dashboard/tracking?id=${result.id}&pay=${payParam}&phone=${encodeURIComponent(pickupPhone)}`);
       }
-
-      alert('Delivery request posted successfully! Redirecting to radar dispatcher...');
-      router.push('/dashboard/tracking');
     } catch (err: any) {
-      console.error(err);
-      alert(err.message || 'Booking request encountered an unexpected error.');
-    } finally {
+      setError(err.message || 'Failed to place delivery booking');
       setLoading(false);
     }
   };
 
-  if (verifying) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
-        <span className="spinner" />
-        <p style={{ marginTop: '8px', color: 'var(--text-secondary)' }}>Validating customer account state...</p>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>Book a Biker</h1>
-        <p className={styles.subtitle}>On-demand reliable shipping across your city</p>
+      {/* Full-screen Leaflet Map Backdrop */}
+      <div className={styles.mapWrapper}>
+        <div id={mapId} className={styles.map} />
+        {!leafletLoaded && (
+          <div className={styles.mapLoading}>
+            <span className="spinner spinner--lg" />
+            <span>Loading Map Engine...</span>
+          </div>
+        )}
       </div>
 
-      <div className={styles.grid}>
-        
-        {/* Booking Interactive Leaflet Map */}
-        <div className={styles.mapContainer}>
-          <div id="booking-leaflet-map" style={{ width: '100%', height: '100%', borderRadius: '12px' }} />
-          {!leafletLoaded && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-              <span className="spinner" style={{ marginRight: '8px' }} /> Loading Map Engine...
-            </div>
-          )}
+      {/* Floating Center Crosshair Pin - visible only when picking pickup in Step 1 */}
+      {step === 'location' && leafletLoaded && (
+        <div className={styles.centerPinContainer}>
+          <div className={`${styles.pinAddressBubble} ${isMapDragging ? 'opacity-70' : ''}`}>
+            {isMapDragging ? 'Snapping position...' : pickupAddress || 'My Location'}
+          </div>
+          <div className={`${styles.pinEmoji} ${isMapDragging ? styles.pinActive : ''}`}>📍</div>
+          <div className={styles.pinShadow} />
         </div>
+      )}
 
-        {/* Form Panel */}
-        <div className={styles.card}>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
-            {/* Pickup Input Group */}
-            <div style={{ position: 'relative' }}>
-              <label className="label">Pickup Address</label>
-              <div style={{ position: 'relative' }}>
+      {/* Floating Header Navigation Back Button */}
+      <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10, display: 'flex', gap: '8px' }}>
+        <button
+          onClick={() => {
+            if (step === 'fare_details') {
+              setStep('location');
+            } else {
+              router.push('/dashboard');
+            }
+          }}
+          className="btn btn--secondary btn--sm shadow-lg font-bold"
+          style={{ background: 'var(--bg-card)', backdropFilter: 'blur(10px)' }}
+        >
+          ← Back
+        </button>
+      </div>
+
+      {/* Floating GPS Snap Button */}
+      {leafletLoaded && (
+        <button
+          type="button"
+          onClick={() => {
+            if ('geolocation' in navigator && mapRef.current) {
+              navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                  const { latitude, longitude } = pos.coords;
+                  mapRef.current.setView([latitude, longitude], 15);
+                  setPickupCoords([latitude, longitude]);
+                  hasGeolocatedRef.current = true;
+                  try {
+                    const addr = await reverseGeocode(latitude, longitude);
+                    setPickupAddress(addr);
+                    setPickupSearch(addr);
+                  } catch (e) {
+                    console.error(e);
+                  }
+                },
+                () => {
+                  alert('GPS Location access denied or unavailable.');
+                }
+              );
+            } else {
+              alert('Geolocation is not supported by your browser.');
+            }
+          }}
+          className={styles.gpsFab}
+          title="Snap to Current Location"
+        >
+          🎯
+        </button>
+      )}
+
+      {/* Floating Glassmorphic Booking Console Sheet */}
+      <div className={`${styles.bottomSheet} ${isCollapsed ? styles.bottomSheetCollapsed : ''}`}>
+        <div className={styles.dragHandleWrapper} onClick={() => setIsCollapsed(!isCollapsed)}>
+          <div className={styles.dragHandle} />
+          <div className={styles.toggleText}>
+            {isCollapsed ? '▲ Expand Form Details' : '▼ Hide Form'}
+          </div>
+        </div>
+        
+        {error && (
+          <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px 12px', margin: 0 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {step === 'location' ? (
+          /* ================= STEP 1: LOCATIONS & CATEGORY ================= */
+          <>
+            <div className={styles.sheetHeader}>
+              <h2 className={styles.sheetTitle}>Request a Biker</h2>
+              <span className={styles.sheetStep}>Step 1 of 2</span>
+            </div>
+
+            {/* Address Search Engine Panel */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className={styles.searchContainer}>
+                <label className="label" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Pickup location (Drag map or search)
+                </label>
                 <input
                   type="text"
-                  className="input"
-                  value={pickup}
-                  onChange={(e) => {
-                    setPickup(e.target.value);
-                    setPickupCoords(null);
-                    setShowPickupDropdown(true);
-                  }}
-                  onFocus={() => setShowPickupDropdown(true)}
-                  placeholder="e.g. Sam Levy's Village, Borrowdale"
-                  disabled={loading}
-                  required
+                  className={styles.searchInput}
+                  placeholder="Type pickup place..."
+                  value={pickupSearch}
+                  onChange={(e) => setPickupSearch(e.target.value)}
+                  onFocus={() => setIsPickupFocused(true)}
+                  onBlur={() => setTimeout(() => setIsPickupFocused(false), 200)}
                 />
-                {pickup && (
-                  <button type="button" className={styles.clearBtn} onClick={handleClearPickup}>
-                    ×
-                  </button>
+                {searchingPickup && <span className={styles.searchSpinner}>⏳</span>}
+                {isPickupFocused && pickupSuggestions.length > 0 && (
+                  <div className={styles.searchSuggestions}>
+                    {pickupSuggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        className={styles.suggestionItem}
+                        onClick={() => handleSelectPickupSuggestion(s)}
+                      >
+                        📍 {s.address}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
 
-              {showPickupDropdown && pickupResults.length > 0 && (
-                <ul className={styles.dropdown}>
-                  {pickupResults.map((r, i) => (
-                    <li key={i} onClick={() => handleSelectPickupResult(r)} className={styles.dropdownItem}>
-                      <span style={{ marginRight: '4px' }}>📍</span> {r.address}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {searchingPickup && (
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Searching regional database...
-                </div>
-              )}
-            </div>
-
-            {/* Dropoff Input Group */}
-            <div style={{ position: 'relative' }}>
-              <label className="label">Dropoff Address</label>
-              <div style={{ position: 'relative' }}>
+              <div className={styles.searchContainer}>
+                <label className="label" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Where are you sending to? *
+                </label>
                 <input
                   type="text"
-                  className="input"
-                  value={dropoff}
-                  onChange={(e) => {
-                    setDropoff(e.target.value);
-                    setDropoffCoords(null);
-                    setShowDropoffDropdown(true);
-                  }}
-                  onFocus={() => setShowDropoffDropdown(true)}
-                  placeholder="e.g. Avondale Shops, King George Rd"
-                  disabled={loading}
-                  required
+                  className={styles.searchInput}
+                  placeholder="Search destination landmarks..."
+                  value={dropoffSearch}
+                  onChange={(e) => setDropoffSearch(e.target.value)}
+                  onFocus={() => setIsDropoffFocused(true)}
+                  onBlur={() => setTimeout(() => setIsDropoffFocused(false), 200)}
                 />
-                {dropoff && (
-                  <button type="button" className={styles.clearBtn} onClick={handleClearDropoff}>
-                    ×
-                  </button>
+                {searchingDropoff && <span className={styles.searchSpinner}>⏳</span>}
+                {isDropoffFocused && dropoffSuggestions.length > 0 && (
+                  <div className={styles.searchSuggestions}>
+                    {dropoffSuggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        className={styles.suggestionItem}
+                        onClick={() => handleSelectDropoffSuggestion(s)}
+                      >
+                        🏁 {s.address}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {showDropoffDropdown && dropoffResults.length > 0 && (
-                <ul className={styles.dropdown}>
-                  {dropoffResults.map((r, i) => (
-                    <li key={i} onClick={() => handleSelectDropoffResult(r)} className={styles.dropdownItem}>
-                      <span style={{ marginRight: '4px' }}>🏁</span> {r.address}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {searchingDropoff && (
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Searching regional database...
-                </div>
-              )}
             </div>
 
-            {/* Service & Protection Config */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <div style={{ flex: 1 }}>
-                <label className="label" style={{ fontSize: '11px' }}>Delivery Speed</label>
-                <select
-                  className="input"
-                  value={fulfillmentMode}
-                  onChange={(e) => setFulfillmentMode(e.target.value as any)}
-                  style={{ fontSize: '13px', height: '38px' }}
-                >
-                  <option value="standard">🚴 Standard Biker</option>
-                  <option value="jet">🚀 Biker JET (Express)</option>
-                  <option value="scheduled_saver">📅 Scheduled Saver</option>
-                </select>
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <label className="label" style={{ fontSize: '11px' }}>Protect Insurance</label>
-                <select
-                  className="input"
-                  value={protectionLevel}
-                  onChange={(e) => setProtectionLevel(e.target.value as any)}
-                  style={{ fontSize: '13px', height: '38px' }}
-                >
-                  <option value="none">❌ None</option>
-                  <option value="protected">🛡️ Protect (+{formatPrice(0.5)})</option>
-                  <option value="premium_secure">✨ Protect+ (+{formatPrice(1.5)})</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="label">Item Description</label>
-              <textarea
-                className="input"
-                value={itemDescription}
-                onChange={(e) => setItemDescription(e.target.value)}
-                placeholder="What are we delivering? e.g. Documents, Spare parts"
-                rows={2}
-                style={{ resize: 'none', height: '54px' }}
-                required
-              />
-            </div>
-
-            {/* Payment Method */}
-            <div>
-              <label className="label">Payment Method</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
+            {/* Category Selectors */}
+            <div className={styles.servicePicker}>
+              <span className={styles.pickerLabel}>What type of item?</span>
+              <div className={styles.serviceGrid}>
                 <button
                   type="button"
-                  className={`${styles.toggleBtn} ${paymentMethod === 'wallet' ? styles.toggleBtnActive : ''}`}
-                  onClick={() => setPaymentMethod('wallet')}
+                  className={`${styles.serviceBtn} ${itemCategory === 'document' ? styles.serviceBtnSelected : ''}`}
+                  onClick={() => setItemCategory('document')}
                 >
-                  💳 Wallet Balance ({formatPrice(balance)})
+                  <span className={styles.serviceIcon}>📄</span>
+                  <span className={styles.serviceName}>Document</span>
                 </button>
                 <button
                   type="button"
-                  className={`${styles.toggleBtn} ${paymentMethod === 'cash' ? styles.toggleBtnActive : ''}`}
-                  onClick={() => setPaymentMethod('cash')}
+                  className={`${styles.serviceBtn} ${itemCategory === 'food' ? styles.serviceBtnSelected : ''}`}
+                  onClick={() => setItemCategory('food')}
                 >
-                  💵 Cash on Delivery
+                  <span className={styles.serviceIcon}>🍔</span>
+                  <span className={styles.serviceName}>Food</span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.serviceBtn} ${itemCategory === 'parcel' ? styles.serviceBtnSelected : ''}`}
+                  onClick={() => setItemCategory('parcel')}
+                >
+                  <span className={styles.serviceIcon}>📦</span>
+                  <span className={styles.serviceName}>Parcel</span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.serviceBtn} ${itemCategory === 'car_part' ? styles.serviceBtnSelected : ''}`}
+                  onClick={() => setItemCategory('car_part')}
+                >
+                  <span className={styles.serviceIcon}>⚙️</span>
+                  <span className={styles.serviceName}>Car Part</span>
                 </button>
               </div>
             </div>
 
-            {/* Cost Details Summary */}
-            {pricing && routeInfo && (
-              <div className={styles.pricing}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span>Distance & Est. Time:</span>
-                  <span style={{ fontWeight: 600 }}>{routeInfo.distanceKm} km (~{routeInfo.durationMin} mins)</span>
+            {/* Dynamic weight fields for Cargo (Parcel & Parts) */}
+            {(itemCategory === 'parcel' || itemCategory === 'car_part') && (
+              <div className="card p-4" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: '11px', marginBottom: '4px' }}>Cargo Weight (kg)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    className="input"
+                    value={cargoWeight}
+                    onChange={(e) => setCargoWeight(e.target.value)}
+                    style={{ height: '38px', fontSize: '14px' }}
+                  />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '4px' }}>
-                  <span>Base Fee:</span>
-                  <span>{formatPrice(pricing.baseFee)}</span>
-                </div>
-                {pricing.speedFee !== 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '4px' }}>
-                    <span>Speed Premium:</span>
-                    <span>{pricing.speedFee > 0 ? '+' : ''}{formatPrice(pricing.speedFee)}</span>
-                  </div>
-                )}
-                {pricing.insuranceFee !== 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '4px' }}>
-                    <span>Insurance Cover:</span>
-                    <span>+{formatPrice(pricing.insuranceFee)}</span>
-                  </div>
-                )}
-                <div style={{ height: '1px', background: 'var(--border-default)', margin: '8px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 800 }}>
-                  <span>Total Cost:</span>
-                  <span style={{ color: 'var(--color-primary-600)' }}>{formatPrice(pricing.total)}</span>
+                <div style={{ flex: 2, fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  ⚖️ Motorcycle capacity is capped at 30kg. Ensure cargo is boxable.
                 </div>
               </div>
             )}
 
-            {/* Submit Button */}
+            <button
+              onClick={handleConfirmLocations}
+              disabled={!pickupAddress || !dropoffCoords}
+              className="btn btn--primary btn--lg btn--full"
+              style={{ marginTop: '8px' }}
+            >
+              Continue to Fare & Details
+            </button>
+          </>
+        ) : (
+          /* ================= STEP 2: BIDDING & CONTACTS ================= */
+          <form onSubmit={handleSubmitBooking} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className={styles.sheetHeader}>
+              <h2 className={styles.sheetTitle}>Set Offer & Details</h2>
+              <span className={styles.sheetStep}>Step 2 of 2</span>
+            </div>
+
+            <div className={styles.routeSummary}>
+              <div className={styles.routePoint}>
+                <span style={{ fontSize: '14px' }}>🏪</span>
+                <span className={styles.routeAddress}>{pickupAddress}</span>
+              </div>
+              <div className={styles.routeLine} />
+              <div className={styles.routePoint}>
+                <span style={{ fontSize: '14px' }}>🏁</span>
+                <span className={styles.routeAddress}>{dropoffAddress}</span>
+              </div>
+            </div>
+
+            {/* InDrive-style Name Your Price Bid card */}
+            <div className={styles.fareBidContainer}>
+              <span className={styles.fareLabel}>Name Your Payout Offer</span>
+              
+              <div className={styles.fareControlGroup}>
+                <button type="button" className={styles.fareBtn} onClick={() => adjustBid(country === 'ZM' ? -10 : -0.5)}>
+                  -
+                </button>
+                <div className={styles.fareDisplay}>
+                  <span className={styles.fareCurrency}>{country === 'ZM' ? 'ZK' : '$'}</span>
+                  <span>{country === 'ZM' ? (userOfferPrice * 25).toFixed(0) : userOfferPrice.toFixed(2)}</span>
+                </div>
+                <button type="button" className={styles.fareBtn} onClick={() => adjustBid(country === 'ZM' ? 10 : 0.5)}>
+                  +
+                </button>
+              </div>
+
+              <span className={styles.fareHint}>
+                Recommended Base: {formatPrice(suggestedBasePrice)} ({estimate?.distanceKm} km trip)
+              </span>
+            </div>
+
+            {/* Input Details Grid */}
+            <div className={styles.detailsFields}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: '11px' }}>Sender Name</label>
+                  <input
+                    type="text"
+                    placeholder="Sender name"
+                    className="input"
+                    value={pickupName}
+                    onChange={(e) => setPickupName(e.target.value)}
+                    style={{ fontSize: '14px', height: '38px' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: '11px' }}>Sender Phone *</label>
+                  <input
+                    type="tel"
+                    placeholder={country === 'ZM' ? 'e.g. 0971234567' : 'e.g. 0771234567'}
+                    className="input"
+                    value={pickupPhone}
+                    onChange={(e) => setPickupPhone(e.target.value)}
+                    required
+                    style={{ fontSize: '14px', height: '38px' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: '11px' }}>Recipient Name</label>
+                  <input
+                    type="text"
+                    placeholder="Recipient name"
+                    className="input"
+                    value={dropoffName}
+                    onChange={(e) => setDropoffName(e.target.value)}
+                    style={{ fontSize: '14px', height: '38px' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: '11px' }}>Recipient Phone *</label>
+                  <input
+                    type="tel"
+                    placeholder={country === 'ZM' ? 'e.g. 0971234567' : 'e.g. 0771234567'}
+                    className="input"
+                    value={dropoffPhone}
+                    onChange={(e) => setDropoffPhone(e.target.value)}
+                    required
+                    style={{ fontSize: '14px', height: '38px' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label" style={{ fontSize: '11px' }}>🎨 Gate Color / Landmark Info</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Green gate next to school"
+                  className="input"
+                  value={dropoffGateColor}
+                  onChange={(e) => setDropoffGateColor(e.target.value)}
+                  style={{ fontSize: '14px', height: '38px' }}
+                />
+              </div>
+
+              <div>
+                <label className="label" style={{ fontSize: '11px' }}>Package Description / Special Instructions</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Keys inside envelope / Fragile items"
+                  className="input"
+                  value={itemDescription}
+                  onChange={(e) => setItemDescription(e.target.value)}
+                  style={{ fontSize: '14px', height: '38px' }}
+                />
+              </div>
+
+              {/* Service & Protection Config */}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: '11px' }}>Delivery Speed</label>
+                  <select
+                    className="input"
+                    value={fulfillmentMode}
+                    onChange={(e) => setFulfillmentMode(e.target.value as any)}
+                    style={{ fontSize: '13px', height: '38px' }}
+                  >
+                    <option value="standard">🚴 Standard Biker</option>
+                    <option value="jet">🚀 Biker JET (Express)</option>
+                    <option value="scheduled_saver">📅 Scheduled Saver</option>
+                  </select>
+                </div>
+
+                <div style={{ flex: 1 }}>
+                  <label className="label" style={{ fontSize: '11px' }}>Protect Insurance</label>
+                  <select
+                    className="input"
+                    value={protectionLevel}
+                    onChange={(e) => setProtectionLevel(e.target.value as any)}
+                    style={{ fontSize: '13px', height: '38px' }}
+                  >
+                    <option value="none">❌ None</option>
+                    <option value="protected">🛡️ Protect (+{formatPrice(0.5)})</option>
+                    <option value="premium_secure">✨ Protect+ (+{formatPrice(1.5)})</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Payment Mode Selection */}
+              <div>
+                <label className="label" style={{ fontSize: '11px', marginBottom: '6px' }}>Escrow Payment Mode</label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {country === 'ZW' ? (
+                    <button
+                      type="button"
+                      className={`btn ${paymentMethod === 'ecocash' ? 'btn--primary' : 'btn--secondary'}`}
+                      onClick={() => setPaymentMethod('ecocash')}
+                      style={{ flex: 1, padding: '8px', fontSize: '12px' }}
+                    >
+                      📱 EcoCash
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={`btn ${paymentMethod === 'mtn_momo' ? 'btn--primary' : 'btn--secondary'}`}
+                        onClick={() => setPaymentMethod('mtn_momo')}
+                        style={{ flex: 1, padding: '8px', fontSize: '12px' }}
+                      >
+                        🟡 MTN MoMo
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${paymentMethod === 'airtel_money' ? 'btn--primary' : 'btn--secondary'}`}
+                        onClick={() => setPaymentMethod('airtel_money')}
+                        style={{ flex: 1, padding: '8px', fontSize: '12px' }}
+                      >
+                        🔴 Airtel
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    className={`btn ${paymentMethod === 'cash' ? 'btn--primary' : 'btn--secondary'}`}
+                    onClick={() => setPaymentMethod('cash')}
+                    style={{ flex: 1, padding: '8px', fontSize: '12px' }}
+                  >
+                    💵 Cash (COD)
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <button
               type="submit"
-              className="btn btn--primary btn--lg"
-              style={{ width: '100%', height: '42px', marginTop: '8px' }}
-              disabled={loading || !pickupCoords || !dropoffCoords}
+              disabled={loading || !estimate}
+              className="btn btn--primary btn--lg btn--full"
+              style={{ marginTop: '12px' }}
             >
-              {loading ? <span className="spinner" /> : 'Confirm Biker Booking'}
+              {loading ? 'Publishing Request...' : 'Create Request & Scan riders'}
             </button>
           </form>
-        </div>
+        )}
       </div>
     </div>
   );
