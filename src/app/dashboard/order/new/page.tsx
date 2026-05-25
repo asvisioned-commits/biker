@@ -34,6 +34,8 @@ export default function NewOrderPage() {
   const [step, setStep] = useState<'location' | 'fare_details'>('location');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const hasGeolocatedRef = useRef(false);
+  const [locationAccessBlocked, setLocationAccessBlocked] = useState(false);
+  const [isGeolocating, setIsGeolocating] = useState(false);
 
   // Map & Geolocation States
   const [leafletLoaded, setLeafletLoaded] = useState(false);
@@ -42,6 +44,85 @@ export default function NewOrderPage() {
   );
   const [dropoffCoords, setDropoffCoords] = useState<[number, number] | null>(null);
   const [nearbyRiders, setNearbyRiders] = useState<NearbyRider[]>([]);
+
+  // Robust double-accuracy GPS snapper helper
+  const snapToCurrentLocation = (explicitTrigger = false) => {
+    if (!('geolocation' in navigator)) {
+      if (explicitTrigger) alert('Geolocation is not supported by your browser.');
+      reverseGeocode(pickupCoords[0], pickupCoords[1]).then(addr => {
+        setPickupAddress(addr);
+        setPickupSearch(addr);
+      });
+      return;
+    }
+
+    setIsGeolocating(true);
+    setLocationAccessBlocked(false);
+
+    const onSuccess = async (pos: any) => {
+      const { latitude, longitude } = pos.coords;
+      if (mapRef.current) {
+        mapRef.current.setView([latitude, longitude], 15);
+      }
+      setPickupCoords([latitude, longitude]);
+      hasGeolocatedRef.current = true;
+      setIsGeolocating(false);
+      
+      try {
+        const addr = await reverseGeocode(latitude, longitude);
+        setPickupAddress(addr);
+        setPickupSearch(addr);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    const onError = (err: any) => {
+      console.warn(`Geolocation error (${err.code}): ${err.message}. Retrying with low accuracy...`);
+      if (err.code === 1) { // PERMISSION_DENIED
+        setLocationAccessBlocked(true);
+        setIsGeolocating(false);
+        if (explicitTrigger) {
+          alert('📍 Location access is blocked. Please enable location permission in your browser address bar settings to snap GPS.');
+        }
+        reverseGeocode(pickupCoords[0], pickupCoords[1]).then(addr => {
+          setPickupAddress(addr);
+          setPickupSearch(addr);
+        });
+        return;
+      }
+
+      // Drop down to low accuracy WiFi/Cellular/IP triangulation
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        (err2) => {
+          console.error(`Final Geolocation error (${err2.code}): ${err2.message}`);
+          setIsGeolocating(false);
+          if (err2.code === 1) {
+            setLocationAccessBlocked(true);
+          }
+          if (explicitTrigger) {
+            alert('📍 GPS signal lock timed out. Try typing your location or checking your internet connection.');
+          }
+          reverseGeocode(pickupCoords[0], pickupCoords[1]).then(addr => {
+            setPickupAddress(addr);
+            setPickupSearch(addr);
+          });
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 8000,
+          maximumAge: 60000
+        }
+      );
+    };
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: true,
+      timeout: 5000,
+      maximumAge: 0
+    });
+  };
 
   // Address Inputs & Autocomplete States
   const [pickupAddress, setPickupAddress] = useState('');
@@ -168,36 +249,7 @@ export default function NewOrderPage() {
     });
 
     // Auto GPS geolocation on mount
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const { latitude, longitude } = pos.coords;
-          map.setView([latitude, longitude], 15);
-          setPickupCoords([latitude, longitude]);
-          hasGeolocatedRef.current = true;
-          
-          try {
-            const addr = await reverseGeocode(latitude, longitude);
-            setPickupAddress(addr);
-            setPickupSearch(addr);
-          } catch (e) {
-            console.error(e);
-          }
-        },
-        () => {
-          // Fallback geocode default center if denied
-          reverseGeocode(pickupCoords[0], pickupCoords[1]).then(addr => {
-            setPickupAddress(addr);
-            setPickupSearch(addr);
-          });
-        }
-      );
-    } else {
-      reverseGeocode(pickupCoords[0], pickupCoords[1]).then(addr => {
-        setPickupAddress(addr);
-        setPickupSearch(addr);
-      });
-    }
+    snapToCurrentLocation(false);
 
     return () => {
       if (mapRef.current) {
@@ -373,6 +425,7 @@ export default function NewOrderPage() {
     setPickupSearch(s.address);
     setPickupSuggestions([]);
     setIsPickupFocused(false);
+    hasGeolocatedRef.current = true;
     if (mapRef.current) {
       mapRef.current.setView([s.lat, s.lng], 15);
     }
@@ -394,12 +447,58 @@ export default function NewOrderPage() {
     });
   };
 
-  const handleConfirmLocations = () => {
-    if (!pickupAddress || !dropoffCoords) {
+  const handleConfirmLocations = async () => {
+    let resolvedPickupCoords = pickupCoords;
+    let resolvedPickupAddress = pickupAddress;
+    
+    setLoading(true);
+    setError('');
+
+    // 1. Check if pickup needs resolution
+    if (pickupSearch && pickupSearch.trim() !== pickupAddress.trim()) {
+      try {
+        const results = await searchAddress(pickupSearch, country || 'ZW');
+        if (results && results.length > 0) {
+          resolvedPickupCoords = [results[0].lat, results[0].lng];
+          resolvedPickupAddress = results[0].address;
+          setPickupCoords(resolvedPickupCoords);
+          setPickupAddress(resolvedPickupAddress);
+          setPickupSearch(resolvedPickupAddress);
+          hasGeolocatedRef.current = true;
+          if (mapRef.current) {
+            mapRef.current.setView(resolvedPickupCoords, 15);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to geocode pickup address', e);
+      }
+    }
+
+    // 2. Check if dropoff needs resolution
+    let resolvedDropoffCoords = dropoffCoords;
+    let resolvedDropoffAddress = dropoffAddress;
+    if (dropoffSearch && (!dropoffCoords || dropoffSearch.trim() !== dropoffAddress.trim())) {
+      try {
+        const results = await searchAddress(dropoffSearch, country || 'ZW');
+        if (results && results.length > 0) {
+          resolvedDropoffCoords = [results[0].lat, results[0].lng];
+          resolvedDropoffAddress = results[0].address;
+          setDropoffCoords(resolvedDropoffCoords);
+          setDropoffAddress(resolvedDropoffAddress);
+          setDropoffSearch(resolvedDropoffAddress);
+        }
+      } catch (e) {
+        console.error('Failed to geocode dropoff address', e);
+      }
+    }
+
+    setLoading(false);
+
+    if (!resolvedPickupAddress || !resolvedDropoffCoords) {
       setError('Please choose a valid pickup and dropoff point');
       return;
     }
-    setError('');
+
     setStep('fare_details');
   };
 
@@ -513,30 +612,7 @@ export default function NewOrderPage() {
       {leafletLoaded && (
         <button
           type="button"
-          onClick={() => {
-            if ('geolocation' in navigator && mapRef.current) {
-              navigator.geolocation.getCurrentPosition(
-                async (pos) => {
-                  const { latitude, longitude } = pos.coords;
-                  mapRef.current.setView([latitude, longitude], 15);
-                  setPickupCoords([latitude, longitude]);
-                  hasGeolocatedRef.current = true;
-                  try {
-                    const addr = await reverseGeocode(latitude, longitude);
-                    setPickupAddress(addr);
-                    setPickupSearch(addr);
-                  } catch (e) {
-                    console.error(e);
-                  }
-                },
-                () => {
-                  alert('GPS Location access denied or unavailable.');
-                }
-              );
-            } else {
-              alert('Geolocation is not supported by your browser.');
-            }
-          }}
+          onClick={() => snapToCurrentLocation(true)}
           className={styles.gpsFab}
           title="Snap to Current Location"
         >
@@ -566,6 +642,17 @@ export default function NewOrderPage() {
               <h2 className={styles.sheetTitle}>Request a Biker</h2>
               <span className={styles.sheetStep}>Step 1 of 2</span>
             </div>
+
+            {locationAccessBlocked && (
+              <div className="alert alert--warning" style={{ fontSize: '11px', padding: '6px 10px', margin: '4px 0 8px 0', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706' }}>
+                📍 <strong>Location Access Blocked</strong>: Auto GPS tracking is blocked. Please enable location permission in your browser address bar or type address manually.
+              </div>
+            )}
+            {isGeolocating && (
+              <div style={{ fontSize: '11px', color: 'var(--color-primary-500)', display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0 10px 0' }}>
+                <span style={{ width: '12px', height: '12px', border: '2px solid var(--color-primary-500)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 1s linear infinite' }} /> Snapping to GPS location...
+              </div>
+            )}
 
             {/* Address Search Engine Panel */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
