@@ -259,6 +259,18 @@ export default function LiveTrackingMap({
 
   }, [pickupCoords, dropoffCoords, riderCoords, riderHeading, routeCoords, leafletLoaded, riderName, nearbyRiders]);
 
+  // Invalidate map size on coordinates or loading change to prevent grey/empty map boxes
+  useEffect(() => {
+    if (mapRef.current) {
+      const timer = setTimeout(() => {
+        if (mapRef.current) {
+          mapRef.current.invalidateSize();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [pickupCoords, dropoffCoords, riderCoords, leafletLoaded]);
+
   return (
     <div className={`${styles.mapWrapper} ${className}`}>
       <div id={mapId.current} className={styles.mapContainer} />
