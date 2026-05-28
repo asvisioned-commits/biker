@@ -9,6 +9,8 @@ interface ProfileContextType {
   refreshSession: (showLoading?: boolean) => Promise<void>;
   country: 'ZW' | 'ZM';
   setCountry: (country: 'ZW' | 'ZM') => void;
+  theme: 'light' | 'dark';
+  setTheme: (theme: 'light' | 'dark') => void;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -17,6 +19,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<BikerSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [country, setCountryState] = useState<'ZW' | 'ZM'>('ZW');
+  const [theme, setThemeState] = useState<'light' | 'dark'>('light');
 
   // Load persisted country preference from localStorage on mount or auto-detect
   useEffect(() => {
@@ -68,9 +71,31 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     detectCountry();
   }, []);
 
+  // Load persisted theme preference from localStorage on mount or auto-detect system theme
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('biker_theme');
+      if (savedTheme === 'light' || savedTheme === 'dark') {
+        setThemeState(savedTheme);
+        document.documentElement.setAttribute('data-theme', savedTheme);
+      } else {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const initialTheme = prefersDark ? 'dark' : 'light';
+        setThemeState(initialTheme);
+        document.documentElement.setAttribute('data-theme', initialTheme);
+      }
+    }
+  }, []);
+
   const setCountry = (newCountry: 'ZW' | 'ZM') => {
     setCountryState(newCountry);
     localStorage.setItem('biker_country', newCountry);
+  };
+
+  const setTheme = (newTheme: 'light' | 'dark') => {
+    setThemeState(newTheme);
+    localStorage.setItem('biker_theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
   };
 
   const refreshSession = async (showLoading = false) => {
@@ -92,7 +117,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <ProfileContext.Provider value={{ session, loading, refreshSession, country, setCountry }}>
+    <ProfileContext.Provider value={{ session, loading, refreshSession, country, setCountry, theme, setTheme }}>
       {children}
     </ProfileContext.Provider>
   );

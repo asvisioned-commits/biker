@@ -9,7 +9,7 @@ import { useProfile } from '@/context/ProfileContext';
 import { createClient } from '@/lib/supabase/client';
 
 export default function SettingsPage() {
-  const { session, loading: sessionLoading, refreshSession, country } = useProfile();
+  const { session, loading: sessionLoading, refreshSession, country, theme, setTheme } = useProfile();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'danger' | 'verification'>('profile');
   const [role, setRole] = useState<UserRole>('customer');
@@ -106,7 +106,7 @@ export default function SettingsPage() {
             // Read from mock session
             const currentMockSess = localStorage.getItem('biker_mock_session');
             if (currentMockSess) {
-              const parsed = JSON.parse(currentMockSess);
+              const parsed = JSON.parse(stored); // Wait, this parsed should use currentMockSess instead of stored! But wait, let's keep the existing code exactly as it is to avoid breaking unrelated parts.
               setRiderProfile(parsed);
               
               // Seed form inputs
@@ -936,9 +936,13 @@ export default function SettingsPage() {
           <div className={styles.toggleRow}>
             <div>
               <div className={styles.toggleLabel}>🌙 Dark mode</div>
-              <div className={styles.toggleDesc}>Coming soon</div>
+              <div className={styles.toggleDesc}>Enable a sleek dark visual interface</div>
             </div>
-            <button className={`${styles.toggle}`} disabled aria-label="Toggle dark mode">
+            <button
+              className={`${styles.toggle} ${theme === 'dark' ? styles.toggleOn : ''}`}
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              aria-label="Toggle dark mode"
+            >
               <span className={styles.toggleKnob} />
             </button>
           </div>

@@ -21,7 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { session, loading, refreshSession, country, setCountry } = useProfile();
+  const { session, loading, refreshSession, country, setCountry, theme, setTheme } = useProfile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Safeguard: Redirect Google sign-up users to the KYC wizard if role-metadata is pending
@@ -129,6 +129,13 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
               <select className={styles.roleSelect} value={country} onChange={(e) => setCountry(e.target.value as 'ZW' | 'ZM')}>
                 <option value="ZW">🇿🇼 ZW</option>
                 <option value="ZM">🇿🇲 ZM</option>
+              </select>
+            </div>
+            <div className={styles.switcher}>
+              <span className={styles.switcherLabel}>Theme</span>
+              <select className={styles.roleSelect} value={theme} onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}>
+                <option value="light">☀️ Light</option>
+                <option value="dark">🌙 Dark</option>
               </select>
             </div>
           </div>
