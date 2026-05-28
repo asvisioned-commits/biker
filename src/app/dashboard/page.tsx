@@ -132,7 +132,7 @@ export default function DashboardHome() {
               {country === 'ZM' ? "Zambia's" : "Zimbabwe's"} premier secure escrow courier logistics service. Real-time path tracing, dynamic pricing, and cash collection.
             </p>
             <Link href="/dashboard/order/new" className="btn btn--primary">
-              📦 Book a Biker Delivery
+              📦 Request a Delivery
             </Link>
           </div>
 
@@ -307,7 +307,7 @@ export default function DashboardHome() {
         {orders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📦</div>
-            <p>No recent orders found. Get started by booking a biker.</p>
+            <p>No recent orders found. Get started by requesting a delivery.</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
