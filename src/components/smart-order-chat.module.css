@@ -1,0 +1,435 @@
+/* ============================================================
+   SMART ORDER CHAT — Conversational Booking Interface
+   Chat-style UI for natural language order creation
+   ============================================================ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 600px;
+  border-radius: 20px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-default, hsl(220, 15%, 90%));
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+}
+
+/* --- Header --- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-default, hsl(220, 15%, 90%));
+  background: var(--bg-secondary, hsl(220, 20%, 97%));
+}
+
+.botAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, hsl(215, 75%, 47%), hsl(270, 70%, 55%));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px hsla(215, 75%, 47%, 0.3);
+}
+
+.headerInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.botName {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.botStatus {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(152, 70%, 45%);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.closeBtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.closeBtn:hover {
+  background: var(--bg-tertiary, hsl(220, 15%, 92%));
+}
+
+/* --- Messages Area --- */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-behavior: smooth;
+}
+
+.messages::-webkit-scrollbar {
+  width: 4px;
+}
+
+.messages::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+/* --- Message Bubbles --- */
+.messageRow {
+  display: flex;
+  gap: 8px;
+  max-width: 85%;
+  animation: messageSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.messageRowBot {
+  align-self: flex-start;
+}
+
+.messageRowUser {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.messageAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.messageBubble {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.messageBubbleBot {
+  background: var(--bg-secondary, hsl(220, 20%, 96%));
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+}
+
+.messageBubbleUser {
+  background: linear-gradient(135deg, hsl(215, 75%, 47%), hsl(215, 70%, 42%));
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+/* --- Quick Reply Chips --- */
+.quickReplies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.quickReplyChip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--color-primary-300, hsl(215, 85%, 72%));
+  background: var(--color-primary-50, hsl(215, 100%, 97%));
+  color: var(--color-primary-600, hsl(215, 80%, 38%));
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.quickReplyChip:hover {
+  background: var(--color-primary-100, hsl(215, 95%, 93%));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px hsla(215, 75%, 47%, 0.15);
+}
+
+/* --- Typing Indicator --- */
+.typingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  align-self: flex-start;
+}
+
+.typingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary, hsl(220, 10%, 60%));
+  animation: typingBounce 1.2s ease-in-out infinite;
+}
+
+.typingDot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typingDot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* --- Parsed Preview Card --- */
+.parsedPreview {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-default, hsl(220, 15%, 90%));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.parsedTitle {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-primary-500);
+  margin-bottom: 8px;
+}
+
+.parsedGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+}
+
+.parsedLabel {
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.parsedValue {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.parsedConfidence {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.confidenceBar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-tertiary, hsl(220, 15%, 92%));
+  overflow: hidden;
+}
+
+.confidenceFill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.confidenceFillHigh {
+  background: hsl(152, 70%, 45%);
+}
+
+.confidenceFillMedium {
+  background: hsl(38, 95%, 55%);
+}
+
+.confidenceFillLow {
+  background: hsl(0, 80%, 55%);
+}
+
+.confidenceLabel {
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* --- Input Area --- */
+.inputArea {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-default, hsl(220, 15%, 90%));
+  background: var(--bg-primary, #fff);
+}
+
+.textInput {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--border-default, hsl(220, 15%, 88%));
+  border-radius: 12px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-secondary, hsl(220, 20%, 97%));
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-height: 40px;
+  resize: none;
+}
+
+.textInput:focus {
+  border-color: var(--color-primary-400, hsl(215, 80%, 58%));
+  box-shadow: 0 0 0 3px hsla(215, 75%, 47%, 0.1);
+}
+
+.textInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.sendBtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, hsl(215, 75%, 47%), hsl(215, 70%, 42%));
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+
+.sendBtn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px hsla(215, 75%, 47%, 0.3);
+}
+
+.sendBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Toggle Button (for embedding) --- */
+.toggleBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px dashed var(--color-primary-300, hsl(215, 85%, 72%));
+  background: var(--color-primary-50, hsl(215, 100%, 97%));
+  color: var(--color-primary-600, hsl(215, 80%, 38%));
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s;
+  font-family: inherit;
+  width: 100%;
+}
+
+.toggleBtn:hover {
+  background: var(--color-primary-100, hsl(215, 95%, 93%));
+  border-style: solid;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px hsla(215, 75%, 47%, 0.12);
+}
+
+.toggleBtnIcon {
+  font-size: 18px;
+}
+
+/* --- Confirm Button --- */
+.confirmBtn {
+  margin-top: 10px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, hsl(152, 70%, 42%), hsl(152, 65%, 36%));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+}
+
+.confirmBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px hsla(152, 70%, 42%, 0.3);
+}
+
+/* --- Mobile --- */
+@media (max-width: 480px) {
+  .container {
+    border-radius: 16px;
+    max-height: 500px;
+  }
+
+  .messages {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .messageRow {
+    max-width: 92%;
+  }
+
+  .messageBubble {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .quickReplyChip {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+}

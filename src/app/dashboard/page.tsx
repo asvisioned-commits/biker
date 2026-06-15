@@ -7,6 +7,9 @@ import { OrderService, BikerOrder } from '@/lib/order-service';
 import Link from 'next/link';
 import { getRiderDashboardStats, updateRiderOnlineStatus } from './earnings/actions';
 import { useProfile } from '@/context/ProfileContext';
+import RiderCard from '@/components/RiderCard';
+import type { UserRole } from '@/types';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 export default function DashboardHome() {
   const router = useRouter();
@@ -19,7 +22,7 @@ export default function DashboardHome() {
     }
     return `$${usdVal.toFixed(2)}`;
   };
-  const [role, setRole] = useState<'customer' | 'rider' | 'merchant' | 'ops' | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);
   const [orders, setOrders] = useState<BikerOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -127,21 +130,109 @@ export default function DashboardHome() {
       {role === 'customer' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="card p-6 md:col-span-2 display-flex flex-column justify-center align-start">
-            <h2 className="title title--sm mb-2">Need to deliver or buy something?</h2>
+            <h2 className="title title--sm mb-2">Need to send something instantly?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
               {country === 'ZM' ? "Zambia's" : "Zimbabwe's"} premier secure escrow courier logistics service. Real-time path tracing, dynamic pricing, and cash collection.
             </p>
             <Link href="/dashboard/order/new" className="btn btn--primary">
-              📦 Request a Delivery
+              ⚡ Send Now
             </Link>
           </div>
 
           <div className="card p-6 display-flex flex-column justify-between">
-            <div style={{ fontSize: '3rem' }}>🛡️</div>
+            <div style={{ marginBottom: '12px' }}>
+              <PremiumIcon name="ShieldCheck" variant="protect" glow size={48} />
+            </div>
             <div>
               <h3 style={{ fontWeight: 800, marginBottom: '6px' }}>Biker Protect enabled</h3>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                 All EcoCash order payouts are held securely in a multi-sig escrow system. Guaranteed payout releases.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {role === 'merchant' && (
+        <div className="flex flex-col gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="card p-6 md:col-span-2 display-flex flex-column justify-center align-start">
+              <h2 className="title title--sm mb-2">WhatsApp Store Logistics</h2>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
+                Generate pre-filled checkout links to copy and paste to your WhatsApp or Instagram buyers. They confirm their drop-off coordinates, authorize escrow payments, and we auto-dispatch the nearest verified rider.
+              </p>
+              <div className="flex gap-2">
+                <Link href="/dashboard/links" className="btn btn--primary">
+                  🔗 WhatsApp Delivery Link
+                </Link>
+                <Link href="/dashboard/analytics" className="btn btn--secondary">
+                  📊 Analytics Dashboard
+                </Link>
+              </div>
+            </div>
+
+            <div className="card p-6 display-flex flex-col justify-between">
+              <div>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Escrow Funds Held</div>
+                <div style={{ fontSize: '2rem', fontWeight: 850, color: 'var(--text-primary)', marginTop: '4px' }}>
+                  {formatPrice(155.00)}
+                </div>
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>
+                Escrow balances automatically settle to your bank/wallet 24 hours after verified drop-off.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-4 card" style={{ padding: '16px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Orders Today</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '4px' }}>12</div>
+            </div>
+            <div className="p-4 card" style={{ padding: '16px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Active Links</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '4px', color: 'var(--color-primary-500)' }}>3 Pending</div>
+            </div>
+            <div className="p-4 card" style={{ padding: '16px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>On-Time SLA</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '4px', color: '#10b981' }}>98.2%</div>
+            </div>
+            <div className="p-4 card" style={{ padding: '16px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Rating</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '4px', color: '#fbbf24' }}>⭐ 4.90</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(role === 'ops' || role === 'admin') && (
+        <div className="flex flex-col gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="card p-6 md:col-span-2 display-flex flex-column justify-center align-start">
+              <h2 className="title title--sm mb-2">Operations Control Desk</h2>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
+                Verify rider documentation queues, moderate payment disputes, and reconcile cash on delivery collections.
+              </p>
+              <div className="flex gap-2">
+                <Link href="/dashboard/ops/cod" className="btn btn--primary">
+                  💵 Cash float audit
+                </Link>
+                <Link href="/dashboard/admin/billing" className="btn btn--secondary">
+                  ⚙️ Admin Moderation Queue
+                </Link>
+              </div>
+            </div>
+
+            <div className="card p-6 display-flex flex-col justify-between">
+              <div>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>System Status</div>
+                <div style={{ fontSize: '1.3rem', fontWeight: 850, color: '#10b981', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <PremiumIcon name="Activity" variant="success" animate="pulse" size={20} />
+                  <span>Operations Normal</span>
+                </div>
+              </div>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>
+                Harare dispatch queues matched 148 active couriers in the last hour.
               </p>
             </div>
           </div>
@@ -297,6 +388,21 @@ export default function DashboardHome() {
               </div>
             </div>
           </div>
+
+          {/* Rider Reputation Card */}
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
+            <RiderCard
+              riderId={profile?.id || 'default'}
+              name={profile?.full_name || 'Biker Rider'}
+              tier={(riderStats?.tier as 'starter' | 'pro' | 'elite') || 'starter'}
+              trustScore={riderStats?.trustScore ?? 95}
+              rating={riderStats?.rating ?? 4.8}
+              totalDeliveries={riderStats?.totalDeliveries ?? 47}
+              perfectStreak={riderStats?.perfectStreak ?? 12}
+              joinDate={profile?.created_at || new Date().toISOString()}
+              isOnline={riderOnline}
+            />
+          </div>
         </div>
       )}
 
@@ -306,7 +412,9 @@ export default function DashboardHome() {
 
         {orders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>📦</div>
+            <div style={{ marginBottom: '16px' }}>
+              <PremiumIcon name="Inbox" variant="neutral" size={48} className="opacity-50" />
+            </div>
             <p>No recent orders found. Get started by requesting a delivery.</p>
           </div>
         ) : (
@@ -314,7 +422,7 @@ export default function DashboardHome() {
             {orders.map((o) => (
               <div key={o.id} className="flex justify-between items-center p-4 border border--default" style={{ borderRadius: '8px', background: 'var(--bg-secondary)', flexWrap: 'wrap', gap: '16px' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <div style={{ fontSize: '1.5rem' }}>🚴</div>
+                  <PremiumIcon name="Bike" variant="primary" size={24} backdrop="circle" />
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '14px' }} className="font-mono">{o.reference_code}</div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>

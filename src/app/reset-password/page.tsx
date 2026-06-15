@@ -6,6 +6,25 @@ import { useRouter } from 'next/navigation';
 import styles from './reset-password.module.css';
 import { updateUserPassword } from '@/lib/auth';
 
+const validatePasswordComplexity = (pass: string): string | null => {
+  if (pass.length < 8) {
+    return 'Password must be at least 8 characters long.';
+  }
+  if (!/[A-Z]/.test(pass)) {
+    return 'Password must contain at least one uppercase letter.';
+  }
+  if (!/[a-z]/.test(pass)) {
+    return 'Password must contain at least one lowercase letter.';
+  }
+  if (!/[0-9]/.test(pass)) {
+    return 'Password must contain at least one number.';
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(pass)) {
+    return 'Password must contain at least one special character.';
+  }
+  return null;
+};
+
 function ResetPasswordContent() {
   const router = useRouter();
   const [password, setPassword] = useState('');
@@ -31,8 +50,9 @@ function ResetPasswordContent() {
     e.preventDefault();
     setError('');
     
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
+    const passError = validatePasswordComplexity(password);
+    if (passError) {
+      setError(passError);
       return;
     }
     
@@ -69,7 +89,7 @@ function ResetPasswordContent() {
               Secure your<br />account access.
             </h2>
             <p className={styles.brandSubtitle}>
-              Update your password below to regain full protection over your bookings, payments, and shipments.
+              Update your password below to regain full protection over your deliveries, dispatches, and payments.
             </p>
             <div className={styles.brandFeatures}>
               <div className={styles.brandFeature}>
@@ -115,12 +135,14 @@ function ResetPasswordContent() {
                     id="new-password"
                     type="password"
                     className="input"
-                    placeholder="Min. 6 characters"
+                    placeholder="Min. 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={loading}
+                    minLength={8}
                   />
+                  <span className="input-hint">At least 8 characters (with uppercase, number, and special character)</span>
                 </div>
                 
                 <div className="input-group">

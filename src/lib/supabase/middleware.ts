@@ -2,13 +2,6 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function updateSession(request: NextRequest) {
-  const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-
-  // In dev mode, bypass all auth checks — mock auth handled client-side
-  if (IS_DEV) {
-    return NextResponse.next({ request });
-  }
-
   const { pathname, searchParams } = request.nextUrl;
   const code = searchParams.get('code');
 
@@ -19,7 +12,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Production: Full Supabase session management
+  // Full Supabase session management
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -43,19 +36,22 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: Do NOT use getSession() — it reads from storage which can be tampered.
-  // Use getUser() which validates the token with Supabase Auth server.
+  // IMPORTANT: Use getUser() which validates the token with Supabase Auth server.
+  // Do NOT use getSession() — it reads from storage which can be tampered.
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-
-
   // Public routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/signup', '/auth/callback'];
+  const publicRoutes = ['/', '/login', '/signup', '/auth/callback', '/about', '/privacy', '/terms', '/disputes-policy'];
   const isPublicRoute = publicRoutes.some(
-    (route) => pathname === route || pathname.startsWith('/auth/')
-  );
+    (route) => pathname === route
+  ) || pathname.startsWith('/reset-password');
+
+  // Static assets and API routes should pass through
+  if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.includes('.')) {
+    return supabaseResponse;
+  }
 
   // If user is not authenticated and trying to access protected route
   if (!user && !isPublicRoute) {

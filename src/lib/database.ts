@@ -111,11 +111,10 @@ export async function createOrder(order: {
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       } else {
-        // Simple fallback hex representation if crypto is somehow not initialized (safeguard)
-        computedHash = plaintextPin;
+        throw new Error('Web Crypto API unavailable — cannot hash delivery PIN securely.');
       }
     } catch (e) {
-      computedHash = plaintextPin;
+      throw new Error('Web Crypto API unavailable — cannot hash delivery PIN securely.');
     }
 
     return supabase.from('delivery_requests').insert({ 
@@ -145,6 +144,19 @@ export async function createOrder(order: {
   return { data, error };
 }
 
+export async function updateOrderPurchaseDetails(orderId: string, purchaseAmount: number, shoppingList?: any[]) {
+  const { data, error } = await supabase
+    .from('delivery_requests')
+    .update({ 
+      purchase_amount: purchaseAmount,
+      shopping_list: shoppingList,
+    })
+    .eq('id', orderId)
+    .select()
+    .single();
+  return { data, error };
+}
+
 export async function getOrders(userId: string, role: UserRole, filters?: { status?: string; limit?: number; offset?: number; }) {
   let query = supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(full_name, avatar_url), customer:profiles!delivery_requests_customer_id_fkey(full_name, avatar_url)`).order('created_at', { ascending: false });
   if (role === 'customer') query = query.eq('customer_id', userId);
@@ -162,7 +174,7 @@ export async function getOrders(userId: string, role: UserRole, filters?: { stat
 }
 
 export async function getOrderById(orderId: string) {
-  const { data, error } = await supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(id, full_name, avatar_url, phone), customer:profiles!delivery_requests_customer_id_fkey(id, full_name, avatar_url, phone), proofs:delivery_proofs(proof_type, file_url, notes, created_at), status_log:delivery_status_log(from_status, to_status, changed_by, notes, created_at)`).eq('id', orderId).single();
+  const { data, error } = await supabase.from('delivery_requests').select(`*, rider:profiles!delivery_requests_assigned_rider_id_fkey(id, full_name, avatar_url, phone, trust_tier), customer:profiles!delivery_requests_customer_id_fkey(id, full_name, avatar_url, phone), proofs:delivery_proofs(proof_type, file_url, notes, created_at), status_log:delivery_status_log(from_status, to_status, changed_by, notes, created_at)`).eq('id', orderId).single();
   return { data, error };
 }
 
@@ -542,7 +554,7 @@ export async function checkOrderVelocity(userId: string | null, fingerprint: str
   
   return {
     allowed,
-    details: allowed ? undefined : 'Booking limit exceeded. You can only place up to 3 orders every 10 minutes.'
+    details: allowed ? undefined : 'Dispatch limit exceeded. You can only place up to 3 orders every 10 minutes.'
   };
 }
 
@@ -997,27 +1009,7 @@ export async function getOpsDashboardStats() {
 }
 
 export async function getCODReconciliationReport(dateStr?: string) {
-  const devMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-  const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true';
-  
-  if (!useLiveDb || devMode) {
-    // Offline simulation / Developer mock data
-    return {
-      success: true,
-      data: {
-        totalCODOrders: 8,
-        totalCashExpected: 180.50,
-        totalCashCollected: 178.50,
-        discrepancies: [
-          { orderId: 'mock-cod-1', reference: 'BKR-COD88', riderName: 'John Doe', expected: 20.00, collected: 18.00, difference: 2.00, flaggedAt: new Date(Date.now() - 3600000).toISOString() }
-        ],
-        outstandingRiderBalances: [
-          { riderId: 'mock-rider-1', riderName: 'John Doe', balance: 35.00, limit: 50.00 },
-          { riderId: 'mock-rider-2', riderName: 'Tinashe M.', balance: 12.50, limit: 50.00 }
-        ]
-      }
-    };
-  }
+
 
   try {
     // Query live COD orders

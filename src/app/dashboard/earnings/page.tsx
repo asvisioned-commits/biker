@@ -5,23 +5,23 @@ import {
   getRiderSubscription,
   subscribeOrRenew,
   requestEmergencyCredit,
-  recordDeliveryEarning,
   getEarningsLedger,
-  getMockAuditLogs,
+  getRiderAuditLogs,
   RiderSubscription,
-  EarningsLogEntry
+  EarningsLogEntry,
+  StatusAuditEntry
 } from './actions';
 import styles from './earnings.module.css';
 import { useProfile } from '@/context/ProfileContext';
-import { FLAGS } from '@/lib/flags';
 
 export default function EarningsPage() {
   const { session, loading: profileLoading } = useProfile();
-  const userId = session?.user_id || 'mock-rider';
+  const userId = session?.user_id;
 
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<RiderSubscription | null>(null);
   const [ledger, setLedger] = useState<EarningsLogEntry[]>([]);
+  const [auditLogs, setAuditLogs] = useState<StatusAuditEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'ledger' | 'policy'>('overview');
   
   // Payment Modal State
@@ -33,13 +33,15 @@ export default function EarningsPage() {
 
   // Load state
   const loadData = async () => {
-    if (profileLoading) return;
+    if (profileLoading || !userId) return;
     setLoading(true);
     try {
       const activeSub = await getRiderSubscription(userId);
       const activeLedger = await getEarningsLedger(userId);
+      const activeAudits = await getRiderAuditLogs(userId);
       setSub(activeSub);
       setLedger(activeLedger);
+      setAuditLogs(activeAudits);
     } catch (e) {
       console.error(e);
     } finally {
@@ -48,27 +50,13 @@ export default function EarningsPage() {
   };
 
   useEffect(() => {
-    if (!profileLoading) {
+    if (!profileLoading && userId) {
       loadData();
     }
   }, [profileLoading, userId]);
 
-  const handleSimulateEarning = async (amount: number) => {
-    if (!sub) return;
-    const res = await recordDeliveryEarning(userId, 'order-sim-' + Date.now(), amount);
-    if (!res.success) {
-      alert(`Simulation failed: ${res.message}`);
-    } else {
-      // Reload details
-      const activeSub = await getRiderSubscription(userId);
-      const activeLedger = await getEarningsLedger(userId);
-      setSub(activeSub);
-      setLedger(activeLedger);
-    }
-  };
-
   const handleRequestCredit = async () => {
-    if (!sub) return;
+    if (!sub || !userId) return;
     const res = await requestEmergencyCredit(userId);
     alert(res.message);
     if (res.success) {
@@ -78,7 +66,7 @@ export default function EarningsPage() {
 
   const handleRenewPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sub) return;
+    if (!sub || !userId) return;
     
     const res = await subscribeOrRenew(
       userId,
@@ -103,11 +91,19 @@ export default function EarningsPage() {
     }
   };
 
-  if (profileLoading || loading || !sub) {
+  if (profileLoading || loading) {
     return (
       <div className={styles.loadingContainer}>
         <div className={styles.spinner} />
         <p>Syncing wallet logs with platform ledger...</p>
+      </div>
+    );
+  }
+
+  if (!userId || !sub) {
+    return (
+      <div className={styles.loadingContainer}>
+        <p>Please log in to view wallet details.</p>
       </div>
     );
   }
@@ -143,59 +139,6 @@ export default function EarningsPage() {
 
   return (
     <div className={styles.page}>
-      {/* Simulation Controls HUD (Floating Bar) */}
-      {FLAGS.devHud && (
-        <div className={styles.simulatorHud}>
-          <div className={styles.simLabel}>🧪 SIMULATION SANDBOX</div>
-          <div className={styles.simActions}>
-            <button 
-              onClick={() => handleSimulateEarning(10.00)} 
-              disabled={sub.status === 'suspended' || sub.status === 'closed'}
-              className={styles.simBtn}
-            >
-              +$10.00 Earning
-            </button>
-            <button 
-              onClick={() => handleSimulateEarning(25.00)}
-              disabled={sub.status === 'suspended' || sub.status === 'closed'}
-              className={`${styles.simBtn} ${styles.simBtnOrange}`}
-            >
-              +$25.00 Earning
-            </button>
-            <button 
-              onClick={async () => {
-                // Trigger auto suspension by resetting grace period into past
-                if (typeof window !== 'undefined') {
-                  const subs = JSON.parse(localStorage.getItem('biker_subs_subscriptions') || '{}');
-                  if (subs[userId]) {
-                    subs[userId].status = 'suspended';
-                    localStorage.setItem('biker_subs_subscriptions', JSON.stringify(subs));
-                    loadData();
-                  }
-                }
-              }}
-              className={`${styles.simBtn} ${styles.simBtnRed}`}
-            >
-              Trigger Suspension
-            </button>
-            <button 
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  localStorage.removeItem('biker_subs_subscriptions');
-                  localStorage.removeItem('biker_subs_earnings_log');
-                  localStorage.removeItem('biker_subs_payment_proofs');
-                  localStorage.removeItem('biker_subs_audit_logs');
-                  loadData();
-                }
-              }}
-              className={styles.simBtnReset}
-            >
-              Reset All
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Header Info */}
       <div className={styles.header}>
         <div>
@@ -463,10 +406,10 @@ export default function EarningsPage() {
             <div className={styles.auditList}>
               <p className={styles.auditIntro}>Rider compliance logs maintained by platform audit controls:</p>
               <div className={styles.ledgerList}>
-                {getMockAuditLogs().length === 0 ? (
+                {auditLogs.length === 0 ? (
                   <p className={styles.noData}>No compliance actions logged for this rider.</p>
                 ) : (
-                  getMockAuditLogs().map((log) => (
+                  auditLogs.map((log) => (
                     <div key={log.id} className={styles.ledgerRow}>
                       <div className={styles.ledgerLeft}>
                         <span className={styles.ledgerTypeIcon}>🛡️</span>

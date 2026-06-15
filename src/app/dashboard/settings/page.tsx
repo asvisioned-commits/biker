@@ -74,7 +74,7 @@ export default function SettingsPage() {
     setDeleting(true);
     setDeleteError('');
     try {
-      const { success, error } = await deleteAccount(session.user_id);
+      const { success, error } = await deleteAccount();
       if (!success && error) {
         setDeleteError(error.message || 'Failed to delete account. Please try again.');
         setDeleting(false);
@@ -101,48 +101,27 @@ export default function SettingsPage() {
         setLoadingRiderProfile(true);
         setSaveError('');
         try {
-          const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-          if (IS_DEV) {
-            // Read from mock session
-            const currentMockSess = localStorage.getItem('biker_mock_session');
-            if (currentMockSess) {
-              const parsed = JSON.parse(stored); // Wait, this parsed should use currentMockSess instead of stored! But wait, let's keep the existing code exactly as it is to avoid breaking unrelated parts.
-              setRiderProfile(parsed);
-              
-              // Seed form inputs
-              setKycVehicleType(parsed.vehicle_type || 'motorcycle');
-              setKycVehicleReg(parsed.vehicle_registration || '');
-              setKycLicenseNumber(parsed.license_number || '');
-              setKycNationalId(parsed.national_id || session.national_id_number || '');
-              setKycOperatingZone(parsed.operating_zone || '');
-              setKycIdCardUrl(parsed.national_id_card_url || null);
-              setKycVehicleRegUrl(parsed.vehicle_registration_url || null);
-              setKycLicenseCardUrl(parsed.license_card_url || null);
-              setKycSelfieUrl(parsed.selfie_url || null);
-            }
-          } else {
-            const { data, error } = await getRiderProfile(session.user_id);
-            if (error) {
-              setSaveError(error.message);
-            } else if (data) {
-              setRiderProfile(data);
-              
-              // Seed form inputs
-              setKycVehicleType(data.vehicle_type || 'motorcycle');
-              setKycVehicleReg(data.vehicle_registration || '');
-              setKycLicenseNumber(data.license_number || '');
-              setKycOperatingZone(data.operating_zone || '');
-              setKycIdCardUrl(data.national_id_card_url || null);
-              setKycVehicleRegUrl(data.vehicle_registration_url || null);
-              setKycLicenseCardUrl(data.license_card_url || null);
-              setKycSelfieUrl(data.selfie_url || null);
-              
-              // Retrieve national ID number from profiles table if possible
-              const supabase = createClient();
-              const { data: mainProfile } = await supabase.from('profiles').select('national_id_number').eq('id', session.user_id).single();
-              if (mainProfile) {
-                setKycNationalId(mainProfile.national_id_number || '');
-              }
+          const { data, error } = await getRiderProfile(session.user_id);
+          if (error) {
+            setSaveError(error.message);
+          } else if (data) {
+            setRiderProfile(data);
+            
+            // Seed form inputs
+            setKycVehicleType(data.vehicle_type || 'motorcycle');
+            setKycVehicleReg(data.vehicle_registration || '');
+            setKycLicenseNumber(data.license_number || '');
+            setKycOperatingZone(data.operating_zone || '');
+            setKycIdCardUrl(data.national_id_card_url || null);
+            setKycVehicleRegUrl(data.vehicle_registration_url || null);
+            setKycLicenseCardUrl(data.license_card_url || null);
+            setKycSelfieUrl(data.selfie_url || null);
+            
+            // Retrieve national ID number from profiles table if possible
+            const supabase = createClient();
+            const { data: mainProfile } = await supabase.from('profiles').select('national_id_number').eq('id', session.user_id).single();
+            if (mainProfile) {
+              setKycNationalId(mainProfile.national_id_number || '');
             }
           }
         } catch (err: any) {
@@ -299,116 +278,52 @@ export default function SettingsPage() {
     setSaving(true);
     setSaveError('');
 
-    const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-
     let finalIdUrl = kycIdCardUrl;
     let finalRegUrl = kycVehicleRegUrl;
     let finalLicenseUrl = kycLicenseCardUrl;
     let finalSelfieUrl = kycSelfieUrl;
 
     try {
-      if (IS_DEV) {
-        // Dev mode: update local storage mock session
-        const stored = localStorage.getItem('biker_mock_session');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          parsed.vehicle_type = kycVehicleType;
-          parsed.vehicle_registration = kycVehicleType === 'bicycle' ? 'N/A' : kycVehicleReg;
-          parsed.license_number = kycVehicleType === 'bicycle' ? 'N/A' : kycLicenseNumber;
-          parsed.national_id = kycNationalId;
-          parsed.operating_zone = kycOperatingZone;
-          parsed.national_id_card_url = kycIdCardUrl;
-          parsed.vehicle_registration_url = kycVehicleRegUrl;
-          parsed.license_card_url = kycLicenseCardUrl;
-          parsed.selfie_url = kycSelfieUrl;
-          parsed.kyc_status = 'pending_ops_approval';
-          parsed.kyc_rejection_reason = null;
-          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
-        }
-
-        // Also update ops queue
-        const queueStr = localStorage.getItem('biker_mock_riders_queue') || '[]';
-        const queueList = JSON.parse(queueStr);
-        // Remove existing if any, and insert updated
-        const filtered = queueList.filter((r: any) => r.user_id !== session.user_id);
-        filtered.push({
-          user_id: session.user_id,
-          full_name: session.full_name,
-          email: session.email || 'mock@biker.com',
-          phone: session.phone || '+263771234567',
-          vehicle_type: kycVehicleType,
-          vehicle_registration: kycVehicleType === 'bicycle' ? 'N/A' : kycVehicleReg,
-          license_number: kycVehicleType === 'bicycle' ? 'N/A' : kycLicenseNumber,
-          operating_zone: kycOperatingZone,
-          national_id: kycNationalId,
-          national_id_card_url: kycIdCardUrl,
-          vehicle_registration_url: kycVehicleRegUrl,
-          license_card_url: kycLicenseCardUrl,
-          selfie_url: kycSelfieUrl,
-          kyc_status: 'pending_ops_approval',
-          kyc_rejection_reason: null
-        });
-        localStorage.setItem('biker_mock_riders_queue', JSON.stringify(filtered));
-
-        // Reload details
-        const mockProfile = {
-          vehicle_type: kycVehicleType,
-          vehicle_registration: kycVehicleType === 'bicycle' ? 'N/A' : kycVehicleReg,
-          license_number: kycVehicleType === 'bicycle' ? 'N/A' : kycLicenseNumber,
-          operating_zone: kycOperatingZone,
-          national_id_card_url: kycIdCardUrl,
-          vehicle_registration_url: kycVehicleRegUrl,
-          license_card_url: kycLicenseCardUrl,
-          selfie_url: kycSelfieUrl,
-          kyc_status: 'pending_ops_approval',
-          kyc_rejection_reason: null
-        };
-        setRiderProfile(mockProfile as any);
-        setIsEditingKyc(false);
-        await refreshSession();
-      } else {
-        // Live DB Mode
-        // 1. Upload files
-        try {
-          finalIdUrl = kycIdCardUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'id-card', kycIdCardUrl) : null;
-          finalRegUrl = kycVehicleRegUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'vehicle-reg', kycVehicleRegUrl) : null;
-          finalLicenseUrl = kycLicenseCardUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'license', kycLicenseCardUrl) : null;
-          finalSelfieUrl = kycSelfieUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'selfie', kycSelfieUrl) : null;
-        } catch (uploadErr) {
-          console.warn('Document upload failed:', uploadErr);
-        }
-
-        // 2. Update profiles table with national ID number
-        if (kycNationalId) {
-          const { error: profileErr } = await updateProfile(session.user_id, {
-            national_id_number: kycNationalId
-          });
-          if (profileErr) throw profileErr;
-        }
-
-        // 3. Update rider_profiles table
-        const { error: riderErr } = await updateRiderProfile(session.user_id, {
-          vehicle_type: kycVehicleType,
-          vehicle_registration: kycVehicleType === 'bicycle' ? 'N/A' : kycVehicleReg,
-          license_number: kycVehicleType === 'bicycle' ? 'N/A' : kycLicenseNumber,
-          operating_zone: kycOperatingZone,
-          national_id_card_url: finalIdUrl,
-          vehicle_registration_url: finalRegUrl,
-          license_card_url: finalLicenseUrl,
-          selfie_url: finalSelfieUrl,
-          kyc_status: 'pending_ops_approval',
-          kyc_rejection_reason: null
-        });
-        if (riderErr) throw riderErr;
-
-        // Reload profile
-        const { data } = await getRiderProfile(session.user_id);
-        if (data) {
-          setRiderProfile(data);
-        }
-        setIsEditingKyc(false);
-        await refreshSession();
+      // 1. Upload files
+      try {
+        finalIdUrl = kycIdCardUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'id-card', kycIdCardUrl) : null;
+        finalRegUrl = kycVehicleRegUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'vehicle-reg', kycVehicleRegUrl) : null;
+        finalLicenseUrl = kycLicenseCardUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'license', kycLicenseCardUrl) : null;
+        finalSelfieUrl = kycSelfieUrl ? await uploadFileToSupabase(session.user_id, 'kyc-documents', 'selfie', kycSelfieUrl) : null;
+      } catch (uploadErr) {
+        console.warn('Document upload failed:', uploadErr);
       }
+
+      // 2. Update profiles table with national ID number
+      if (kycNationalId) {
+        const { error: profileErr } = await updateProfile(session.user_id, {
+          national_id_number: kycNationalId
+        });
+        if (profileErr) throw profileErr;
+      }
+
+      // 3. Update rider_profiles table
+      const { error: riderErr } = await updateRiderProfile(session.user_id, {
+        vehicle_type: kycVehicleType,
+        vehicle_registration: kycVehicleType === 'bicycle' ? 'N/A' : kycVehicleReg,
+        license_number: kycVehicleType === 'bicycle' ? 'N/A' : kycLicenseNumber,
+        operating_zone: kycOperatingZone,
+        national_id_card_url: finalIdUrl,
+        vehicle_registration_url: finalRegUrl,
+        license_card_url: finalLicenseUrl,
+        selfie_url: finalSelfieUrl,
+        kyc_status: 'pending_ops_approval',
+        kyc_rejection_reason: null
+      });
+      if (riderErr) throw riderErr;
+
+      // Reload profile
+      const { data } = await getRiderProfile(session.user_id);
+      if (data) {
+        setRiderProfile(data);
+      }
+      setIsEditingKyc(false);
+      await refreshSession();
     } catch (err: any) {
       setSaveError(err.message || 'Failed to submit verification details.');
     } finally {
@@ -512,8 +427,6 @@ export default function SettingsPage() {
     setSaved(false);
 
     try {
-      const isMockUser = session.user_id.startsWith('mock-');
-      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
       const emailChanged = email.trim() !== initialEmail.trim();
 
       if (emailChanged && isGoogleConnected) {
@@ -521,53 +434,29 @@ export default function SettingsPage() {
         return;
       }
 
-      // Update local storage for mock fallback/dev compatibility
-      const stored = localStorage.getItem('biker_mock_session');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          parsed.full_name = fullName;
-          parsed.email = email;
-          parsed.phone = '+263' + phone;
-          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
-        } catch (e) { /* ignore */ }
+      const profileUpdates: any = {
+        full_name: fullName,
+        phone: '+263' + phone,
+      };
+
+      if (emailChanged) {
+        profileUpdates.email = email.trim();
       }
 
-      if (useLiveDb) {
-        const profileUpdates: any = {
-          full_name: fullName,
-          phone: '+263' + phone,
-        };
+      const { error: profileError } = await updateProfile(session.user_id, profileUpdates);
+      if (profileError) {
+        setSaveError(profileError.message || 'Failed to update database profile.');
+        return;
+      }
 
-        // 1. If email changed, propagate email to profiles table
-        if (emailChanged) {
-          profileUpdates.email = email.trim();
-        }
-
-        const { error: profileError } = await updateProfile(session.user_id, profileUpdates);
-        if (profileError) {
-          setSaveError(profileError.message || 'Failed to update database profile.');
+      if (emailChanged) {
+        const { error: authError } = await updateUserEmail(email.trim());
+        if (authError) {
+          setSaveError(authError.message || 'Failed to update email in auth system.');
           return;
         }
-
-        // 2. If email changed, propagate email to Supabase Auth system
-        if (emailChanged) {
-          const { error: authError } = await updateUserEmail(email.trim());
-          if (authError) {
-            setSaveError(authError.message || 'Failed to update email in auth system.');
-            return;
-          }
-          if (!isMockUser) {
-            setEmailPendingVerification(true);
-          }
-          setInitialEmail(email.trim());
-        }
-      } else {
-        // Mock path email change
-        if (emailChanged) {
-          await updateUserEmail(email.trim());
-          setInitialEmail(email.trim());
-        }
+        setEmailPendingVerification(true);
+        setInitialEmail(email.trim());
       }
 
       // Propagate changes globally to update layout headers/sidebars instantly!
@@ -727,47 +616,9 @@ export default function SettingsPage() {
                     {isGoogleConnected ? 'Connected' : 'Not connected'}
                   </div>
                 </div>
-                {isGoogleConnected ? (
-                  <button
-                    className="btn btn--ghost btn--sm"
-                    onClick={async () => {
-                      setIsGoogleConnected(false);
-                      const stored = localStorage.getItem('biker_mock_session');
-                      if (stored) {
-                        try {
-                          const parsed = JSON.parse(stored);
-                          parsed.is_google = false;
-                          if (parsed.user_id?.startsWith('google-mock-')) {
-                            parsed.user_id = parsed.user_id.replace(
-                              'google-mock-',
-                              'disconnected-google-'
-                            );
-                          }
-                          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
-                        } catch (e) {}
-                      }
-                    }}
-                  >
-                    Disconnect
-                  </button>
-                ) : (
-                  <button
-                    className="btn btn--secondary btn--sm"
-                    onClick={async () => {
-                      setIsGoogleConnected(true);
-                      const stored = localStorage.getItem('biker_mock_session');
-                      if (stored) {
-                        try {
-                          const parsed = JSON.parse(stored);
-                          parsed.is_google = true;
-                          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
-                        } catch (e) {}
-                      }
-                    }}
-                  >
-                    Connect
-                  </button>
-                )}
+                <span style={{ fontSize: '12px', fontWeight: 600, color: isGoogleConnected ? 'var(--color-success-500)' : 'var(--text-secondary)' }}>
+                  {isGoogleConnected ? '✓ Linked' : 'Not linked'}
+                </span>
               </div>
             </div>
           </div>

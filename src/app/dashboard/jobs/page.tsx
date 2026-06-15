@@ -15,6 +15,8 @@ import styles from './jobs.module.css';
 import { useProfile } from '@/context/ProfileContext';
 import { createClient } from '@/lib/supabase/client';
 import { FLAGS } from '@/lib/flags';
+import SurgeMeter from '@/components/SurgeMeter';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 const MOCK_JOBS = [
   {
@@ -85,12 +87,21 @@ const MOCK_JOBS = [
 ];
 
 const SERVICE_ICONS: Record<string, string> = {
-  send_item: '📦',
-  buy_for_me: '🛒',
-  pickup_order: '🏪',
-  document_run: '📄',
-  queue_service: '⏳',
-  multi_stop: '📍',
+  send_item: 'Package',
+  buy_for_me: 'ShoppingCart',
+  pickup_order: 'Store',
+  document_run: 'FileText',
+  queue_service: 'Clock',
+  multi_stop: 'MapPin',
+};
+
+const SERVICE_VARIANTS: Record<string, any> = {
+  send_item: 'primary',
+  buy_for_me: 'success',
+  pickup_order: 'warning',
+  document_run: 'info',
+  queue_service: 'neutral',
+  multi_stop: 'danger',
 };
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -283,10 +294,10 @@ export default function JobsPage() {
       riderMarkerRef.current.setLatLng(riderCoords);
     } else {
       const riderIcon = L.divIcon({
-        html: `<div style="font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">🏍️</div>`,
+        html: `<div style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(194, 249, 18, 0.2); border: 2px solid #c2f912; box-shadow: 0 0 12px #c2f912, inset 0 0 8px rgba(194, 249, 18, 0.5);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c2f912" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="2.5"></circle><circle cx="18.5" cy="17.5" r="2.5"></circle><path d="M15 13.5H9L4 7h6l2.5 4H18l-3 2.5z"></path><path d="M12 7.5V3h3"></path></svg></div>`,
         className: 'leaflet-rider-marker',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
       });
       riderMarkerRef.current = L.marker(riderCoords, { icon: riderIcon })
         .addTo(jobsMapRef.current)
@@ -315,10 +326,10 @@ export default function JobsPage() {
       const lng = job.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522) + (job.reference_code.length % 8) / 100;
 
       const jobIcon = L.divIcon({
-        html: `<div style="font-size: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); transition: transform 0.2s;">📦</div>`,
+        html: `<div style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(6, 182, 212, 0.2); border: 2px solid #06b6d4; box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>`,
         className: 'leaflet-job-marker',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
       });
 
       const popupContent = document.createElement('div');
@@ -715,7 +726,9 @@ export default function JobsPage() {
       {/* Block Acceptance Screen if Suspended/Closed */}
       {isSuspended ? (
         <div className={styles.suspendedScreen}>
-          <div className={styles.suspendedIcon}>⚠️</div>
+          <div className={styles.suspendedIcon} style={{ display: 'inline-flex', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+            <PremiumIcon name="AlertTriangle" variant="danger" size={48} glow animate="bounce" />
+          </div>
           <h2>Account Access Paused</h2>
           <p>
             You have reached your earnings limit of <strong>${sub?.earning_cap.toFixed(2)}</strong> under your current plan. Because emergency buffers are fully exhausted, your account has been suspended.
@@ -731,8 +744,8 @@ export default function JobsPage() {
         <>
           {/* Top Banner Warnings */}
           {isGrace && (
-            <div className={`${styles.topBanner} ${styles.bannerGrace}`}>
-              <span>⚠️</span>
+            <div className={`${styles.topBanner} ${styles.bannerGrace}`} style={{ display: 'flex', alignItems: 'center' }}>
+              <PremiumIcon name="AlertTriangle" variant="danger" size={18} className="mr-2" />
               <div>
                 <strong>Earnings Cap Reached (Grace Period)</strong>
                 <p>You must renew your plan or request emergency credit to avoid account suspension.</p>
@@ -744,8 +757,8 @@ export default function JobsPage() {
           )}
 
           {isNearCap && (
-            <div className={`${styles.topBanner} ${styles.bannerNearCap}`}>
-              <span>ℹ️</span>
+            <div className={`${styles.topBanner} ${styles.bannerNearCap}`} style={{ display: 'flex', alignItems: 'center' }}>
+              <PremiumIcon name="Info" variant="warning" size={18} className="mr-2" />
               <div>
                 <strong>Nearing Earning Limit</strong>
                 <p>You have earned ${sub.current_earnings.toFixed(2)} of your ${sub.earning_cap.toFixed(2)} cap. Renew soon to avoid downtime.</p>
@@ -775,10 +788,17 @@ export default function JobsPage() {
                     alignItems: 'center',
                     gap: '4px'
                   }}>
-                    {sub.status === 'active' 
-                      ? `🔓 Unlocked (~${estJobsLeft} deliveries left)`
-                      : `⏳ Grace Period Active`
-                    }
+                    {sub.status === 'active' ? (
+                      <>
+                        <PremiumIcon name="LockOpen" variant="success" size={12} className="mr-1" />
+                        <span>Unlocked (~{estJobsLeft} deliveries left)</span>
+                      </>
+                    ) : (
+                      <>
+                        <PremiumIcon name="Clock" variant="warning" size={12} className="mr-1" />
+                        <span>Grace Period Active</span>
+                      </>
+                    )}
                   </span>
                 )}
               </div>
@@ -794,9 +814,12 @@ export default function JobsPage() {
             </button>
           </div>
 
+          {/* Demand Surge Meter */}
+          <SurgeMeter activeOrderCount={jobs.length} country={country} />
+
           {!isOnline && (
-            <div className={styles.offlineNotice}>
-              <span>🔴</span>
+            <div className={styles.offlineNotice} style={{ display: 'flex', alignItems: 'center' }}>
+              <PremiumIcon name="WifiOff" variant="danger" size={18} className="mr-2" />
               <div>
                 <strong>You&apos;re offline</strong>
                 <p>Turn online to start receiving job offers from customers near you.</p>
@@ -832,12 +855,22 @@ export default function JobsPage() {
                     }}
                   >
                   {job.fulfillment_mode === 'jet' && (
-                    <div className={styles.jetBadge}>⚡ JET — Priority Delivery</div>
+                    <div className={styles.jetBadge} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <PremiumIcon name="Zap" variant="jet" size={14} animate="pulse" glow />
+                      <span>JET — Priority Delivery</span>
+                    </div>
                   )}
 
                   <div className={styles.jobCardHeader}>
                     <div className={styles.jobMeta}>
-                      <span className={styles.jobIcon}>{SERVICE_ICONS[job.service_type]}</span>
+                      <span className={styles.jobIcon}>
+                        <PremiumIcon 
+                          name={(SERVICE_ICONS[job.service_type] || 'Package') as any} 
+                          variant={SERVICE_VARIANTS[job.service_type] || 'primary'} 
+                          size={24} 
+                          backdrop="squircle" 
+                        />
+                      </span>
                       <div>
                         <div className={styles.jobType}>{SERVICE_LABELS[job.service_type]}</div>
                         <div className={styles.jobRef}>{job.reference_code}</div>
@@ -865,7 +898,7 @@ export default function JobsPage() {
                       marginBottom: '0.75rem',
                       boxShadow: '0 0 15px rgba(16, 185, 129, 0.1)'
                     }}>
-                      <span>💵</span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
+                      <span><PremiumIcon name="Banknote" variant="success" size={14} /></span> Cash on Delivery — Collect ${(job.total_amount || (job.payout / 0.8)).toFixed(2)}
                     </div>
                   )}
 
@@ -876,8 +909,14 @@ export default function JobsPage() {
                       <span>{job.pickup_address}</span>
                     </div>
                     <div className={styles.routeInfo}>
-                      <span className={styles.routeDist}>↕ {job.distance}</span>
-                      <span className={styles.routeTime}>~{job.estimated_time}</span>
+                      <span className={styles.routeDist} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <PremiumIcon name="MapPin" variant="primary" size={12} />
+                        <span>{job.distance}</span>
+                      </span>
+                      <span className={styles.routeTime} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <PremiumIcon name="Clock" variant="neutral" size={12} />
+                        <span>{job.estimated_time}</span>
+                      </span>
                     </div>
                     <div className={styles.routePoint}>
                       <span className={styles.routeDot} data-type="dropoff" />
@@ -887,10 +926,14 @@ export default function JobsPage() {
 
                   {/* Item details */}
                   <div className={styles.jobDetails}>
-                    <span>📝 {job.item_description}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <PremiumIcon name="FileText" variant="neutral" size={12} />
+                      <span>{job.item_description}</span>
+                    </span>
                     {job.protection_level !== 'none' && (
-                      <span className="trust-badge trust-badge--protected" style={{ fontSize: '0.65rem' }}>
-                        🛡️ {job.protection_level === 'premium_secure' ? 'Protect+' : 'Protected'}
+                      <span className="trust-badge trust-badge--protected" style={{ fontSize: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                        <PremiumIcon name="ShieldCheck" variant="protect" size={12} />
+                        <span>{job.protection_level === 'premium_secure' ? 'Protect+' : 'Protected'}</span>
                       </span>
                     )}
                   </div>
@@ -899,7 +942,10 @@ export default function JobsPage() {
                   <div className={styles.jobCustomer}>
                     <span className={styles.customerAvatar}>{job.customer_name[0]}</span>
                     <span className={styles.customerName}>{job.customer_name}</span>
-                    <span className={styles.customerRating}>⭐ {job.customer_rating}</span>
+                    <span className={styles.customerRating} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                      <PremiumIcon name="Star" variant="warning" size={12} />
+                      <span>{job.customer_rating}</span>
+                    </span>
                     <span className={styles.jobTime}>{job.posted}</span>
                   </div>
 
@@ -916,7 +962,10 @@ export default function JobsPage() {
                       lineHeight: '1.4',
                       textAlign: 'left'
                     }}>
-                      ⚠️ <strong>Cash Collection Limit Warning</strong>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <PremiumIcon name="AlertTriangle" variant="danger" size={16} />
+                        <strong>Cash Collection Limit Warning</strong>
+                      </span>
                       <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)' }}>
                         You are near your cash collection limit (${cashBalance.toFixed(2)}/${cashLimit.toFixed(2)}). 
                         Please remit collected cash to platform operations before accepting more COD orders.
@@ -977,7 +1026,9 @@ export default function JobsPage() {
               <button onClick={() => setShowGuardModal(false)} className={styles.modalClose}>×</button>
             </div>
             <div className={styles.modalBody}>
-              <div className={styles.modalWarningIcon}>⚠️</div>
+              <div className={styles.modalWarningIcon} style={{ display: 'inline-flex', justifyContent: 'center', marginBottom: 'var(--space-4)' }}>
+                <PremiumIcon name="AlertTriangle" variant="warning" size={48} glow animate="bounce" />
+              </div>
               <p>
                 You have reached your subscription earnings limit of <strong>${sub?.earning_cap.toFixed(2)}</strong>. You must renew or activate emergency credit buffer to accept this job.
               </p>
@@ -1086,9 +1137,16 @@ export default function JobsPage() {
                       color: feedbackType === 'success' ? '#34d399' : '#f87171',
                       marginTop: '0.5rem',
                       marginBottom: '1rem',
-                      fontWeight: 600
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center'
                     }}>
-                      {feedbackType === 'success' ? '✅' : '❌'} {feedbackMessage}
+                      {feedbackType === 'success' ? (
+                        <PremiumIcon name="CheckCircle2" variant="success" size={16} className="mr-1" />
+                      ) : (
+                        <PremiumIcon name="XCircle" variant="danger" size={16} className="mr-1" />
+                      )}{' '}
+                      {feedbackMessage}
                     </div>
                   )}
                   <div className={styles.quizNav}>
@@ -1224,8 +1282,9 @@ export default function JobsPage() {
 
               {/* Error message */}
               {bidAmount && (Number(bidAmount) <= biddingJob.payout || Number(bidAmount) > biddingJob.payout * 1.5) && (
-                <div style={{ color: '#f87171', fontSize: '0.75rem', marginBottom: '1rem', fontWeight: 600 }}>
-                  ⚠️ Bid must be between ${biddingJob.payout.toFixed(2)} and ${(biddingJob.payout * 1.5).toFixed(2)}.
+                <div style={{ color: '#f87171', fontSize: '0.75rem', marginBottom: '1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <PremiumIcon name="AlertTriangle" variant="danger" size={14} />
+                  <span>Bid must be between ${biddingJob.payout.toFixed(2)} and ${(biddingJob.payout * 1.5).toFixed(2)}.</span>
                 </div>
               )}
 

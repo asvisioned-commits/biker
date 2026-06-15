@@ -1,0 +1,214 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-default);
+  background-color: var(--bg-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  width: 100%;
+}
+
+.metricsBar {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.metric {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.metricLabel {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+}
+
+.metricVal {
+  font-family: var(--font-header);
+  font-size: var(--text-base);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-top: 2px;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-default);
+  margin: 0 16px;
+}
+
+.mapWrapper {
+  height: 280px;
+  position: relative;
+  width: 100%;
+}
+
+@media (min-width: 600px) {
+  .mapWrapper {
+    height: 340px;
+  }
+}
+
+.mapContainer {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--bg-overlay);
+  color: #fff;
+  z-index: 10;
+}
+
+.floatingCard {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 240px;
+  background: rgba(15, 15, 15, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+  color: #fff;
+  max-height: 180px;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+
+[data-theme='light'] .floatingCard {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+.cardTitle {
+  font-family: var(--font-header);
+  font-size: 11px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+.stopList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stopRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.stopSeq {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.seqPickup {
+  background-color: var(--color-primary-500);
+  color: var(--text-inverse);
+}
+
+.seqDropoff {
+  background-color: #10b981;
+  color: #fff;
+}
+
+.stopInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stopType {
+  font-size: 9px;
+  font-weight: 800;
+  opacity: 0.6;
+}
+
+.stopAddr {
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+.actionsBar {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-default);
+}
+
+/* Custom Marker CSS rules parsed by Leaflet */
+.markerPin {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--duration-fast);
+}
+
+.pickupMarker {
+  background-color: var(--color-primary-500);
+  color: var(--text-inverse);
+}
+
+.dropoffMarker {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.markerLabel {
+  font-family: var(--font-header);
+  font-weight: 800;
+  font-size: 12px;
+}
+
+/* Global path style overrides for customized flow dotted route visual */
+:global(.leaflet-interactive.bundleRouteLine) {
+  stroke-dasharray: 8, 8;
+  animation: routeDashFlow 20s linear infinite !important;
+}
+
+@keyframes routeDashFlow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -500px; }
+}

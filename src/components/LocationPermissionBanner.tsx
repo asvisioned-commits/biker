@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useGeolocation } from '@/lib/geolocation';
 import styles from './location-banner.module.css';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 const DISMISS_KEY = 'biker_location_banner_dismissed_at';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -51,7 +52,9 @@ export default function LocationPermissionBanner() {
     <div className={styles.banner}>
       <div className={styles.container}>
         <div className={styles.content}>
-          <span className={styles.icon}>🎯</span>
+          <span className={styles.icon} style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <PremiumIcon name="Compass" variant="primary" size={24} animate="spin-slow" glow />
+          </span>
           <div className={styles.textGroup}>
             <span className={styles.title}>Enable Geolocation Tracking</span>
             <span className={styles.subtitle}>
@@ -63,8 +66,8 @@ export default function LocationPermissionBanner() {
           <button className="btn btn--primary btn--sm" onClick={handleEnable}>
             Allow Access
           </button>
-          <button className={styles.dismissButton} onClick={handleDismiss} title="Dismiss for 7 days">
-            ✕
+          <button className={styles.dismissButton} onClick={handleDismiss} title="Dismiss for 7 days" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            <PremiumIcon name="X" variant="neutral" size={16} />
           </button>
         </div>
       </div>

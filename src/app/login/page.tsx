@@ -15,14 +15,13 @@ import {
   sendPasswordResetEmail,
 } from '@/lib/auth';
 
-const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { country } = useProfile();
   const dialPrefix = country === 'ZM' ? '+260' : '+263';
-  const redirect = searchParams.get('redirect') || '/dashboard';
+  let redirect = searchParams.get('redirect') || '/dashboard';
+  if (!redirect.startsWith('/') || redirect.startsWith('//')) redirect = '/dashboard';
   const authError = searchParams.get('error');
 
   const [mode, setMode] = useState<'phone' | 'email'>('phone');
@@ -35,35 +34,10 @@ function LoginContent() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(authError === 'auth_callback_failed' ? 'Authentication failed. Please try again.' : '');
   const [successMsg, setSuccessMsg] = useState('');
-
-  const handleQuickLogin = async (role: string) => {
-    setLoading(true);
-    setError('');
-    const emailAddr = `${role}@biker.com`;
-    const formattedPhone = country === 'ZM' 
-      ? `+260${role === 'rider' ? '971' : role === 'merchant' ? '961' : '951'}000001`
-      : `+263${role === 'rider' ? '771' : role === 'merchant' ? '888' : '773'}000001`;
-
-    const mockSession = {
-      user_id: `mock-user-${role}-${Date.now()}`,
-      full_name: `Test ${role.toUpperCase()}`,
-      email: emailAddr,
-      phone: formattedPhone,
-      role: role,
-      roles: [role, 'customer'],
-    };
-    
-    localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
-    router.push(redirect);
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
-  };
   
   // Verification and Cooldown States
   const [unconfirmedEmail, setUnconfirmedEmail] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [hudMessage, setHudMessage] = useState<string | null>(null);
 
   // Countdown timer for resends
   useEffect(() => {
@@ -101,9 +75,6 @@ function LoginContent() {
     setStep('phone_otp');
     setLoading(false);
     setResendCooldown(60);
-    if (IS_DEV) {
-      setHudMessage(`[DEV HUD] SMS OTP sent. Simulated code is: 123456`);
-    }
   };
 
   const handleResendPhoneOtp = async () => {
@@ -118,9 +89,6 @@ function LoginContent() {
     }
     setResendCooldown(60);
     setSuccessMsg('SMS OTP code resent successfully!');
-    if (IS_DEV) {
-      setHudMessage(`[DEV HUD] SMS OTP resent. Simulated code is: 123456`);
-    }
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -167,9 +135,6 @@ function LoginContent() {
     
     setResendCooldown(60);
     setSuccessMsg(`Verification code sent to ${targetEmail}!`);
-    if (IS_DEV) {
-      setHudMessage(`[DEV HUD] Verification email sent. Simulated confirmation OTP: 123456`);
-    }
   };
 
   const handleStartEmailOtpVerify = () => {
@@ -177,9 +142,6 @@ function LoginContent() {
     setSuccessMsg('');
     setOtp('');
     setStep('email_otp');
-    if (IS_DEV) {
-      setHudMessage(`[DEV HUD] Email OTP confirmation screen. Simulated code: 123456`);
-    }
   };
 
   const handlePhoneOtpVerify = async (e: React.FormEvent) => {
@@ -231,9 +193,6 @@ function LoginContent() {
     
     setSuccessMsg('Recovery link and reset instructions have been sent to your email.');
     setResendCooldown(60);
-    if (IS_DEV) {
-      setHudMessage(`[DEV HUD] Password reset request. Simulated recovery link: ${window.location.origin}/reset-password`);
-    }
   };
 
   return (
@@ -268,34 +227,6 @@ function LoginContent() {
         {/* Right side — form */}
         <div className={styles.formSide}>
           <div className={styles.formContainer}>
-            {/* Developer HUD Info Box */}
-            {IS_DEV && (
-              <div className={styles.hudCard}>
-                <div className={styles.hudHeader}>🛠️ Developer Mock HUD</div>
-                <div className={styles.hudBody}>
-                  <p>In dev mode, you can use any inputs. Password reset links and OTPs are simulated locally.</p>
-                  <p style={{ marginTop: '4px', fontWeight: 600, color: 'var(--color-primary-500)' }}>
-                    Type <strong>unconfirmed@biker.com</strong> to test email lock & confirmation.
-                  </p>
-                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)' }}>⚡ Quick Login:</span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('customer')}>Customer</button>
-                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('rider')}>Rider</button>
-                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('merchant')}>Merchant</button>
-                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('ops')}>Ops</button>
-                      <button type="button" className="btn btn--sm btn--secondary" onClick={() => handleQuickLogin('admin')}>Admin</button>
-                    </div>
-                  </div>
-                  {hudMessage && (
-                    <div className={styles.hudToast} style={{ marginTop: '12px' }}>
-                      🚀 {hudMessage}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             <div className={styles.formHeader}>
               <h1 className={styles.formTitle}>
                 {step === 'forgot_password' ? 'Reset password' : 'Welcome back'}

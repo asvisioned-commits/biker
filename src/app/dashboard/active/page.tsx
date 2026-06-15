@@ -3,13 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { OrderService, BikerOrder } from '@/lib/order-service';
-import { getProfile, insertLocationCheckpoint } from '@/lib/database';
+import { getProfile, insertLocationCheckpoint, uploadProof } from '@/lib/database';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { useProfile } from '@/context/ProfileContext';
 import { CallSimulator } from '@/components/CallSimulator';
 import { ChatDrawer } from '@/components/ChatDrawer';
 import LiveTrackingMap from '@/components/map/LiveTrackingMap';
+import PhotoProofUploader from '@/components/PhotoProofUploader';
+import ReceiptOcrUploader from '@/components/ReceiptOcrUploader';
+import QrPinModal from '@/components/QrPinModal';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 
 export default function ActiveOrderRiderPage() {
@@ -36,6 +40,7 @@ export default function ActiveOrderRiderPage() {
   // Safety & Secure Communication
   const { session, country } = useProfile();
   const [showCallSimulator, setShowCallSimulator] = useState(false);
+  const [isQrPinOpen, setIsQrPinOpen] = useState(false);
 
   const formatPrice = (usdVal: number) => {
     if (country === 'ZM') {
@@ -327,6 +332,75 @@ export default function ActiveOrderRiderPage() {
     }
   };
 
+  const handleVerifyPinFromModal = async (enteredPin: string): Promise<boolean> => {
+    if (!order) return false;
+    setSubmittingPin(true);
+    setPinError('');
+
+    if (isCOD) {
+      const amt = parseFloat(cashCollected);
+      if (isNaN(amt)) {
+        setPinError('Please enter actual cash collected before scanning');
+        setSubmittingPin(false);
+        return false;
+      }
+      const usdCollected = country === 'ZM' ? amt / 25 : amt;
+
+      try {
+        const res = await OrderService.completeCodDelivery({
+          orderId: order.id,
+          riderId: riderId || 'rider',
+          pin: enteredPin,
+          cashCollected: usdCollected,
+          hasDiscrepancy: hasDiscrepancy || Math.abs(usdCollected - (order.total_amount || 0)) > 0.01,
+          expectedAmount: order.total_amount || 0
+        });
+
+        if (res.success) {
+          setPinSuccess(true);
+          const fresh = await OrderService.getOrderById(order.id);
+          setOrder(fresh);
+          if (riderCoords) {
+            await logTransitionCheckpoint('delivery_complete', riderCoords[0], riderCoords[1]);
+          }
+          return true;
+        } else {
+          setPinError(res.error || 'Failed to complete COD delivery');
+          if (res.attemptsRemaining !== undefined) {
+            setAttemptsRemaining(res.attemptsRemaining);
+          }
+          return false;
+        }
+      } catch (e: any) {
+        setPinError(e.message || 'Error processing cash delivery');
+        return false;
+      } finally {
+        setSubmittingPin(false);
+      }
+    } else {
+      try {
+        const res = await OrderService.verifyDeliveryPin(order.id, enteredPin);
+        if (res.success) {
+          setPinSuccess(true);
+          const fresh = await OrderService.getOrderById(order.id);
+          setOrder(fresh);
+          if (riderCoords) {
+            await logTransitionCheckpoint('delivery_complete', riderCoords[0], riderCoords[1]);
+          }
+          return true;
+        } else {
+          setPinError(res.error || 'Invalid PIN code');
+          return false;
+        }
+      } catch (e: any) {
+        setPinError(e.message || 'Error releasing escrow');
+        return false;
+      } finally {
+        setSubmittingPin(false);
+      }
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
@@ -338,7 +412,9 @@ export default function ActiveOrderRiderPage() {
   if (!order) {
     return (
       <div className="container max-w-lg p-6 text-center" style={{ marginTop: '10vh' }}>
-        <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🚴</div>
+        <div style={{ marginBottom: '20px' }}>
+          <PremiumIcon name="Bike" variant="neutral" size={64} className="opacity-50" />
+        </div>
         <h2 className="title" style={{ marginBottom: '10px' }}>No Active Orders</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
           You do not have any active delivery request assigned to you right now. Go online to receive matching requests.
@@ -362,9 +438,10 @@ export default function ActiveOrderRiderPage() {
               type="button" 
               className="btn btn--danger font-bold btn--sm"
               onClick={handleRiderSos}
-              style={{ background: '#dc2626', color: '#ffffff', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)' }}
+              style={{ background: '#dc2626', color: '#ffffff', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
-              🆘 SOS
+              <PremiumIcon name="ShieldAlert" variant="danger" animate="pulse" size={14} glow />
+              <span>SOS</span>
             </button>
           )}
           <span className="badge badge--primary font-mono">{order.reference_code}</span>
@@ -397,8 +474,9 @@ export default function ActiveOrderRiderPage() {
             <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Pickup From</div>
             <div style={{ fontWeight: 600 }}>{order.pickup_address}</div>
             {order.pickup_contact_name && (
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                👤 {order.pickup_contact_name} ({order.pickup_contact_phone})
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                <PremiumIcon name="User" variant="info" size={12} />
+                <span>{order.pickup_contact_name} ({order.pickup_contact_phone})</span>
               </div>
             )}
           </div>
@@ -406,13 +484,15 @@ export default function ActiveOrderRiderPage() {
             <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Deliver To</div>
             <div style={{ fontWeight: 600 }}>{order.dropoff_address}</div>
             {order.dropoff_contact_name && (
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                👤 {order.dropoff_contact_name} ({order.dropoff_contact_phone})
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                <PremiumIcon name="User" variant="info" size={12} />
+                <span>{order.dropoff_contact_name} ({order.dropoff_contact_phone})</span>
               </div>
             )}
             {order.dropoff_gate_color && (
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                🎨 Gate Color: {order.dropoff_gate_color}
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                <PremiumIcon name="Paintbrush" variant="primary" size={12} />
+                <span>Gate Color: {order.dropoff_gate_color}</span>
               </div>
             )}
           </div>
@@ -435,15 +515,19 @@ export default function ActiveOrderRiderPage() {
             type="button" 
             className="btn btn--secondary btn--full btn--sm"
             onClick={() => setShowCallSimulator(true)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
           >
-            📞 Call Customer (Masked)
+            <PremiumIcon name="Phone" variant="success" size={14} />
+            <span>Call Customer (Masked)</span>
           </button>
           <button 
             type="button" 
             className="btn btn--secondary btn--full btn--sm"
             onClick={() => setShowChatDrawer(true)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
           >
-            💬 Message Customer
+            <PremiumIcon name="MessageSquare" variant="primary" size={14} />
+            <span>Message Customer</span>
           </button>
         </div>
       </div>
@@ -466,9 +550,59 @@ export default function ActiveOrderRiderPage() {
             )}
 
             {order.status === 'at_pickup' && (
-              <button className="btn btn--primary btn--full" onClick={() => handleStatusTransition('en_route_delivery')}>
-                Confirm Pickup & Start Delivery
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {order.service_type === 'buy_for_me' ? (
+                  <ReceiptOcrUploader
+                    label="Scan Store Receipt (Required)"
+                    targetAmount={order.estimated_item_cost}
+                    country={country}
+                    required={true}
+                    onOcrComplete={async (ocrData) => {
+                      // 1. Log the receipt proof in database (if online)
+                      if (OrderService.isOnline && riderId) {
+                        try {
+                          await uploadProof({
+                            request_id: order.id,
+                            uploaded_by: riderId,
+                            proof_type: 'receipt_photo',
+                            file_url: ocrData.receiptUrl,
+                            notes: `Merchant: ${ocrData.merchantName}, Total: ${ocrData.totalAmount.toFixed(2)}, Items: ${ocrData.items.length}`,
+                          });
+                        } catch (err) {
+                          console.error('Failed to upload receipt proof:', err);
+                        }
+                      }
+                      
+                      // 2. Update order purchase details in local storage + DB
+                      await OrderService.updateOrderPurchaseDetails(
+                        order.id, 
+                        ocrData.totalAmount, 
+                        ocrData.items
+                      );
+                      
+                      setStatusNotes(`Receipt uploaded: ${ocrData.merchantName} - Total: $${ocrData.totalAmount.toFixed(2)}`);
+                    }}
+                  />
+                ) : (
+                  <PhotoProofUploader
+                    label="Take Pickup Photo Proof"
+                    targetLat={order.pickup_lat}
+                    targetLng={order.pickup_lng}
+                    onUploadSuccess={(url) => {
+                      setStatusNotes('Pickup photo proof uploaded successfully');
+                    }}
+                    required={true}
+                  />
+                )}
+                
+                <button 
+                  className="btn btn--primary btn--full" 
+                  onClick={() => handleStatusTransition('en_route_delivery')}
+                  disabled={order.service_type === 'buy_for_me' && !statusNotes.includes('Receipt uploaded')}
+                >
+                  {order.service_type === 'buy_for_me' ? 'Confirm Purchase & Start Delivery' : 'Confirm Pickup & Start Delivery'}
+                </button>
+              </div>
             )}
 
             {order.status === 'en_route_delivery' && (
@@ -478,10 +612,21 @@ export default function ActiveOrderRiderPage() {
             )}
 
             {order.status === 'at_delivery' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
-                  <h4 style={{ fontWeight: 700, marginBottom: '8px' }}>
-                    {isCOD ? '💵 Cash on Delivery Completion' : '🛡️ Escrow PIN Release Verification'}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <PhotoProofUploader
+                  label="Take Delivery Photo Proof"
+                  targetLat={order.dropoff_lat}
+                  targetLng={order.dropoff_lng}
+                  onUploadSuccess={(url) => {
+                    setStatusNotes('Delivery photo proof uploaded successfully');
+                  }}
+                  required={true}
+                />
+
+                <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
+                  <h4 style={{ fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {isCOD ? <PremiumIcon name="Banknote" variant="success" size={18} /> : <PremiumIcon name="ShieldCheck" variant="protect" size={18} />}
+                    <span>{isCOD ? 'Cash on Delivery Completion' : 'Escrow PIN Release Verification'}</span>
                   </h4>
                   <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
                     {isCOD 
@@ -490,19 +635,6 @@ export default function ActiveOrderRiderPage() {
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div>
-                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Verification PIN</label>
-                      <input 
-                        type="text" 
-                        maxLength={6} 
-                        className="input" 
-                        placeholder="e.g. 1234"
-                        value={pinCode}
-                        onChange={(e) => setPinCode(e.target.value)}
-                        style={{ fontFamily: 'var(--font-mono)', textAlign: 'center', fontSize: '1.2rem', letterSpacing: '4px' }}
-                      />
-                    </div>
-
                     {isCOD && (
                       <>
                         <div>
@@ -532,17 +664,21 @@ export default function ActiveOrderRiderPage() {
                     )}
 
                     {pinError && (
-                      <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px' }}>
-                        ⚠️ {pinError} {attemptsRemaining !== null && `(${attemptsRemaining} attempts left)`}
+                      <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <PremiumIcon name="AlertTriangle" variant="danger" size={14} />
+                        <span>{pinError} {attemptsRemaining !== null && `(${attemptsRemaining} attempts left)`}</span>
                       </div>
                     )}
 
                     <button 
+                      type="button"
                       className="btn btn--success btn--full"
-                      onClick={isCOD ? handleCompleteCod : handleVerifyDeliveryPin}
-                      disabled={submittingPin || !pinCode || (isCOD && !cashCollected)}
+                      onClick={() => setIsQrPinOpen(true)}
+                      disabled={isCOD && !cashCollected}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                     >
-                      {submittingPin ? 'Processing verification...' : 'Verify PIN & Complete Delivery'}
+                      <PremiumIcon name="QrCode" variant="primary" size={14} />
+                      <span>Open PIN / QR Scanner</span>
                     </button>
                   </div>
                 </div>
@@ -564,7 +700,9 @@ export default function ActiveOrderRiderPage() {
       {showTransitCheckinTimer && (
         <div className="modal-overlay" style={{ zIndex: 1200, background: 'rgba(15, 23, 42, 0.95)' }}>
           <div className="modal modal--glass" style={{ maxWidth: '360px', padding: '32px 24px', textAlign: 'center', borderRadius: '24px' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🚨</div>
+            <div style={{ marginBottom: '16px' }}>
+              <PremiumIcon name="AlertTriangle" variant="danger" animate="bounce" size={48} glow />
+            </div>
             <h2 className="title" style={{ color: '#ffffff', marginBottom: '8px' }}>Are you OK?</h2>
             <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '24px' }}>
               Transit check-in active. Please confirm you are safe.
@@ -576,9 +714,10 @@ export default function ActiveOrderRiderPage() {
               type="button"
               className="btn btn--success btn--full btn--lg font-bold"
               onClick={handleCheckinOk}
-              style={{ height: '56px', borderRadius: '16px', fontSize: '16px' }}
+              style={{ height: '56px', borderRadius: '16px', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
             >
-              Yes, I am Safe 👍
+              <PremiumIcon name="Check" variant="success" size={16} />
+              <span>Yes, I am Safe</span>
             </button>
           </div>
         </div>
@@ -603,6 +742,14 @@ export default function ActiveOrderRiderPage() {
           onClose={() => setShowChatDrawer(false)}
         />
       )}
+
+      <QrPinModal
+        isOpen={isQrPinOpen}
+        onClose={() => setIsQrPinOpen(false)}
+        pin={order.delivery_pin || '1234'}
+        onVerifyPin={handleVerifyPinFromModal}
+        referenceCode={order.reference_code}
+      />
     </div>
   );
 }

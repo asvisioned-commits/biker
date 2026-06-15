@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import Link from 'next/link';
 import { useProfile } from '@/context/ProfileContext';
 
 interface PendingRider {
@@ -35,219 +34,116 @@ export default function RidersQueuePage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [submittingAction, setSubmittingAction] = useState(false);
 
-  const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-
   useEffect(() => {
     loadRidersQueue();
-  }, [IS_DEV]);
+  }, []);
 
   const loadRidersQueue = async () => {
     setLoading(true);
-    if (IS_DEV) {
-      // Dev mode: load mock riders from local storage or generate default pending ones
-      const stored = localStorage.getItem('biker_mock_riders_queue');
-      let queueList: PendingRider[] = [];
-      if (stored) {
-        queueList = JSON.parse(stored);
-      } else {
-        // Generate high fidelity mock pending verification riders
-        queueList = [
-          {
-            user_id: 'mock-pending-rider-1',
-            full_name: 'Taurai Chinyama',
-            email: 'taurai.biker@gmail.com',
-            phone: '+263772884192',
-            vehicle_type: 'motorcycle',
-            vehicle_registration: 'AGE 9924',
-            license_number: 'LIC-77491-ZW',
-            operating_zone: 'borrowdale',
-            national_id: '63-948172-H-45',
-            national_id_card_url: 'https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?w=500&auto=format&fit=crop&q=60',
-            vehicle_registration_url: 'https://images.unsplash.com/photo-1508974239320-0a029497e820?w=500&auto=format&fit=crop&q=60',
-            license_card_url: 'https://images.unsplash.com/photo-1554774853-aae0a22c8aa4?w=500&auto=format&fit=crop&q=60',
-            selfie_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60',
-            kyc_status: 'pending_ops_approval'
-          },
-          {
-            user_id: 'mock-pending-rider-2',
-            full_name: 'Mwansa Kabwe',
-            email: 'mwansa.k@outlook.com',
-            phone: '+260977341908',
-            vehicle_type: 'bicycle',
-            vehicle_registration: 'N/A',
-            license_number: null,
-            operating_zone: 'woodlands',
-            national_id: 'ZM-3982710-91',
-            national_id_card_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&auto=format&fit=crop&q=60',
-            vehicle_registration_url: null,
-            license_card_url: null,
-            selfie_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&auto=format&fit=crop&q=60',
-            kyc_status: 'pending_ops_approval'
-          }
-        ];
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('rider_profiles')
+        .select(`
+          user_id,
+          vehicle_type,
+          vehicle_registration,
+          license_number,
+          operating_zone,
+          kyc_status,
+          kyc_rejection_reason,
+          national_id_card_url,
+          vehicle_registration_url,
+          license_card_url,
+          selfie_url,
+          profile:profiles!rider_profiles_user_id_fkey(
+            full_name,
+            email,
+            phone,
+            national_id_number
+          )
+        `);
         
-        // Also check if current logged-in user is a pending rider in local storage
-        const currentMockSess = localStorage.getItem('biker_mock_session');
-        if (currentMockSess) {
-          const parsed = JSON.parse(currentMockSess);
-          if (parsed.role === 'rider' && parsed.kyc_status === 'pending_ops_approval') {
-            queueList.push({
-              user_id: parsed.user_id,
-              full_name: parsed.full_name,
-              email: parsed.email || 'mock@biker.com',
-              phone: parsed.phone || '+263771234567',
-              vehicle_type: parsed.vehicle_type || 'motorcycle',
-              vehicle_registration: parsed.vehicle_registration || 'MOCK 123',
-              license_number: parsed.license_number || 'LIC-MOCK-1',
-              operating_zone: parsed.operating_zone || 'harare_cbd',
-              national_id: parsed.national_id || 'ID-MOCK-1',
-              national_id_card_url: parsed.national_id_card_url || 'https://via.placeholder.com/300x200?text=Mock+ID+Card',
-              vehicle_registration_url: parsed.vehicle_registration_url || 'https://via.placeholder.com/300x200?text=Mock+Vehicle+Reg',
-              license_card_url: parsed.license_card_url || 'https://via.placeholder.com/300x200?text=Mock+License',
-              selfie_url: parsed.selfie_url || 'https://via.placeholder.com/300x300?text=Mock+Selfie+Face+Scan',
-              kyc_status: 'pending_ops_approval'
-            });
-          }
-        }
+      if (error) throw error;
+      
+      const formatted: PendingRider[] = (data || []).map((r: any) => ({
+        user_id: r.user_id,
+        full_name: r.profile?.full_name || 'Unknown User',
+        email: r.profile?.email || '',
+        phone: r.profile?.phone || '',
+        vehicle_type: r.vehicle_type,
+        vehicle_registration: r.vehicle_registration,
+        license_number: r.license_number,
+        operating_zone: r.operating_zone,
+        national_id: r.profile?.national_id_number || '',
+        national_id_card_url: r.national_id_card_url,
+        vehicle_registration_url: r.vehicle_registration_url,
+        license_card_url: r.license_card_url,
+        selfie_url: r.selfie_url,
+        kyc_status: r.kyc_status,
+        kyc_rejection_reason: r.kyc_rejection_reason
+      }));
 
-        localStorage.setItem('biker_mock_riders_queue', JSON.stringify(queueList));
-      }
-      setRiders(queueList);
+      setRiders(formatted);
+    } catch (err) {
+      console.error('Failed to load riders queue:', err);
+    } finally {
       setLoading(false);
-    } else {
-      // Production: query rider_profiles table and join profiles
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from('rider_profiles')
-          .select(`
-            user_id,
-            vehicle_type,
-            vehicle_registration,
-            license_number,
-            operating_zone,
-            kyc_status,
-            kyc_rejection_reason,
-            national_id_card_url,
-            vehicle_registration_url,
-            license_card_url,
-            selfie_url,
-            profile:profiles!rider_profiles_user_id_fkey(
-              full_name,
-              email,
-              phone,
-              national_id_number
-            )
-          `);
-          
-        if (error) throw error;
-        
-        const formatted: PendingRider[] = (data || []).map((r: any) => ({
-          user_id: r.user_id,
-          full_name: r.profile?.full_name || 'Unknown User',
-          email: r.profile?.email || '',
-          phone: r.profile?.phone || '',
-          vehicle_type: r.vehicle_type,
-          vehicle_registration: r.vehicle_registration,
-          license_number: r.license_number,
-          operating_zone: r.operating_zone,
-          national_id: r.profile?.national_id_number || '',
-          national_id_card_url: r.national_id_card_url,
-          vehicle_registration_url: r.vehicle_registration_url,
-          license_card_url: r.license_card_url,
-          selfie_url: r.selfie_url,
-          kyc_status: r.kyc_status,
-          kyc_rejection_reason: r.kyc_rejection_reason
-        }));
-
-        setRiders(formatted);
-      } catch (err) {
-        console.error('Failed to load riders queue:', err);
-      } finally {
-        setLoading(false);
-      }
     }
   };
 
   const handleApprove = async (riderId: string) => {
     setSubmittingAction(true);
-    if (IS_DEV) {
-      // Update mock queue status
-      const stored = localStorage.getItem('biker_mock_riders_queue');
-      if (stored) {
-        const list = JSON.parse(stored);
-        const idx = list.findIndex((r: any) => r.user_id === riderId);
-        if (idx !== -1) {
-          list[idx].kyc_status = 'approved';
-          localStorage.setItem('biker_mock_riders_queue', JSON.stringify(list));
-        }
-      }
-
-      // If approved user is the active logged-in rider, update session active state
-      const currentMockSess = localStorage.getItem('biker_mock_session');
-      if (currentMockSess) {
-        const parsed = JSON.parse(currentMockSess);
-        if (parsed.user_id === riderId) {
-          parsed.kyc_status = 'approved';
-          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
-        }
-      }
-
-      alert('Rider approved successfully!');
-      loadRidersQueue();
-      setSubmittingAction(false);
-    } else {
-      try {
-        const supabase = createClient();
+    try {
+      const supabase = createClient();
+      
+      // 1. Update rider profile
+      const { error: riderErr } = await supabase
+        .from('rider_profiles')
+        .update({ 
+          kyc_status: 'approved',
+          vehicle_verified: true,
+          license_verified: true,
+          selfie_verified: true,
+          kyc_rejection_reason: null
+        })
+        .eq('user_id', riderId);
         
-        // 1. Update rider profile
-        const { error: riderErr } = await supabase
-          .from('rider_profiles')
-          .update({ 
-            kyc_status: 'approved',
-            vehicle_verified: true,
-            license_verified: true,
-            selfie_verified: true,
-            kyc_rejection_reason: null
-          })
-          .eq('user_id', riderId);
-          
-        if (riderErr) throw riderErr;
+      if (riderErr) throw riderErr;
 
-        // 2. Update parent profile
-        const { error: profileErr } = await supabase
-          .from('profiles')
-          .update({ national_id_verified: true })
-          .eq('id', riderId);
-          
-        if (profileErr) throw profileErr;
+      // 2. Update parent profile
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .update({ national_id_verified: true })
+        .eq('id', riderId);
+        
+      if (profileErr) throw profileErr;
 
-        // 3. Create approved notification
-        await supabase.from('notifications').insert({
-          recipient_id: riderId,
-          type: 'kyc_approval',
-          title: 'Account Approved! 🎉',
-          body: 'Congratulations! Your rider account has been verified. You can now go online to accept jobs.',
-          channel: 'in_app'
-        });
+      // 3. Create approved notification
+      await supabase.from('notifications').insert({
+        recipient_id: riderId,
+        type: 'kyc_approval',
+        title: 'Account Approved! 🎉',
+        body: 'Congratulations! Your rider account has been verified. You can now go online to accept jobs.',
+        channel: 'in_app'
+      });
 
-        // 4. Log in audit
-        await supabase.from('rider_status_audit').insert({
-          rider_id: riderId,
-          from_status: 'pending_ops_approval',
-          to_status: 'approved',
-          trigger: 'manual_admin',
-          reason: 'OPS verification checks passed.',
-          admin_id: session?.user_id || null
-        });
+      // 4. Log in audit
+      await supabase.from('rider_status_audit').insert({
+        rider_id: riderId,
+        from_status: 'pending_ops_approval',
+        to_status: 'approved',
+        trigger: 'manual_admin',
+        reason: 'OPS verification checks passed.',
+        admin_id: session?.user_id || null
+      });
 
-        alert('Rider approved and notified!');
-        loadRidersQueue();
-      } catch (err: any) {
-        alert('Approval failed: ' + err.message);
-      } finally {
-        setSubmittingAction(false);
-      }
+      alert('Rider approved and notified!');
+      loadRidersQueue();
+    } catch (err: any) {
+      alert('Approval failed: ' + err.message);
+    } finally {
+      setSubmittingAction(false);
     }
   };
 
@@ -255,73 +151,44 @@ export default function RidersQueuePage() {
     if (!rejectingRiderId || !rejectionReason.trim()) return;
     setSubmittingAction(true);
     
-    if (IS_DEV) {
-      const stored = localStorage.getItem('biker_mock_riders_queue');
-      if (stored) {
-        const list = JSON.parse(stored);
-        const idx = list.findIndex((r: any) => r.user_id === rejectingRiderId);
-        if (idx !== -1) {
-          list[idx].kyc_status = 'rejected';
-          list[idx].kyc_rejection_reason = rejectionReason;
-          localStorage.setItem('biker_mock_riders_queue', JSON.stringify(list));
-        }
-      }
+    try {
+      const supabase = createClient();
+      
+      const { error: riderErr } = await supabase
+        .from('rider_profiles')
+        .update({ 
+          kyc_status: 'rejected',
+          kyc_rejection_reason: rejectionReason
+        })
+        .eq('user_id', rejectingRiderId);
+        
+      if (riderErr) throw riderErr;
 
-      const currentMockSess = localStorage.getItem('biker_mock_session');
-      if (currentMockSess) {
-        const parsed = JSON.parse(currentMockSess);
-        if (parsed.user_id === rejectingRiderId) {
-          parsed.kyc_status = 'rejected';
-          parsed.kyc_rejection_reason = rejectionReason;
-          localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
-        }
-      }
+      await supabase.from('notifications').insert({
+        recipient_id: rejectingRiderId,
+        type: 'kyc_rejection',
+        title: 'Verification Rejected ⚠️',
+        body: `Identity verification failed: "${rejectionReason}". Please re-upload documents.`,
+        channel: 'in_app'
+      });
 
-      alert('Rider verification rejected.');
+      await supabase.from('rider_status_audit').insert({
+        rider_id: rejectingRiderId,
+        from_status: 'pending_ops_approval',
+        to_status: 'rejected',
+        trigger: 'manual_admin',
+        reason: `Verification rejected: ${rejectionReason}`,
+        admin_id: session?.user_id || null
+      });
+
+      alert('Rider rejected and notified.');
       setRejectingRiderId(null);
       setRejectionReason('');
       loadRidersQueue();
+    } catch (err: any) {
+      alert('Rejection failed: ' + err.message);
+    } finally {
       setSubmittingAction(false);
-    } else {
-      try {
-        const supabase = createClient();
-        
-        const { error: riderErr } = await supabase
-          .from('rider_profiles')
-          .update({ 
-            kyc_status: 'rejected',
-            kyc_rejection_reason: rejectionReason
-          })
-          .eq('user_id', rejectingRiderId);
-          
-        if (riderErr) throw riderErr;
-
-        await supabase.from('notifications').insert({
-          recipient_id: rejectingRiderId,
-          type: 'kyc_rejection',
-          title: 'Verification Rejected ⚠️',
-          body: `Identity verification failed: "${rejectionReason}". Please re-upload documents.`,
-          channel: 'in_app'
-        });
-
-        await supabase.from('rider_status_audit').insert({
-          rider_id: rejectingRiderId,
-          from_status: 'pending_ops_approval',
-          to_status: 'rejected',
-          trigger: 'manual_admin',
-          reason: `Verification rejected: ${rejectionReason}`,
-          admin_id: session?.user_id || null
-        });
-
-        alert('Rider rejected and notified.');
-        setRejectingRiderId(null);
-        setRejectionReason('');
-        loadRidersQueue();
-      } catch (err: any) {
-        alert('Rejection failed: ' + err.message);
-      } finally {
-        setSubmittingAction(false);
-      }
     }
   };
 

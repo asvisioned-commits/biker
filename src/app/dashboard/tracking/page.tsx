@@ -12,7 +12,11 @@ import { CallSimulator } from '@/components/CallSimulator';
 import { ChatDrawer } from '@/components/ChatDrawer';
 import { useProfile } from '@/context/ProfileContext';
 import LiveTrackingMap from '@/components/map/LiveTrackingMap';
+import ProofChainTimeline, { MOCK_PROOF_EVENTS } from '@/components/ProofChainTimeline';
+import type { ProofEvent } from '@/components/ProofChainTimeline';
+import EscrowBadge from '@/components/EscrowBadge';
 import styles from './tracking.module.css';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 const getModalStyles = (method: string) => {
   switch (method) {
@@ -575,7 +579,8 @@ function TrackingContent() {
         expires_at: new Date(Date.now() + 120 * 1000).toISOString(),
         rider_name: 'Tinashe M. (Simulated Bid)',
         rider_rating: 4.9,
-        rider_avatar: ''
+        rider_avatar: '',
+        is_verified: true
       };
       offers.push(newOffer);
       localStorage.setItem(key, JSON.stringify(offers));
@@ -650,7 +655,7 @@ function TrackingContent() {
   }, [showEcoCashOverlay, ecocashTimer, isProcessingEcoCash]);
 
   const handleEcoCashTimeout = async () => {
-    setEcocashError('USSD push transaction timed out. Please try booking again.');
+    setEcocashError('USSD push transaction timed out. Please try dispatching again.');
     addSimulationLog('❌ EcoCash Error: Awaiting customer PIN authorization timed out.');
     if (activeTxId && initialOrder) {
       await EcoCashService.cancelPayment(initialOrder.id, activeTxId);
@@ -763,7 +768,7 @@ function TrackingContent() {
   // Compute Timeline Items based on current status
   const getTimeline = () => {
     const steps: { status: string; description: string; completed: boolean; time?: string }[] = [
-      { status: 'booked', description: 'Order created', completed: true },
+      { status: 'dispatched', description: 'Dispatch created', completed: true },
       { status: 'payment_held', description: 'EcoCash Escrow secured', completed: ['payment_held', 'rider_assigned', 'rider_en_route_pickup', 'at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
       { status: 'rider_assigned', description: 'Biker matched', completed: ['rider_assigned', 'rider_en_route_pickup', 'at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
       { status: 'at_pickup', description: 'Package picked up', completed: ['at_pickup', 'en_route_delivery', 'at_delivery', 'completed'].includes(order.status) },
@@ -846,6 +851,8 @@ function TrackingContent() {
             riderHeading={riderLocation?.heading ?? null}
             riderName={order.rider?.full_name || 'Tinashe M.'}
             nearbyRiders={order.status === 'payment_held' ? getNearbyRiders() : null}
+            isScanning={order.status === 'payment_held'}
+            showHeatmap={order.status === 'payment_held'}
           />
 
           {/* Floating Top-Center Payment Pending Card */}
@@ -882,7 +889,10 @@ function TrackingContent() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '1.5rem' }}>🏍️</span>
                       <div style={{ textAlign: 'left' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>{offer.rider_name}</div>
+                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {offer.rider_name}
+                          {offer.is_verified && <span title="Verified Biker" style={{ fontSize: '12px', color: '#10b981' }}>✅</span>}
+                        </div>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>⭐ {offer.rider_rating} rating</div>
                       </div>
                     </div>
@@ -928,7 +938,9 @@ function TrackingContent() {
               {/* Compact Floating Matching Card */}
               <div className={styles.radarCardCompact}>
                 <div className={styles.radarMiniPulse}>
-                  <div className={styles.miniCore}>🔍</div>
+                  <div className={styles.miniCore} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PremiumIcon name="Search" variant="primary" animate="pulse" glow size={18} />
+                  </div>
                   <div className={styles.miniPulseCircle}></div>
                 </div>
                 <div className={styles.radarInfoCompact}>
@@ -987,11 +999,69 @@ function TrackingContent() {
 
         {/* Right Column: Information & Controls Panel */}
         <div className={`${styles.infoPanel} ${activeTab === 'details' ? styles.infoPanelVisible : ''}`}>
-          
+          {/* Escrow Status Badge */}
+          <div style={{ marginBottom: '16px' }}>
+            <EscrowBadge
+              status={
+                order.status === 'payment_pending' ? 'pending' :
+                order.status === 'completed' ? 'released' :
+                order.status === 'disputed' ? 'disputed' :
+                'held'
+              }
+              amount={order.delivery_fee}
+              paymentMethod={
+                order.payment_method === 'ecocash' ? 'EcoCash' :
+                order.payment_method === 'onemoney' ? 'OneMoney' :
+                order.payment_method === 'innbucks' ? 'InnBucks' :
+                order.payment_method === 'wallet' ? 'Biker Wallet' :
+                order.payment_method === 'card' ? 'Card' :
+                'Cash'
+              }
+            />
+          </div>
+
+          {/* Proof Chain — Visual Delivery Timeline */}
+          <div style={{ marginBottom: '16px' }}>
+            <ProofChainTimeline
+              events={(() => {
+                const events: ProofEvent[] = [];
+                const addEvent = (type: ProofEvent['type'], label: string, ts: string, desc?: string) => {
+                  events.push({ id: `${type}-${ts}`, type, timestamp: ts, label, description: desc, location: order.pickup_address });
+                };
+                const created = order.created_at || new Date().toISOString();
+                addEvent('order_placed', 'Dispatch Placed', created, `Reference: ${order.reference_code}`);
+                if (['payment_held','rider_assigned','rider_en_route_pickup','pickup_confirmed','in_transit','delivered','completed'].includes(order.status)) {
+                  addEvent('payment_held', 'Payment Secured', new Date(new Date(created).getTime() + 60000).toISOString(), 'Funds held in Biker Protect escrow');
+                }
+                if (['rider_assigned','rider_en_route_pickup','pickup_confirmed','in_transit','delivered','completed'].includes(order.status)) {
+                  addEvent('rider_assigned', 'Rider Matched', new Date(new Date(created).getTime() + 180000).toISOString(), (order as any).rider_name || 'Assigned rider');
+                }
+                if (['pickup_confirmed','in_transit','delivered','completed'].includes(order.status)) {
+                  addEvent('pickup_photo', 'Pickup Verified', new Date(new Date(created).getTime() + 600000).toISOString(), 'Photo proof collected at pickup');
+                }
+                if (['in_transit','delivered','completed'].includes(order.status)) {
+                  addEvent('in_transit', 'In Transit', new Date(new Date(created).getTime() + 720000).toISOString(), 'Package en route to destination');
+                }
+                if (['delivered','completed'].includes(order.status)) {
+                  addEvent('delivery_photo', 'Delivery Photo', new Date(new Date(created).getTime() + 1500000).toISOString(), 'Photo proof at delivery');
+                  addEvent('pin_verified', 'PIN Verified', new Date(new Date(created).getTime() + 1560000).toISOString(), '4-digit verification confirmed');
+                }
+                if (order.status === 'completed') {
+                  addEvent('completed', 'Completed', new Date(new Date(created).getTime() + 1620000).toISOString(), 'Delivery complete — funds released');
+                }
+                return events.length > 0 ? events : MOCK_PROOF_EVENTS;
+              })()}
+              orderId={order.reference_code}
+            />
+          </div>
+
           {/* EcoCash Payment Held Banner/Action */}
           {order.status === 'payment_pending' && (
             <div className="alert alert--warning" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontWeight: 700 }}>⚠️ Awaiting payment validation</div>
+              <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PremiumIcon name="AlertTriangle" variant="warning" size={16} />
+                <span>Awaiting payment validation</span>
+              </div>
               <p style={{ fontSize: '12px' }}>
                 Your order is currently pending payment. Confirm the EcoCash push request on your phone.
               </p>
@@ -1007,8 +1077,9 @@ function TrackingContent() {
           {/* Delivery Release PIN Verification Card (Customer View) */}
           {order.status !== 'completed' && order.status !== 'cancelled' && order.status !== 'payment_pending' && (
             <div className={styles.pinCard}>
-              <div className={styles.pinHeader}>
-                <span>🔒 Secure Escrow PIN</span>
+              <div className={styles.pinHeader} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PremiumIcon name="Lock" variant="protect" glow size={16} />
+                <span>Secure Escrow PIN</span>
               </div>
               
               <div className={styles.pinDigits}>
@@ -1041,8 +1112,9 @@ function TrackingContent() {
                 />
                 
                 {pinError && (
-                  <div className="alert alert--danger" style={{ fontSize: '11px', padding: '6px' }}>
-                    ⚠️ {pinError}
+                  <div className="alert alert--danger" style={{ fontSize: '11px', padding: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <PremiumIcon name="AlertTriangle" variant="danger" size={14} />
+                    <span>{pinError}</span>
                   </div>
                 )}
                 
@@ -1067,7 +1139,7 @@ function TrackingContent() {
               boxShadow: '0 8px 32px rgba(245, 158, 11, 0.05)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <span style={{ fontSize: '1.25rem' }}>🤝</span>
+                <PremiumIcon name="Handshake" variant="warning" size={20} glow />
                 <h3 style={{ fontSize: '0.9375rem', fontWeight: 800, margin: 0, color: '#f59e0b' }}>
                   Incoming Counter Bids ({counterOffers.length})
                 </h3>
@@ -1104,7 +1176,10 @@ function TrackingContent() {
                             {offer.rider_name ? offer.rider_name[0] : 'R'}
                           </div>
                           <div>
-                            <div style={{ fontSize: '0.8125rem', fontWeight: 700 }}>{offer.rider_name || 'Rider'}</div>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              {offer.rider_name || 'Rider'}
+                              {offer.is_verified && <PremiumIcon name="ShieldCheck" variant="success" size={14} className="ml-1" glow />}
+                            </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>⭐ {offer.rider_rating || '4.8'} rating</div>
                           </div>
                         </div>
@@ -1145,11 +1220,24 @@ function TrackingContent() {
           {order.assigned_rider_id && (
             <div className={styles.riderCard}>
               <div className={styles.riderInfo}>
-                <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'var(--color-primary-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
-                  🚴
+                <div style={{ width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PremiumIcon name="Bike" variant="info" size={24} backdrop="circle" />
                 </div>
                 <div>
-                  <div className={styles.riderName}>{order.rider?.full_name || 'Tinashe M.'}</div>
+                  <div className={styles.riderName} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span>{order.rider?.full_name || 'Tinashe M.'}</span>
+                    {order.assigned_rider_id.startsWith('mock-') || ['verified', 'pro', 'elite', 'business_courier'].includes(order.rider?.trust_tier || '') ? (
+                      <span className="badge badge--success" style={{ fontSize: '9px', padding: '2px 6px', textTransform: 'uppercase', letterSpacing: '0.05em', height: 'fit-content', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <PremiumIcon name="ShieldCheck" variant="success" size={10} />
+                        <span>Verified Biker</span>
+                      </span>
+                    ) : (
+                      <span className="badge" style={{ fontSize: '9px', padding: '2px 6px', textTransform: 'uppercase', letterSpacing: '0.05em', height: 'fit-content', background: 'rgba(255,255,255,0.08)', color: 'var(--text-tertiary)', border: '1px solid var(--border-default)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <PremiumIcon name="AlertTriangle" variant="warning" size={10} />
+                        <span>Unverified</span>
+                      </span>
+                    )}
+                  </div>
                   <div className={styles.riderMeta}>
                     <span>⭐ 4.8</span>
                     <span>•</span>
@@ -1163,15 +1251,19 @@ function TrackingContent() {
                   type="button" 
                   className="btn btn--secondary btn--sm font-medium"
                   onClick={() => setShowCallSimulator(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
-                  📞 Call Rider
+                  <PremiumIcon name="Phone" variant="success" size={14} />
+                  <span>Call Rider</span>
                 </button>
                 <button 
                   type="button" 
                   className="btn btn--secondary btn--sm font-medium"
                   onClick={() => setShowChatDrawer(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                 >
-                  💬 Message
+                  <PremiumIcon name="MessageSquare" variant="primary" size={14} />
+                  <span>Message</span>
                 </button>
               </div>
             </div>
@@ -1213,6 +1305,84 @@ function TrackingContent() {
             </div>
           </div>
 
+          {/* Buy For Me: Shopping List & Receipt Verification details */}
+          {order.service_type === 'buy_for_me' && (
+            <div className={styles.shoppingCard}>
+              <div className={styles.shoppingHeader} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PremiumIcon name="ShoppingCart" variant="warning" size={20} glow />
+                <h3 className={styles.shoppingTitle}>Requested Shopping List</h3>
+              </div>
+              
+              <div className={styles.shoppingItems}>
+                {order.shopping_list && order.shopping_list.length > 0 ? (
+                  order.shopping_list.map((item: any, idx: number) => (
+                    <div key={idx} className={styles.shoppingItem}>
+                      <div>
+                        <span className={styles.shoppingItemName}>{item.name}</span>
+                        <span className={styles.shoppingItemMeta}> (Qty: {item.quantity})</span>
+                      </div>
+                      <span>{formatPrice(item.est_price * item.quantity)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ fontStyle: 'italic', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    No items in shopping list.
+                  </div>
+                )}
+              </div>
+
+              {order.estimated_item_cost !== undefined && (
+                <div className={styles.estimatedTotal}>
+                  <span>Estimated Item Cost Budget:</span>
+                  <span style={{ fontWeight: 'bold' }}>{formatPrice(order.estimated_item_cost)}</span>
+                </div>
+              )}
+
+              {/* Receipt Verification details from OCR */}
+              {order.purchase_amount !== undefined && order.purchase_amount > 0 && (
+                <div className={styles.receiptSection}>
+                  <div className={styles.receiptHeader} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <PremiumIcon name="FileText" variant="info" size={18} glow />
+                    <span>Store Receipt Verified</span>
+                  </div>
+                  
+                  <div className={styles.receiptDetails}>
+                    <div className={styles.receiptRow}>
+                      <span>Actual Total Spent:</span>
+                      <span className={styles.receiptValue}>{formatPrice(order.purchase_amount)}</span>
+                    </div>
+                    {order.estimated_item_cost !== undefined && order.purchase_amount > order.estimated_item_cost && (
+                      <div className={styles.receiptBudgetWarning} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <PremiumIcon name="AlertTriangle" variant="danger" size={14} />
+                        <span>Budget exceeded by {formatPrice(order.purchase_amount - order.estimated_item_cost)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {(() => {
+                    const receiptProof = order.proofs?.find((p: any) => p.proof_type === 'receipt_photo');
+                    if (receiptProof?.file_url) {
+                      return (
+                        <a 
+                          href={receiptProof.file_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="btn btn--secondary btn--xs viewReceiptBtn"
+                          style={{ display: 'flex', textDecoration: 'none', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                        >
+                          <PremiumIcon name="Eye" variant="primary" size={12} />
+                          <span>View Receipt Photo</span>
+                        </a>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+
+
           {/* Timeline Section */}
           <div className={styles.timelineSection}>
             <div className={styles.timelineTitle}>Tracking History</div>
@@ -1247,8 +1417,11 @@ function TrackingContent() {
               <span>Service fee</span>
               <span>{formatPrice(order.service_fee ?? 0)}</span>
             </div>
-            <div className={styles.priceRow}>
-              <span>🛡️ Protection fee</span>
+            <div className={styles.priceRow} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <PremiumIcon name="Shield" variant="protect" size={14} />
+                <span>Protection fee</span>
+              </span>
               <span>{formatPrice(order.protection_fee ?? 0)}</span>
             </div>
             <hr className="divider" />
@@ -1264,17 +1437,20 @@ function TrackingContent() {
               type="button" 
               className="btn btn--secondary btn--full"
               onClick={() => setShowDisputeModal(true)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
             >
-              ⚖️ Report Issue / File Dispute
+              <PremiumIcon name="Scale" variant="warning" size={14} />
+              <span>Report Issue / File Dispute</span>
             </button>
             {order.status !== 'completed' && order.status !== 'cancelled' && (
               <button 
                 type="button" 
                 className="btn btn--danger btn--full font-bold"
                 onClick={handleCustomerSos}
-                style={{ background: '#dc2626', color: '#ffffff', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)' }}
+                style={{ background: '#dc2626', color: '#ffffff', boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               >
-                🆘 Trigger SOS Emergency
+                <PremiumIcon name="ShieldAlert" variant="danger" animate="pulse" size={14} glow />
+                <span>Trigger SOS Emergency</span>
               </button>
             )}
             {!pinVerified && liveOrder?.status !== 'cancelled' && (
@@ -1306,8 +1482,10 @@ function TrackingContent() {
           <div className={styles.ecocashOverlay}>
             <div className={styles.ecocashModal} style={theme.modal}>
               <div className={styles.ecocashHeader}>
-                <div className={styles.ecocashBrandIcon} style={theme.brandIcon}>
-                  {activeMethod === 'mtn_momo' ? '🟡' : activeMethod === 'airtel_money' ? '🔴' : '📱'}
+                <div className={styles.ecocashBrandIcon} style={{ ...theme.brandIcon, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {activeMethod === 'mtn_momo' ? <PremiumIcon name="Zap" variant="warning" size={18} /> : 
+                   activeMethod === 'airtel_money' ? <PremiumIcon name="Smartphone" variant="danger" size={18} /> : 
+                   <PremiumIcon name="Smartphone" variant="info" size={18} />}
                 </div>
                 <div>
                   <div className={styles.ecocashTitle} style={theme.title}>{providerName} Payment</div>
@@ -1404,7 +1582,7 @@ function TrackingContent() {
         <div className={styles.ecocashOverlay} style={{ zIndex: 1060 }}>
           <div className={styles.ecocashModal} style={{ maxWidth: '440px' }}>
             <div className={styles.ecocashHeader}>
-              <div className={styles.ecocashBrandIcon}>⚖️</div>
+              <div className={styles.ecocashBrandIcon} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PremiumIcon name="Scale" variant="warning" size={18} /></div>
               <div>
                 <div className={styles.ecocashTitle}>File Order Dispute</div>
                 <div className={styles.ecocashSubtitle}>Submit claim for Biker resolution</div>

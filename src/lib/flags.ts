@@ -1,15 +1,12 @@
 /**
  * Feature Flags Configuration
- * Allows runtime control over system modes and fallback states.
+ * Runtime control over system modes and fallback states.
  */
 
 export const FLAGS = {
-  // Flag to completely bypass mock/local storage data and communicate with Supabase directly
-  useLiveDb: process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true',
+  // Flag to communicate with Supabase directly (always true in production)
+  useLiveDb: process.env.NEXT_PUBLIC_USE_LIVE_DB !== 'false',
   
-  // Emergency fallback flag: if true, allows local storage/mock fallback on database errors
+  // Emergency fallback flag: if true, allows local storage fallback on database errors
   enableMockFallback: process.env.NEXT_PUBLIC_ENABLE_MOCK_FALLBACK === 'true',
-  
-  // Flag to toggle developer simulation controls and dashboard HUDs
-  devHud: process.env.NEXT_PUBLIC_DEV_MODE === 'true',
 };

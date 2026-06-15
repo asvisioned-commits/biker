@@ -827,3 +827,9 @@
   border-bottom-style: solid;
   border-bottom-color: var(--color-primary-500);
 }
+
+.mapOverlaySheet {
+  pointer-events: none !important;
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+}

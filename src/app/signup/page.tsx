@@ -6,8 +6,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './signup.module.css';
 import { signInWithGoogle, signUpWithEmail, getSession, verifyEmailOtp, resendVerificationEmail, type BikerSession } from '@/lib/auth';
 import type { UserRole, VehicleType } from '@/types';
-import { updateProfile, createRiderProfile, createMerchantProfile, setActiveRole } from '@/lib/database';
 import { useProfile } from '@/context/ProfileContext';
+import { updateProfile, createRiderProfile, createMerchantProfile, setActiveRole } from '@/lib/database';
+import { Package, Bike, Store, FileText, ShieldCheck, Camera, Sparkles, Check, Info, Lock } from 'lucide-react';
+
 
 function SignupContent() {
   const router = useRouter();
@@ -271,19 +273,19 @@ function SignupContent() {
   const roles = [
     {
       role: 'customer' as UserRole,
-      icon: '📦',
+      icon: <Package size={28} style={{ color: 'var(--color-primary-500)' }} />,
       title: 'Customer',
       description: 'Send, buy, and receive deliveries safely.',
     },
     {
       role: 'rider' as UserRole,
-      icon: '🚴',
+      icon: <Bike size={28} style={{ color: 'var(--color-primary-500)' }} />,
       title: 'Biker',
       description: 'Earn by delivering. Drive your bike. Manage your own earnings.',
     },
     {
       role: 'merchant' as UserRole,
-      icon: '🏪',
+      icon: <Store size={28} style={{ color: 'var(--color-primary-500)' }} />,
       title: 'Merchant',
       description: 'Generate delivery links. Let us deliver for your business.',
     },
@@ -696,7 +698,7 @@ function SignupContent() {
                       <div className={styles.roleTitle}>{r.title}</div>
                       <div className={styles.roleDescription}>{r.description}</div>
                       {selectedRole === r.role && (
-                        <div className={styles.roleCheck}>✓</div>
+                        <div className={styles.roleCheck}><Check size={14} /></div>
                       )}
                     </button>
                   ))}
@@ -876,7 +878,7 @@ function SignupContent() {
                         </>
                       ) : (
                         <>
-                          <span className={styles.uploadIcon}>🆔</span>
+                          <span className={styles.uploadIcon}><FileText size={24} /></span>
                           <span className={styles.uploadText}>Click to upload ID photo</span>
                         </>
                       )}
@@ -893,7 +895,7 @@ function SignupContent() {
                   {vehicleType !== 'bicycle' && (
                     <>
                       <div className={styles.uploadGroup}>
-                        <label className={styles.uploadLabel}>Vehicle Registration Certificate</label>
+                        <label className={styles.uploadLabel}>Vehicle Registration Certificate (Optional)</label>
                         <div className={styles.uploadBox} onClick={() => document.getElementById('reg-upload')?.click()}>
                           {uploadingReg ? (
                             <span className="spinner" />
@@ -904,7 +906,7 @@ function SignupContent() {
                             </>
                           ) : (
                             <>
-                              <span className={styles.uploadIcon}>📋</span>
+                              <span className={styles.uploadIcon}><FileText size={24} /></span>
                               <span className={styles.uploadText}>Click to upload registration document photo</span>
                             </>
                           )}
@@ -930,7 +932,7 @@ function SignupContent() {
                             </>
                           ) : (
                             <>
-                              <span className={styles.uploadIcon}>🪪</span>
+                              <span className={styles.uploadIcon}><FileText size={24} /></span>
                               <span className={styles.uploadText}>Click to upload license card photo</span>
                             </>
                           )}
@@ -947,7 +949,7 @@ function SignupContent() {
                   )}
 
                   <div className={styles.kycNotice}>
-                    <span>🔒</span>
+                    <Lock size={20} style={{ color: 'var(--color-primary-500)', flexShrink: 0, marginTop: '2px' }} />
                     <div>
                       <strong>Your data is safe</strong>
                       <p>Your documents are verified securely by our ops team. Live face scanning is required to prevent identity theft.</p>
@@ -962,7 +964,7 @@ function SignupContent() {
                     className="btn btn--primary btn--lg"
                     style={{ flex: 1 }}
                     onClick={() => setStep('face_scan')}
-                    disabled={loading || !nationalId || !operatingZone || !nationalIdCardUrl || (vehicleType !== 'bicycle' && (!vehicleReg || !vehicleRegUrl))}
+                    disabled={loading || !nationalId || !operatingZone || !nationalIdCardUrl || (vehicleType !== 'bicycle' && !vehicleReg)}
                   >
                     Continue to Face Scan
                   </button>
@@ -984,8 +986,8 @@ function SignupContent() {
                       {cameraStream && <div className={styles.scannerLine} />}
                       <video id="liveness-video" className={styles.cameraVideo} playsInline muted />
                       {!cameraStream && (
-                        <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
-                          <span style={{ fontSize: '3rem', display: 'block', marginBottom: '10px' }}>📸</span>
+                        <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                          <Camera size={48} style={{ color: 'var(--text-tertiary)', marginBottom: '10px' }} />
                           <button type="button" className="btn btn--secondary btn--sm" onClick={startCamera}>
                             Start Camera Scan
                           </button>
@@ -1004,13 +1006,19 @@ function SignupContent() {
                           )}
                           {livenessStep === 'blink' && (
                             <>
-                              <div className={styles.livenessInstruction}>✨ Blink slowly now</div>
+                              <div className={styles.livenessInstruction} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                <Sparkles size={16} style={{ color: '#fbbf24' }} />
+                                <span>Blink slowly now</span>
+                              </div>
                               <div className={styles.livenessSubInstruction}>Liveness check in progress...</div>
                             </>
                           )}
                           {livenessStep === 'turn' && (
                             <>
-                              <div className={styles.livenessInstruction}>🔄 Turn head slightly right</div>
+                              <div className={styles.livenessInstruction} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-primary-500)' }}><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                                <span>Turn head slightly right</span>
+                              </div>
                               <div className={styles.livenessSubInstruction}>Capturing face structure details...</div>
                             </>
                           )}
@@ -1041,10 +1049,10 @@ function SignupContent() {
                       {cameraStream && (
                         <div className={styles.checkpoints}>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'align' ? styles.checkpointDotActive : styles.checkpointDotSuccess}`}>
-                            {livenessStep !== 'align' ? '✓' : '1'} Align
+                            {livenessStep !== 'align' ? <Check size={10} style={{ marginRight: '2px' }} /> : '1'} Align
                           </div>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'blink' ? styles.checkpointDotActive : (livenessStep === 'turn' ? styles.checkpointDotSuccess : '')}`}>
-                            {livenessStep === 'turn' ? '✓' : '2'} Blink
+                            {livenessStep === 'turn' ? <Check size={10} style={{ marginRight: '2px' }} /> : '2'} Blink
                           </div>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'turn' ? styles.checkpointDotActive : ''}`}>
                             3 Turn
@@ -1057,8 +1065,11 @@ function SignupContent() {
                     <div className={styles.cameraContainer}>
                       <img src={selfieUrl || ''} className={styles.capturedSelfie} alt="Selfie preview" />
                     </div>
-                    <div style={{ margin: '15px 0', textAlign: 'center' }}>
-                      <div className={styles.livenessInstruction} style={{ color: '#10b981' }}>✓ Liveness Verification Passed</div>
+                    <div style={{ margin: '15px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div className={styles.livenessInstruction} style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                        <ShieldCheck size={18} />
+                        <span>Liveness Verification Passed</span>
+                      </div>
                       <div className={styles.livenessSubInstruction}>Selfie matches document schema parameters</div>
                     </div>
                   </div>
@@ -1179,8 +1190,18 @@ function SignupContent() {
               <form onSubmit={handleEmailOtpVerify} className={styles.stepContent}>
                 <h1 className={styles.formTitle}>Verify your email</h1>
                 <p className={styles.formSubtitle}>
-                  We sent a 6-digit activation code to <strong>{unconfirmedEmail}</strong>
+                  Please check your inbox at <strong>{unconfirmedEmail}</strong> and click the verification link to activate your account.
                 </p>
+                <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '14px', borderRadius: '12px', fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', border: '1px solid var(--border-default)', lineHeight: '1.5', textAlign: 'left' }}>
+                  <Info size={16} style={{ color: 'var(--color-primary-500)', display: 'inline-block', verticalAlign: 'middle', marginRight: '4px' }} /> <strong>Local Testing / No Emails?</strong><br />
+                  • <strong>Local Docker:</strong> If running Supabase locally, verification emails are captured by the local mail server (Inbucket). Open <strong>http://localhost:54324</strong> in your browser to view your sent emails and find the code/link.<br />
+                  • <strong>Supabase Cloud:</strong> If emails are not arriving due to default SMTP limits, you can confirm this user manually in the <strong>Supabase Dashboard &gt; Authentication &gt; Users</strong> by clicking the user and selecting <strong>Confirm User</strong>. Once confirmed, you can go back and log in directly.
+                </div>
+                <div style={{ marginBottom: '8px', textAlign: 'center' }}>
+                  <label className="input-label" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Or enter the 6-digit code if you received one:
+                  </label>
+                </div>
                 <div className="pin-input-group">
                   {[0, 1, 2, 3, 4, 5].map((i) => (
                     <input

@@ -6,52 +6,10 @@ import { useProfile } from '@/context/ProfileContext';
 import { OrderService } from '@/lib/order-service';
 import { ListSkeleton, StatsSkeleton } from '@/components/skeletons';
 import { createClient } from '@/lib/supabase/client';
+import DisputeEvidenceViewer from '@/components/DisputeEvidenceViewer';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
-const MOCK_DISPUTES = [
-  {
-    id: 'DSP-001',
-    order_ref: 'BKR-P2Q6R8',
-    type: 'wrong_item',
-    status: 'open',
-    severity: 'medium',
-    description: 'The rider picked up the wrong package from the pharmacy. I ordered cough syrup but received bandages.',
-    initiated_by: 'customer',
-    against: 'rider',
-    rider_name: 'Kudakwashe N.',
-    created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(), // 45 min ago
-    amount: 8.00,
-    evidence: ['receipt_photo', 'item_photo'],
-  },
-  {
-    id: 'DSP-002',
-    order_ref: 'BKR-M3T9V7',
-    type: 'damaged',
-    status: 'investigating',
-    severity: 'high',
-    description: 'Phone screen cracked during transit. The package was not handled with care — bubble wrap was torn.',
-    initiated_by: 'customer',
-    against: 'rider',
-    rider_name: 'Simba R.',
-    created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-    amount: 45.00,
-    evidence: ['pickup_photo', 'delivery_photo', 'condition_note'],
-  },
-  {
-    id: 'DSP-003',
-    order_ref: 'BKR-L7K2X5',
-    type: 'overcharged',
-    status: 'resolved_customer_favor',
-    severity: 'low',
-    description: 'The Buy For Me purchase was $5.20 but I was charged $8.00. Receipt shows the correct amount.',
-    initiated_by: 'customer',
-    against: 'platform',
-    rider_name: 'Gift T.',
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
-    amount: 2.80,
-    evidence: ['receipt_photo'],
-    resolution: 'Refund of $2.80 issued to wallet',
-  },
-];
+// Mock disputes removed
 
 const SEVERITY_COLORS: Record<string, string> = {
   low: 'success',
@@ -120,7 +78,7 @@ export default function DisputesPage() {
   const [opsNotes, setOpsNotes] = useState<{ [key: string]: string }>({});
   const [submittingAction, setSubmittingAction] = useState(false);
 
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+
 
   // Phase 4 safety alerts state
   const [activeSafetyAlerts, setActiveSafetyAlerts] = useState<any[]>([]);
@@ -192,33 +150,18 @@ export default function DisputesPage() {
       
       if (activeTab === 'ops-console') {
         const data = await OrderService.getAllDisputes();
-        if ((!data || data.length === 0) && isDevMode) {
-          setDisputes(MOCK_DISPUTES);
-        } else {
-          setDisputes(data || []);
-        }
+        setDisputes(data || []);
       } else {
         if (!userId) {
-          if (isDevMode) {
-            setDisputes(MOCK_DISPUTES);
-          } else {
-            setDisputes([]);
-          }
+          setDisputes([]);
           return;
         }
         const data = await OrderService.getDisputes(userId);
-        if ((!data || data.length === 0) && isDevMode) {
-          setDisputes(MOCK_DISPUTES);
-        } else {
-          setDisputes(data || []);
-        }
+        setDisputes(data || []);
       }
     } catch (err: any) {
       console.error('Failed to load disputes:', err);
-      setError('Could not retrieve disputes. Showing local simulation.');
-      if (isDevMode) {
-        setDisputes(MOCK_DISPUTES);
-      }
+      setError('Could not retrieve disputes.');
     } finally {
       setLoading(false);
     }
@@ -330,7 +273,9 @@ export default function DisputesPage() {
         <div className={styles.sosOverlay}>
           <div className={styles.sosContainer}>
             <div className={styles.sosHeader}>
-              <span className={styles.sosIcon}>🚨</span>
+              <span className={styles.sosIcon}>
+                <PremiumIcon name="ShieldAlert" variant="danger" animate="pulse" size={28} />
+              </span>
               <div>
                 <h2 className={styles.sosTitle}>Critical Safety Alert Active</h2>
                 <p className={styles.sosSubtitle}>
@@ -350,17 +295,31 @@ export default function DisputesPage() {
                   <div key={alert.id} className={styles.sosAlertCard}>
                     <div className={styles.sosMetaGrid}>
                       <div className={styles.sosMetaItem}>
-                        <span className={styles.sosMetaLabel}>Rider</span>
+                        <span className={styles.sosMetaLabel}>
+                          <PremiumIcon name="User" variant="info" size={12} className="mr-1" /> Rider
+                        </span>
                         <span className={styles.sosMetaValue}>{riderName} ({riderPhone})</span>
                       </div>
                       <div className={styles.sosMetaItem}>
-                        <span className={styles.sosMetaLabel}>Order Reference</span>
+                        <span className={styles.sosMetaLabel}>
+                          <PremiumIcon name="Package" variant="primary" size={12} className="mr-1" /> Order Reference
+                        </span>
                         <span className={styles.sosMetaValue}>{orderRef}</span>
                       </div>
                       <div className={styles.sosMetaItem}>
                         <span className={styles.sosMetaLabel}>Alert Type</span>
-                        <span className={styles.sosMetaValue} style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                          {alert.type === 'sos_alert' ? '💥 SOS SIGNAL TRIGGERED' : '⏳ MISSED IN-TRANSIT CHECK-IN'}
+                        <span className={styles.sosMetaValue} style={{ color: '#ef4444', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {alert.type === 'sos_alert' ? (
+                            <>
+                              <PremiumIcon name="ShieldAlert" variant="danger" animate="pulse" size={14} />
+                              <span>SOS SIGNAL TRIGGERED</span>
+                            </>
+                          ) : (
+                            <>
+                              <PremiumIcon name="Clock" variant="warning" animate="spin-slow" size={14} />
+                              <span>MISSED CHECK-IN</span>
+                            </>
+                          )}
                         </span>
                       </div>
                       <div className={styles.sosMetaItem}>
@@ -370,8 +329,9 @@ export default function DisputesPage() {
                       {alert.gps_lat && alert.gps_lng && (
                         <div className={styles.sosMetaItem} style={{ gridColumn: 'span 2' }}>
                           <span className={styles.sosMetaLabel}>GPS Coordinates</span>
-                          <span className={styles.sosMetaValue}>
-                            📍 {alert.gps_lat.toFixed(6)}, {alert.gps_lng.toFixed(6)} 
+                          <span className={styles.sosMetaValue} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                            <PremiumIcon name="MapPin" variant="danger" size={14} />
+                            <span>{alert.gps_lat.toFixed(6)}, {alert.gps_lng.toFixed(6)}</span>
                             <a 
                               href={`https://www.google.com/maps/search/?api=1&query=${alert.gps_lat},${alert.gps_lng}`}
                               target="_blank"
@@ -402,7 +362,7 @@ export default function DisputesPage() {
                             alert(`Initiating emergency call to: ${riderPhone}`);
                           }}
                         >
-                          📞 Call Rider
+                          <PremiumIcon name="Phone" variant="success" size={14} className="mr-1" /> Call Rider
                         </button>
                         <button
                           className={`${styles.sosButton} ${styles.sosButtonDanger}`}
@@ -412,7 +372,7 @@ export default function DisputesPage() {
                             setSosNotes(`[Ops Security Dispatch] Security services dispatched to coordinates: ${alert.gps_lat || 'Unknown'}, ${alert.gps_lng || 'Unknown'}.`);
                           }}
                         >
-                          🛡️ Dispatch Security
+                          <PremiumIcon name="ShieldAlert" variant="danger" size={14} className="mr-1" /> Dispatch Security
                         </button>
                         <button
                           className={`${styles.sosButton} ${styles.sosButtonSuccess}`}
@@ -441,7 +401,7 @@ export default function DisputesPage() {
                             }
                           }}
                         >
-                          ✅ Resolve & Clear
+                          <PremiumIcon name="CheckCircle" variant="success" size={14} className="mr-1" /> Resolve & Clear
                         </button>
                       </div>
                     </div>
@@ -478,8 +438,9 @@ export default function DisputesPage() {
       )}
 
       {error && (
-        <div style={{ padding: 'var(--space-3)', background: 'var(--color-warning-50)', color: 'var(--color-warning-600)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)' }}>
-          ⚠️ {error}
+        <div style={{ padding: 'var(--space-3)', background: 'var(--color-warning-50)', color: 'var(--color-warning-600)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-sm)', display: 'flex', alignItems: 'center' }}>
+          <PremiumIcon name="AlertTriangle" variant="warning" size={16} className="mr-2" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -513,8 +474,10 @@ export default function DisputesPage() {
       {loading ? (
         <ListSkeleton count={2} />
       ) : disputes.length === 0 ? (
-        <div className="empty-state card card--glass animate-fadeIn" style={{ padding: 'var(--space-12) var(--space-6)', marginBottom: 'var(--space-8)' }}>
-          <span className="empty-state-icon">⚖️</span>
+        <div className="empty-state card card--glass animate-fadeIn" style={{ padding: 'var(--space-12) var(--space-6)', marginBottom: 'var(--space-8)', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <PremiumIcon name="Scale" variant="neutral" size={48} backdrop="squircle" glow />
+          </div>
           <h3 className="empty-state-title">No disputes filed</h3>
           <p className="empty-state-description" style={{ marginBottom: 'var(--space-6)' }}>
             All your orders are fully protected under Biker Protect. If you run into issues with a delivery, you can flag it directly from the order details page.
@@ -564,7 +527,9 @@ export default function DisputesPage() {
                   onClick={() => setExpanded(isExpanded ? null : dispute.id)}
                 >
                   <div className={styles.disputeMeta}>
-                    <div className={styles.disputeIcon}>⚖️</div>
+                    <div className={styles.disputeIcon}>
+                      <PremiumIcon name="Scale" variant="warning" size={20} />
+                    </div>
                     <div>
                       <div className={styles.disputeId}>
                         {dispId}
@@ -583,6 +548,29 @@ export default function DisputesPage() {
 
                 {isExpanded && (
                   <div className={styles.disputeBody}>
+                    <div style={{ marginBottom: '20px', borderBottom: '1px solid var(--border-default)', paddingBottom: '20px' }}>
+                      <DisputeEvidenceViewer
+                        referenceCode={orderRef}
+                        disputeReason={TYPE_LABELS[disputeType] || disputeType}
+                        chatLog={[
+                          { sender: 'Customer', text: 'Where is my order? It shows delivered but I received nothing.', time: '12:04 PM' },
+                          { sender: 'Rider', text: 'Encountered roadblock on Sam Nujoma St, arrived but nobody came out.', time: '12:06 PM' },
+                          { sender: 'Customer', text: 'I am at the gate, please check if you are at the correct address.', time: '12:08 PM' },
+                        ]}
+                        timeline={[
+                          { title: 'Dispatch Initiated', desc: 'Order published by customer', time: '11:45 AM', completed: true },
+                          { title: 'Payment Secured', desc: 'Funds held in escrow reserve', time: '11:46 AM', completed: true },
+                          { title: 'Rider Departed', desc: 'Heading to pickup station', time: '11:50 AM', completed: true },
+                          { title: 'At Destination', desc: 'Delivery confirmation code requested', time: '12:15 PM', completed: true },
+                        ]}
+                        receiptUrl={dispute.evidence?.includes('receipt_photo') ? '/images/mock-receipt.jpg' : undefined}
+                        proofPhotoUrl={dispute.evidence?.includes('delivery_photo') ? '/images/mock-delivery.jpg' : undefined}
+                        pickupCoords={[-17.8292, 31.0522]}
+                        dropoffCoords={[-17.7842, 31.0532]}
+                        actualRouteCheckpoint={[-17.8012, 31.0498]}
+                      />
+                    </div>
+
                     <div className={styles.disputeDescription}>
                       <p>{dispute.description}</p>
                     </div>
@@ -590,11 +578,37 @@ export default function DisputesPage() {
                     <div className={styles.disputeDetails}>
                       <div className={styles.detailRow}>
                         <span className={styles.detailLabel}>Filed By</span>
-                        <span>{dispute.initiated_by === 'customer' ? '👤 Customer' : dispute.initiated_by === 'rider' ? '🚴 Rider' : dispute.initiated_by}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          {dispute.initiated_by === 'customer' ? (
+                            <>
+                              <PremiumIcon name="User" variant="info" size={14} />
+                              <span>Customer</span>
+                            </>
+                          ) : dispute.initiated_by === 'rider' ? (
+                            <>
+                              <PremiumIcon name="Bike" variant="success" size={14} />
+                              <span>Rider</span>
+                            </>
+                          ) : (
+                            dispute.initiated_by
+                          )}
+                        </span>
                       </div>
                       <div className={styles.detailRow}>
                         <span className={styles.detailLabel}>Against</span>
-                        <span>{againstRole === 'rider' ? `🚴 ${opponentName}` : '🏢 Platform'}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          {againstRole === 'rider' ? (
+                            <>
+                              <PremiumIcon name="Bike" variant="success" size={14} />
+                              <span>{opponentName}</span>
+                            </>
+                          ) : (
+                            <>
+                              <PremiumIcon name="Building" variant="neutral" size={14} />
+                              <span>Platform</span>
+                            </>
+                          )}
+                        </span>
                       </div>
                       <div className={styles.detailRow}>
                         <span className={styles.detailLabel}>Amount in question</span>
@@ -617,8 +631,9 @@ export default function DisputesPage() {
                         </div>
                       </div>
                       {resolutionNotes && (
-                        <div className={styles.resolution}>
-                          <span>✅</span> {resolutionNotes}
+                        <div className={styles.resolution} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <PremiumIcon name="CheckCircle" variant="success" size={16} glow />
+                          <span>{resolutionNotes}</span>
                         </div>
                       )}
                     </div>
@@ -706,7 +721,9 @@ export default function DisputesPage() {
 
       {/* Policy Notice */}
       <div className={styles.policyNotice} style={{ marginTop: 'var(--space-8)' }}>
-        <div className={styles.policyIcon}>🛡️</div>
+        <div className={styles.policyIcon}>
+          <PremiumIcon name="ShieldCheck" variant="protect" size={24} glow />
+        </div>
         <div>
           <strong>Biker Protect dispute policy</strong>
           <p>Protected orders are eligible for full refund if proof shows delivery failure. Disputes are reviewed within 24 hours. You can appeal any resolution within 48 hours.</p>

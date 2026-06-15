@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import styles from './page.module.css';
 import { useProfile } from '@/context/ProfileContext';
+import CityPulse from '@/components/CityPulse';
 
 const SERVICES = [
   {
@@ -219,6 +220,27 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---- LIVE CITY PULSE ---- */}
+      <section style={{
+        padding: '0 0 40px 0',
+        background: 'linear-gradient(180deg, var(--bg-app) 0%, hsl(220, 25%, 8%) 30%)',
+      }}>
+        <div className={styles.sectionInner}>
+          <div className={styles.sectionHeader} style={{ marginBottom: '24px' }}>
+            <span className={styles.sectionLabel}>Live right now</span>
+            <h2 className={styles.sectionTitle} style={{ color: '#fff' }}>
+              {cityName} is moving
+            </h2>
+            <p className={styles.sectionSubtitle} style={{ color: 'rgba(255,255,255,0.6)' }}>
+              Real-time delivery activity across the city. Riders online, packages in transit.
+            </p>
+          </div>
+          <div style={{ borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <CityPulse country={country} />
           </div>
         </div>
       </section>

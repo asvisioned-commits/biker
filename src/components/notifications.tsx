@@ -10,8 +10,6 @@ import {
 } from '@/lib/database';
 import { createClient } from '@/lib/supabase/client';
 
-const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-
 interface NotificationItem {
   id: string;
   type: string;
@@ -23,15 +21,6 @@ interface NotificationItem {
   created_at: string;
   read_at: string | null;
 }
-
-const MOCK_NOTIFICATIONS: NotificationItem[] = [
-  { id: '1', type: 'order', title: 'Rider assigned', body: 'Takudzwa M. accepted your delivery BKR-7X2K9M', data: {}, channel: 'in_app', read: false, created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(), read_at: null },
-  { id: '2', type: 'order', title: 'Pickup confirmed', body: 'Photo proof uploaded for BKR-7X2K9M', data: {}, channel: 'in_app', read: false, created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(), read_at: null },
-  { id: '3', type: 'payout', title: 'Payment received', body: '$3.50 released to your wallet', data: {}, channel: 'in_app', read: true, created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(), read_at: new Date().toISOString() },
-  { id: '4', type: 'dispute', title: 'Dispute resolved', body: 'Your dispute #D-4821 has been resolved in your favor', data: {}, channel: 'in_app', read: true, created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), read_at: new Date().toISOString() },
-  { id: '5', type: 'promo', title: '🎁 Weekend special', body: 'Free protection on all Jet deliveries this weekend!', data: {}, channel: 'in_app', read: true, created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), read_at: new Date().toISOString() },
-  { id: '6', type: 'system', title: 'Profile updated', body: 'Your phone number has been verified', data: {}, channel: 'in_app', read: true, created_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(), read_at: new Date().toISOString() },
-];
 
 const TYPE_ICONS: Record<string, string> = {
   order: '📦',
@@ -71,13 +60,6 @@ export default function NotificationsDropdown() {
       }
       setUserId(session.user_id);
 
-      const isMockUser = session.user_id.startsWith('mock-');
-      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
-      if (!useLiveDb) {
-        setNotifications(MOCK_NOTIFICATIONS);
-        return;
-      }
-
       const { data } = await fetchNotifications(session.user_id, 20);
       if (data) {
         setNotifications(data as NotificationItem[]);
@@ -90,9 +72,7 @@ export default function NotificationsDropdown() {
 
   // Realtime subscription for new notifications
   useEffect(() => {
-    const isMockUser = userId?.startsWith('mock-');
-    const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || (userId && !isMockUser);
-    if (!userId || !useLiveDb) return;
+    if (!userId) return;
 
     const supabase = createClient();
     const channel = supabase
@@ -120,11 +100,7 @@ export default function NotificationsDropdown() {
   const markAllRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     if (userId) {
-      const isMockUser = userId.startsWith('mock-');
-      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
-      if (useLiveDb) {
-        await markAllNotificationsRead(userId);
-      }
+      await markAllNotificationsRead(userId);
     }
   }, [userId]);
 
@@ -133,11 +109,7 @@ export default function NotificationsDropdown() {
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
     if (userId) {
-      const isMockUser = userId.startsWith('mock-');
-      const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' || !isMockUser;
-      if (useLiveDb) {
-        await markNotificationRead(id);
-      }
+      await markNotificationRead(id);
     }
   }, [userId]);
 

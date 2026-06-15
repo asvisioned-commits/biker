@@ -1,0 +1,145 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.title {
+  font-family: var(--font-header);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-default);
+  background-color: var(--bg-card);
+  transition: all var(--duration-fast) var(--ease-out);
+  text-align: left;
+  cursor: pointer;
+  min-height: 56px;
+  gap: 12px;
+}
+
+.card:hover {
+  border-color: var(--border-hover);
+  background-color: var(--bg-secondary);
+}
+
+.selectedCard {
+  border-color: var(--color-primary-500);
+  background-color: hsla(72, 100%, 50%, 0.03);
+}
+
+[data-theme='dark'] .selectedCard {
+  background-color: hsla(72, 100%, 46%, 0.05);
+}
+
+.leftSide {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.brandIndicator {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.icon {
+  font-size: 16px;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.rightSide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.safeBadge {
+  background-color: hsla(72, 100%, 50%, 0.1);
+  color: var(--color-primary-600);
+}
+
+[data-theme='dark'] .safeBadge {
+  background-color: hsla(72, 100%, 46%, 0.15);
+  color: var(--color-primary-300);
+}
+
+.warningBadge {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+}
+
+.radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--duration-fast);
+}
+
+.card:hover .radio {
+  border-color: var(--border-hover);
+}
+
+.selectedCard .radio {
+  border-color: var(--color-primary-500);
+}
+
+.radioChecked::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--color-primary-500);
+  display: block;
+}

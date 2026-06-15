@@ -9,6 +9,12 @@ import Link from 'next/link';
 import { useProfile } from '@/context/ProfileContext';
 import { reverseGeocode, searchAddress } from '@/lib/geocoding';
 import styles from './new-order.module.css';
+import SurgeMeter from '@/components/SurgeMeter';
+import SmartOrderChat, { SmartOrderChatToggle } from '@/components/SmartOrderChat';
+import { BottomSheet } from '@/components/primitives/BottomSheet';
+import PaymentMethodSelector, { PaymentMethodType } from '@/components/PaymentMethodSelector';
+import EscrowBadge from '@/components/EscrowBadge';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 interface AutocompleteResult {
   address: string;
@@ -32,10 +38,10 @@ export default function NewOrderPage() {
 
   // Page Step: 'location' (selecting points) or 'fare_details' (confirming bid & contact details)
   const [step, setStep] = useState<'location' | 'fare_details'>('location');
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const hasGeolocatedRef = useRef(false);
   const [locationAccessBlocked, setLocationAccessBlocked] = useState(false);
   const [isGeolocating, setIsGeolocating] = useState(false);
+  const [showChatMode, setShowChatMode] = useState(false);
 
   // Map & Geolocation States
   const [leafletLoaded, setLeafletLoaded] = useState(false);
@@ -124,6 +130,29 @@ export default function NewOrderPage() {
     });
   };
 
+  const handleChatOrderParsed = (order: any) => {
+    if (order.pickupAddress) {
+      setPickupAddress(order.pickupAddress);
+      setPickupSearch(order.pickupAddress);
+    }
+    if (order.pickupCoords) {
+      setPickupCoords(order.pickupCoords);
+      if (mapRef.current) mapRef.current.setView(order.pickupCoords, 14);
+    }
+    if (order.dropoffAddress) {
+      setDropoffAddress(order.dropoffAddress);
+      setDropoffSearch(order.dropoffAddress);
+    }
+    if (order.dropoffCoords) {
+      setDropoffCoords(order.dropoffCoords);
+    }
+    if (order.itemCategory) setItemCategory(order.itemCategory);
+    if (order.fulfillmentMode) setFulfillmentMode(order.fulfillmentMode);
+    if (order.confidence >= 100) {
+      setShowChatMode(false);
+    }
+  };
+
   // Address Inputs & Autocomplete States
   const [pickupAddress, setPickupAddress] = useState('');
   const [dropoffAddress, setDropoffAddress] = useState('');
@@ -138,7 +167,10 @@ export default function NewOrderPage() {
   const [isMapDragging, setIsMapDragging] = useState(false);
 
   // Form States
-  const [itemCategory, setItemCategory] = useState<'document' | 'food' | 'parcel' | 'car_part'>('parcel');
+  const [itemCategory, setItemCategory] = useState<'document' | 'food' | 'parcel' | 'car_part' | 'buy_for_me'>('parcel');
+  const [shoppingItems, setShoppingItems] = useState<{ name: string; quantity: number; estPrice: number }[]>([
+    { name: '', quantity: 1, estPrice: 0.0 }
+  ]);
   const [cargoWeight, setCargoWeight] = useState<string>('1'); // for parcels/parts
   const [itemDescription, setItemDescription] = useState('');
   const [fulfillmentMode, setFulfillmentMode] = useState<'standard' | 'jet' | 'scheduled_saver'>('standard');
@@ -149,7 +181,7 @@ export default function NewOrderPage() {
   const [dropoffPhone, setDropoffPhone] = useState('');
   const [dropoffName, setDropoffName] = useState('');
   const [dropoffGateColor, setDropoffGateColor] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'ecocash' | 'mtn_momo' | 'airtel_money' | 'cash'>('ecocash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('ecocash');
 
   // Bidding & Pricing States
   const [suggestedBasePrice, setSuggestedBasePrice] = useState(5.0);
@@ -167,7 +199,7 @@ export default function NewOrderPage() {
   useEffect(() => {
     if (hasGeolocatedRef.current) return;
     if (country === 'ZM') {
-      setPaymentMethod('mtn_momo');
+      setPaymentMethod('ecocash');
       setPickupCoords([-15.3875, 28.3228]);
     } else {
       setPaymentMethod('ecocash');
@@ -527,12 +559,16 @@ export default function NewOrderPage() {
       ? `📄 Document: ${itemDescription || 'Delivery papers'}`
       : itemCategory === 'food'
       ? `🍔 Food Order: ${itemDescription || 'Hot meal packaging'}`
+      : itemCategory === 'buy_for_me'
+      ? `🛒 Buy For Me: ${itemDescription || 'Shopping purchase'}`
       : `${itemCategory === 'car_part' ? '⚙️ Car Part' : '📦 Parcel'} (${cargoWeight} kg): ${itemDescription || 'Cargo parcel'}`;
 
     try {
-      const payload = {
+      const payload: any = {
         customer_id: userId,
-        service_type: itemCategory === 'document' ? 'document_run' : itemCategory === 'food' ? 'pickup_order' : 'send_item',
+        service_type: itemCategory === 'document' ? 'document_run' : 
+                      itemCategory === 'food' ? 'pickup_order' : 
+                      itemCategory === 'buy_for_me' ? 'buy_for_me' : 'send_item',
         fulfillment_mode: fulfillmentMode,
         protection_level: protectionLevel,
         pickup_address: pickupAddress,
@@ -554,6 +590,17 @@ export default function NewOrderPage() {
         payment_method: paymentMethod,
       };
 
+      if (itemCategory === 'buy_for_me') {
+        const validItems = shoppingItems.filter(item => item.name.trim().length > 0);
+        payload.shopping_list = validItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          est_price: item.estPrice,
+          substitution_ok: true
+        }));
+        payload.estimated_item_cost = validItems.reduce((sum, item) => sum + (item.estPrice * item.quantity), 0);
+      }
+
       const result = await OrderService.createOrder(payload);
 
       if (result) {
@@ -562,7 +609,7 @@ export default function NewOrderPage() {
         router.push(`/dashboard/tracking?id=${result.id}&pay=${payParam}&phone=${encodeURIComponent(pickupPhone)}`);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to place delivery booking');
+      setError(err.message || 'Failed to place delivery dispatch');
       setLoading(false);
     }
   };
@@ -586,7 +633,9 @@ export default function NewOrderPage() {
           <div className={`${styles.pinAddressBubble} ${isMapDragging ? 'opacity-70' : ''}`}>
             {isMapDragging ? 'Snapping position...' : pickupAddress || 'My Location'}
           </div>
-          <div className={`${styles.pinEmoji} ${isMapDragging ? styles.pinActive : ''}`}>📍</div>
+          <div className={`${styles.pinEmoji} ${isMapDragging ? styles.pinActive : ''}`} style={{ width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <PremiumIcon name="MapPin" variant="danger" animate="bounce" size={36} glow />
+          </div>
           <div className={styles.pinShadow} />
         </div>
       )}
@@ -615,23 +664,25 @@ export default function NewOrderPage() {
           onClick={() => snapToCurrentLocation(true)}
           className={styles.gpsFab}
           title="Snap to Current Location"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
-          🎯
+          <PremiumIcon name="Compass" variant="primary" animate="spin-slow" size={24} glow />
         </button>
       )}
 
       {/* Floating Glassmorphic Booking Console Sheet */}
-      <div className={`${styles.bottomSheet} ${isCollapsed ? styles.bottomSheetCollapsed : ''}`}>
-        <div className={styles.dragHandleWrapper} onClick={() => setIsCollapsed(!isCollapsed)}>
-          <div className={styles.dragHandle} />
-          <div className={styles.toggleText}>
-            {isCollapsed ? '▲ Expand Form Details' : '▼ Hide Form'}
-          </div>
-        </div>
-        
+      <BottomSheet
+        isOpen={true}
+        onClose={() => router.push('/dashboard')}
+        snapPoints={['half', 'full']}
+        defaultSnap="half"
+        showCloseButton={false}
+        overlayClassName={styles.mapOverlaySheet}
+      >
         {error && (
-          <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px 12px', margin: 0 }}>
-            ⚠️ {error}
+          <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px 12px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <PremiumIcon name="AlertTriangle" variant="danger" size={14} />
+            <span>{error}</span>
           </div>
         )}
 
@@ -639,13 +690,24 @@ export default function NewOrderPage() {
           /* ================= STEP 1: LOCATIONS & CATEGORY ================= */
           <>
             <div className={styles.sheetHeader}>
-              <h2 className={styles.sheetTitle}>Request a Biker</h2>
+              <h2 className={styles.sheetTitle}>Instant Send ⚡</h2>
               <span className={styles.sheetStep}>Step 1 of 2</span>
             </div>
 
+            <SurgeMeter country={country} compact />
+
+            {showChatMode ? (
+              <SmartOrderChat country={country} onOrderParsed={handleChatOrderParsed} onClose={() => setShowChatMode(false)} />
+            ) : (
+              <SmartOrderChatToggle onClick={() => setShowChatMode(true)} />
+            )}
+
             {locationAccessBlocked && (
-              <div className="alert alert--warning" style={{ fontSize: '11px', padding: '6px 10px', margin: '4px 0 8px 0', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706' }}>
-                📍 <strong>Location Access Blocked</strong>: Auto GPS tracking is blocked. Please enable location permission in your browser address bar or type address manually.
+              <div className="alert alert--warning" style={{ fontSize: '11px', padding: '6px 10px', margin: '4px 0 8px 0', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#d97706', display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                <PremiumIcon name="MapPin" variant="warning" size={14} />
+                <div>
+                  <strong>Location Access Blocked</strong>: Auto GPS tracking is blocked. Please enable location permission in your browser address bar or type address manually.
+                </div>
               </div>
             )}
             {isGeolocating && (
@@ -677,8 +739,10 @@ export default function NewOrderPage() {
                         key={idx}
                         className={styles.suggestionItem}
                         onClick={() => handleSelectPickupSuggestion(s)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', textAlign: 'left' }}
                       >
-                        📍 {s.address}
+                        <PremiumIcon name="MapPin" variant="info" size={14} />
+                        <span>{s.address}</span>
                       </button>
                     ))}
                   </div>
@@ -706,8 +770,10 @@ export default function NewOrderPage() {
                         key={idx}
                         className={styles.suggestionItem}
                         onClick={() => handleSelectDropoffSuggestion(s)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', textAlign: 'left' }}
                       >
-                        🏁 {s.address}
+                        <PremiumIcon name="Flag" variant="danger" size={14} />
+                        <span>{s.address}</span>
                       </button>
                     ))}
                   </div>
@@ -718,13 +784,15 @@ export default function NewOrderPage() {
             {/* Category Selectors */}
             <div className={styles.servicePicker}>
               <span className={styles.pickerLabel}>What type of item?</span>
-              <div className={styles.serviceGrid}>
+              <div className={styles.serviceGrid} style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
                 <button
                   type="button"
                   className={`${styles.serviceBtn} ${itemCategory === 'document' ? styles.serviceBtnSelected : ''}`}
                   onClick={() => setItemCategory('document')}
                 >
-                  <span className={styles.serviceIcon}>📄</span>
+                  <span className={styles.serviceIcon} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PremiumIcon name="FileText" variant="info" size={20} glow={itemCategory === 'document'} />
+                  </span>
                   <span className={styles.serviceName}>Document</span>
                 </button>
                 <button
@@ -732,7 +800,9 @@ export default function NewOrderPage() {
                   className={`${styles.serviceBtn} ${itemCategory === 'food' ? styles.serviceBtnSelected : ''}`}
                   onClick={() => setItemCategory('food')}
                 >
-                  <span className={styles.serviceIcon}>🍔</span>
+                  <span className={styles.serviceIcon} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PremiumIcon name="Utensils" variant="success" size={20} glow={itemCategory === 'food'} />
+                  </span>
                   <span className={styles.serviceName}>Food</span>
                 </button>
                 <button
@@ -740,7 +810,9 @@ export default function NewOrderPage() {
                   className={`${styles.serviceBtn} ${itemCategory === 'parcel' ? styles.serviceBtnSelected : ''}`}
                   onClick={() => setItemCategory('parcel')}
                 >
-                  <span className={styles.serviceIcon}>📦</span>
+                  <span className={styles.serviceIcon} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PremiumIcon name="Package" variant="primary" size={20} glow={itemCategory === 'parcel'} />
+                  </span>
                   <span className={styles.serviceName}>Parcel</span>
                 </button>
                 <button
@@ -748,11 +820,112 @@ export default function NewOrderPage() {
                   className={`${styles.serviceBtn} ${itemCategory === 'car_part' ? styles.serviceBtnSelected : ''}`}
                   onClick={() => setItemCategory('car_part')}
                 >
-                  <span className={styles.serviceIcon}>⚙️</span>
+                  <span className={styles.serviceIcon} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PremiumIcon name="Settings" variant="neutral" size={20} glow={itemCategory === 'car_part'} />
+                  </span>
                   <span className={styles.serviceName}>Car Part</span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.serviceBtn} ${itemCategory === 'buy_for_me' ? styles.serviceBtnSelected : ''}`}
+                  onClick={() => setItemCategory('buy_for_me')}
+                >
+                  <span className={styles.serviceIcon} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PremiumIcon name="ShoppingCart" variant="warning" size={20} glow={itemCategory === 'buy_for_me'} />
+                  </span>
+                  <span className={styles.serviceName}>Buy For Me</span>
                 </button>
               </div>
             </div>
+
+            {/* Dynamic items builder for "Buy For Me" */}
+            {itemCategory === 'buy_for_me' && (
+              <div className="card p-4" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="label" style={{ fontSize: '12px', margin: 0, fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <PremiumIcon name="ShoppingCart" variant="warning" size={16} />
+                    <span>Items to Purchase</span>
+                  </label>
+                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                    Total Budget: {formatPrice(shoppingItems.reduce((sum, item) => sum + (item.estPrice * item.quantity), 0))}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {shoppingItems.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="Item name (e.g. Milk)"
+                        className="input"
+                        value={item.name}
+                        onChange={(e) => {
+                          const next = [...shoppingItems];
+                          next[idx].name = e.target.value;
+                          setShoppingItems(next);
+                        }}
+                        style={{ flex: 3, height: '34px', fontSize: '13px', padding: '6px' }}
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder="Qty"
+                        className="input"
+                        value={item.quantity || ''}
+                        onChange={(e) => {
+                          const next = [...shoppingItems];
+                          next[idx].quantity = Math.max(1, parseInt(e.target.value) || 1);
+                          setShoppingItems(next);
+                        }}
+                        style={{ flex: 1, height: '34px', fontSize: '13px', padding: '6px', textAlign: 'center' }}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', flex: 1.5, position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          {country === 'ZM' ? 'ZK' : '$'}
+                        </span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="Price"
+                          className="input"
+                          value={item.estPrice === 0 ? '' : (country === 'ZM' ? (item.estPrice * 25).toString() : item.estPrice.toString())}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0.0;
+                            const next = [...shoppingItems];
+                            if (country === 'ZM') {
+                              next[idx].estPrice = val / 25;
+                            } else {
+                              next[idx].estPrice = val;
+                            }
+                            setShoppingItems(next);
+                          }}
+                          style={{ width: '100%', height: '34px', fontSize: '13px', padding: '6px 6px 6px 18px' }}
+                        />
+                      </div>
+                      {shoppingItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setShoppingItems(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}
+                        >
+                          <PremiumIcon name="Trash2" variant="danger" size={16} animate="spring" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--xs"
+                  onClick={() => setShoppingItems(prev => [...prev, { name: '', quantity: 1, estPrice: 0.0 }])}
+                  style={{ width: '100%', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                >
+                  <PremiumIcon name="Plus" variant="primary" size={14} />
+                  <span>Add Shopping Item</span>
+                </button>
+              </div>
+            )}
 
             {/* Dynamic weight fields for Cargo (Parcel & Parts) */}
             {(itemCategory === 'parcel' || itemCategory === 'car_part') && (
@@ -769,8 +942,9 @@ export default function NewOrderPage() {
                     style={{ height: '38px', fontSize: '14px' }}
                   />
                 </div>
-                <div style={{ flex: 2, fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  ⚖️ Motorcycle capacity is capped at 30kg. Ensure cargo is boxable.
+                <div style={{ flex: 2, fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <PremiumIcon name="Scale" variant="warning" size={16} />
+                  <span>Motorcycle capacity is capped at 30kg. Ensure cargo is boxable.</span>
                 </div>
               </div>
             )}
@@ -781,25 +955,25 @@ export default function NewOrderPage() {
               className="btn btn--primary btn--lg btn--full"
               style={{ marginTop: '8px' }}
             >
-              Continue to Fare & Details
+              Continue to Dispatch Details
             </button>
           </>
         ) : (
           /* ================= STEP 2: BIDDING & CONTACTS ================= */
           <form onSubmit={handleSubmitBooking} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div className={styles.sheetHeader}>
-              <h2 className={styles.sheetTitle}>Set Offer & Details</h2>
+              <h2 className={styles.sheetTitle}>Confirm Dispatch Details</h2>
               <span className={styles.sheetStep}>Step 2 of 2</span>
             </div>
 
             <div className={styles.routeSummary}>
-              <div className={styles.routePoint}>
-                <span style={{ fontSize: '14px' }}>🏪</span>
+              <div className={styles.routePoint} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PremiumIcon name="Store" variant="primary" size={16} />
                 <span className={styles.routeAddress}>{pickupAddress}</span>
               </div>
               <div className={styles.routeLine} />
-              <div className={styles.routePoint}>
-                <span style={{ fontSize: '14px' }}>🏁</span>
+              <div className={styles.routePoint} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <PremiumIcon name="Flag" variant="danger" size={16} />
                 <span className={styles.routeAddress}>{dropoffAddress}</span>
               </div>
             </div>
@@ -936,47 +1110,24 @@ export default function NewOrderPage() {
               </div>
 
               {/* Payment Mode Selection */}
-              <div>
-                <label className="label" style={{ fontSize: '11px', marginBottom: '6px' }}>Escrow Payment Mode</label>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {country === 'ZW' ? (
-                    <button
-                      type="button"
-                      className={`btn ${paymentMethod === 'ecocash' ? 'btn--primary' : 'btn--secondary'}`}
-                      onClick={() => setPaymentMethod('ecocash')}
-                      style={{ flex: 1, padding: '8px', fontSize: '12px' }}
-                    >
-                      📱 EcoCash
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className={`btn ${paymentMethod === 'mtn_momo' ? 'btn--primary' : 'btn--secondary'}`}
-                        onClick={() => setPaymentMethod('mtn_momo')}
-                        style={{ flex: 1, padding: '8px', fontSize: '12px' }}
-                      >
-                        🟡 MTN MoMo
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn ${paymentMethod === 'airtel_money' ? 'btn--primary' : 'btn--secondary'}`}
-                        onClick={() => setPaymentMethod('airtel_money')}
-                        style={{ flex: 1, padding: '8px', fontSize: '12px' }}
-                      >
-                        🔴 Airtel
-                      </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    className={`btn ${paymentMethod === 'cash' ? 'btn--primary' : 'btn--secondary'}`}
-                    onClick={() => setPaymentMethod('cash')}
-                    style={{ flex: 1, padding: '8px', fontSize: '12px' }}
-                  >
-                    💵 Cash (COD)
-                  </button>
-                </div>
+              <PaymentMethodSelector
+                selected={paymentMethod}
+                onChange={(method) => setPaymentMethod(method)}
+              />
+
+              <div style={{ marginTop: '4px' }}>
+                <EscrowBadge
+                  status={paymentMethod === 'cash' ? 'pending' : 'held'}
+                  amount={userOfferPrice}
+                  paymentMethod={
+                    paymentMethod === 'ecocash' ? 'EcoCash' :
+                    paymentMethod === 'onemoney' ? 'OneMoney' :
+                    paymentMethod === 'innbucks' ? 'InnBucks' :
+                    paymentMethod === 'wallet' ? 'Biker Wallet' :
+                    paymentMethod === 'card' ? 'Card' :
+                    'Cash'
+                  }
+                />
               </div>
             </div>
 
@@ -986,11 +1137,11 @@ export default function NewOrderPage() {
               className="btn btn--primary btn--lg btn--full"
               style={{ marginTop: '12px' }}
             >
-              {loading ? 'Publishing Request...' : 'Create Request & Scan riders'}
+              {loading ? 'Dispatching...' : 'Dispatch Instant Rider'}
             </button>
           </form>
         )}
-      </div>
+      </BottomSheet>
     </div>
   );
 }

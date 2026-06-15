@@ -11,45 +11,6 @@ import {
 } from '@/lib/database';
 import { AddressesSkeleton } from '@/components/skeletons';
 
-const MOCK_ADDRESSES = [
-  {
-    id: 'mock-1',
-    label: 'Home',
-    address_line: '14 Chisipite Road',
-    area_suburb: 'Borrowdale',
-    city: 'Harare',
-    landmark: 'Next to Borrowdale Race Course',
-    gate_color: 'Dark green',
-    contact_name: 'Test User',
-    contact_phone: '+263 77 123 4567',
-    is_default: true,
-  },
-  {
-    id: 'mock-2',
-    label: 'Work',
-    address_line: 'Eastgate Mall, 3rd Floor',
-    area_suburb: 'CBD',
-    city: 'Harare',
-    landmark: 'Robert Mugabe Road entrance',
-    gate_color: null,
-    contact_name: 'Test User',
-    contact_phone: '+263 77 123 4567',
-    is_default: false,
-  },
-  {
-    id: 'mock-3',
-    label: 'Mom\'s House',
-    address_line: '22 Selous Ave',
-    area_suburb: 'Avondale',
-    city: 'Harare',
-    landmark: 'Near Avondale Shops, behind Total Garage',
-    gate_color: 'Blue with white stripes',
-    contact_name: 'Agnes Moyo',
-    contact_phone: '+263 71 987 6543',
-    is_default: false,
-  },
-];
-
 export default function AddressesPage() {
   const { session } = useProfile();
   const userId = session?.user_id;
@@ -68,17 +29,10 @@ export default function AddressesPage() {
   const [newContactPhone, setNewContactPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-
   const loadAddresses = async () => {
     if (!userId) {
-      if (isDevMode) {
-        setAddresses(MOCK_ADDRESSES);
-        setLoading(false);
-      } else {
-        setAddresses([]);
-        setLoading(false);
-      }
+      setAddresses([]);
+      setLoading(false);
       return;
     }
 
@@ -86,17 +40,10 @@ export default function AddressesPage() {
       setLoading(true);
       const { data, error: dbError } = await getSavedAddresses(userId);
       if (dbError) throw dbError;
-      
-      // If we got empty results, but we're in dev mode with NO active user session, we could mock,
-      // but the rule is: "logged-in users with empty records receive clean empty states instead of mock rows".
-      // Since userId exists, the user is logged in. So we show empty state (data || []).
       setAddresses(data || []);
     } catch (err: any) {
       console.error('Failed to load saved addresses:', err);
-      setError('Could not retrieve addresses. Showing cached values.');
-      if (isDevMode) {
-        setAddresses(MOCK_ADDRESSES);
-      }
+      setError('Could not retrieve addresses.');
     } finally {
       setLoading(false);
     }
@@ -113,8 +60,13 @@ export default function AddressesPage() {
       return;
     }
 
+    if (!userId) {
+      alert('You must be logged in to save addresses.');
+      return;
+    }
+
     const payload = {
-      user_id: userId || 'mock-customer-id',
+      user_id: userId,
       label: newLabel,
       address_line: newAddress,
       area_suburb: newSuburb,
@@ -128,24 +80,6 @@ export default function AddressesPage() {
 
     try {
       setSaving(true);
-      
-      if (!userId && isDevMode) {
-        // Mock save
-        const mockNew = {
-          id: 'mock-' + Date.now(),
-          ...payload,
-        };
-        setAddresses(prev => [...prev, mockNew]);
-        setShowForm(false);
-        resetForm();
-        return;
-      }
-
-      if (!userId) {
-        alert('You must be logged in to save addresses.');
-        return;
-      }
-
       const { data, error: saveError } = await createAddress(payload);
       if (saveError) throw saveError;
 
@@ -166,11 +100,6 @@ export default function AddressesPage() {
     if (!confirm('Are you sure you want to delete this address?')) return;
 
     try {
-      if (addrId.startsWith('mock-')) {
-        setAddresses(prev => prev.filter(a => a.id !== addrId));
-        return;
-      }
-
       const { error: delError } = await deleteAddress(addrId);
       if (delError) throw delError;
 
@@ -182,14 +111,7 @@ export default function AddressesPage() {
   };
 
   const handleSetDefault = async (addrId: string) => {
-    if (!userId) {
-      // Mock update
-      setAddresses(prev => prev.map(a => ({
-        ...a,
-        is_default: a.id === addrId
-      })));
-      return;
-    }
+    if (!userId) return;
 
     try {
       const { error: defError } = await setDefaultAddress(userId, addrId);

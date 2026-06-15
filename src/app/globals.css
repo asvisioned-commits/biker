@@ -4,23 +4,23 @@
    ============================================================ */
 
 /* ---- Google Fonts ---- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 /* ============================================================
    DESIGN TOKENS
    ============================================================ */
 :root {
-  /* ---- Primary — Deep Ocean Blue ---- */
-  --color-primary-50: hsl(215, 100%, 97%);
-  --color-primary-100: hsl(215, 95%, 93%);
-  --color-primary-200: hsl(215, 90%, 85%);
-  --color-primary-300: hsl(215, 85%, 72%);
-  --color-primary-400: hsl(215, 80%, 58%);
-  --color-primary-500: hsl(215, 75%, 47%);
-  --color-primary-600: hsl(215, 80%, 38%);
-  --color-primary-700: hsl(215, 85%, 30%);
-  --color-primary-800: hsl(215, 85%, 23%);
-  --color-primary-900: hsl(215, 90%, 16%);
+  /* ---- Primary — Electric Lime / Acid Green (#CCFF00 / HSL 72, 100%, 50%) ---- */
+  --color-primary-50: hsl(72, 100%, 96%);
+  --color-primary-100: hsl(72, 100%, 88%);
+  --color-primary-200: hsl(72, 100%, 78%);
+  --color-primary-300: hsl(72, 100%, 65%);
+  --color-primary-400: hsl(72, 100%, 54%);
+  --color-primary-500: hsl(72, 100%, 46%); /* Electric Lime (#B8E600 / #CCFF00) */
+  --color-primary-600: hsl(72, 100%, 38%);
+  --color-primary-700: hsl(72, 100%, 28%);
+  --color-primary-800: hsl(72, 100%, 18%);
+  --color-primary-900: hsl(72, 100%, 8%);
 
   /* ---- Success — Emerald ---- */
   --color-success-50: hsl(152, 75%, 96%);
@@ -65,41 +65,42 @@
   --color-saver-light: hsl(175, 65%, 55%);
   --color-saver-dark: hsl(175, 75%, 30%);
 
-  /* ---- Neutrals — Slate ---- */
-  --color-neutral-50: hsl(210, 20%, 98%);
-  --color-neutral-100: hsl(210, 18%, 95%);
-  --color-neutral-200: hsl(210, 15%, 90%);
-  --color-neutral-300: hsl(210, 12%, 80%);
-  --color-neutral-400: hsl(210, 10%, 60%);
-  --color-neutral-500: hsl(210, 10%, 46%);
-  --color-neutral-600: hsl(210, 12%, 34%);
-  --color-neutral-700: hsl(210, 14%, 24%);
-  --color-neutral-800: hsl(210, 16%, 16%);
-  --color-neutral-900: hsl(210, 20%, 10%);
+  /* ---- Neutrals — Charcoal (#0F0F0F) / Near Black / Warm Grays ---- */
+  --color-neutral-50: hsl(60, 5%, 98%);
+  --color-neutral-100: hsl(60, 4%, 95%);
+  --color-neutral-200: hsl(60, 3%, 90%);
+  --color-neutral-300: hsl(60, 2%, 80%);
+  --color-neutral-400: hsl(60, 1%, 60%);
+  --color-neutral-500: hsl(60, 1%, 46%);
+  --color-neutral-600: hsl(0, 0%, 25%);
+  --color-neutral-700: hsl(0, 0%, 18%);
+  --color-neutral-800: hsl(0, 0%, 12%);
+  --color-neutral-900: hsl(0, 0%, 6%); /* #0F0F0F */
 
-  /* ---- Semantic Backgrounds ---- */
-  --bg-primary: hsl(210, 20%, 98%);
-  --bg-secondary: hsl(210, 18%, 95%);
-  --bg-card: hsl(0, 0%, 100%);
-  --bg-elevated: hsl(0, 0%, 100%);
-  --bg-overlay: hsla(215, 28%, 8%, 0.6);
-  --bg-input: hsl(0, 0%, 100%);
+  /* ---- Semantic Backgrounds — Default Dark Theme (near black #0F0F0F) ---- */
+  --bg-primary: hsl(0, 0%, 6%);
+  --bg-secondary: hsl(0, 0%, 10%);
+  --bg-card: hsl(0, 0%, 14%);
+  --bg-elevated: hsl(0, 0%, 18%);
+  --bg-overlay: hsla(0, 0%, 0%, 0.8);
+  --bg-input: hsl(0, 0%, 12%);
 
   /* ---- Semantic Text ---- */
-  --text-primary: hsl(210, 20%, 10%);
-  --text-secondary: hsl(210, 10%, 46%);
-  --text-tertiary: hsl(210, 10%, 60%);
-  --text-inverse: hsl(0, 0%, 100%);
-  --text-link: hsl(215, 75%, 47%);
+  --text-primary: hsl(60, 10%, 96%);
+  --text-secondary: hsl(60, 4%, 72%);
+  --text-tertiary: hsl(60, 2%, 52%);
+  --text-inverse: hsl(0, 0%, 6%);
+  --text-link: var(--color-primary-500);
 
   /* ---- Semantic Borders ---- */
-  --border-default: hsl(210, 15%, 90%);
-  --border-hover: hsl(210, 12%, 80%);
-  --border-focus: hsl(215, 75%, 47%);
+  --border-default: hsl(0, 0%, 18%);
+  --border-hover: hsl(0, 0%, 26%);
+  --border-focus: var(--color-primary-500);
   --border-error: hsl(350, 85%, 48%);
 
   /* ---- Typography ---- */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-header: 'Space Grotesk', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
   --text-xs: 0.75rem;
@@ -147,12 +148,12 @@
   --radius-full: 9999px;
 
   /* ---- Shadows — Layered for depth ---- */
-  --shadow-xs: 0 1px 2px hsla(215, 20%, 0%, 0.04);
-  --shadow-sm: 0 1px 3px hsla(215, 20%, 0%, 0.06), 0 1px 2px hsla(215, 20%, 0%, 0.04);
-  --shadow-md: 0 4px 6px hsla(215, 20%, 0%, 0.06), 0 2px 4px hsla(215, 20%, 0%, 0.04);
-  --shadow-lg: 0 10px 15px hsla(215, 20%, 0%, 0.08), 0 4px 6px hsla(215, 20%, 0%, 0.04);
-  --shadow-xl: 0 20px 25px hsla(215, 20%, 0%, 0.10), 0 8px 10px hsla(215, 20%, 0%, 0.04);
-  --shadow-glow: 0 0 20px hsla(215, 75%, 47%, 0.15);
+  --shadow-xs: 0 1px 2px hsla(0, 0%, 0%, 0.3);
+  --shadow-sm: 0 2px 4px hsla(0, 0%, 0%, 0.4);
+  --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.5);
+  --shadow-lg: 0 8px 16px hsla(0, 0%, 0%, 0.6);
+  --shadow-xl: 0 16px 24px hsla(0, 0%, 0%, 0.7);
+  --shadow-glow: 0 0 20px hsla(72, 100%, 50%, 0.3);
   --shadow-glow-success: 0 0 20px hsla(152, 70%, 38%, 0.15);
   --shadow-glow-jet: 0 0 20px hsla(24, 95%, 55%, 0.2);
 
@@ -185,34 +186,140 @@
   --header-height: 64px;
   --sidebar-width: 280px;
   --bottom-nav-height: 72px;
+  --border-radius: var(--radius-lg);
 }
 
 /* ============================================================
-   DARK MODE
+   ROLE THEMES (Customer, Rider, Merchant, Ops)
    ============================================================ */
-[data-theme='dark'] {
-  --bg-primary: hsl(215, 28%, 8%);
-  --bg-secondary: hsl(215, 25%, 11%);
-  --bg-card: hsl(215, 22%, 14%);
-  --bg-elevated: hsl(215, 20%, 18%);
-  --bg-overlay: hsla(215, 28%, 4%, 0.8);
-  --bg-input: hsl(215, 22%, 16%);
 
-  --text-primary: hsl(210, 20%, 95%);
-  --text-secondary: hsl(210, 12%, 65%);
-  --text-tertiary: hsl(210, 10%, 50%);
-  --text-inverse: hsl(210, 20%, 10%);
+/* --- Customer Flow Theme: Warm Off-White / Clean Light (#FAFAF9) --- */
+.customer-theme {
+  --bg-primary: hsl(40, 20%, 98%); /* #FAFAF9 */
+  --bg-secondary: hsl(40, 15%, 95%);
+  --bg-card: hsl(0, 0%, 100%);
+  --bg-elevated: hsl(0, 0%, 100%);
+  --bg-input: hsl(0, 0%, 100%);
 
-  --border-default: hsl(215, 18%, 22%);
-  --border-hover: hsl(215, 15%, 30%);
-  --border-focus: hsl(215, 80%, 55%);
+  --text-primary: hsl(0, 0%, 10%);
+  --text-secondary: hsl(0, 0%, 40%);
+  --text-tertiary: hsl(0, 0%, 60%);
+  --text-inverse: hsl(0, 0%, 100%);
 
-  --shadow-xs: 0 1px 2px hsla(215, 50%, 0%, 0.2);
-  --shadow-sm: 0 1px 3px hsla(215, 50%, 0%, 0.3), 0 1px 2px hsla(215, 50%, 0%, 0.2);
-  --shadow-md: 0 4px 6px hsla(215, 50%, 0%, 0.3), 0 2px 4px hsla(215, 50%, 0%, 0.2);
-  --shadow-lg: 0 10px 15px hsla(215, 50%, 0%, 0.3), 0 4px 6px hsla(215, 50%, 0%, 0.2);
-  --shadow-xl: 0 20px 25px hsla(215, 50%, 0%, 0.4), 0 8px 10px hsla(215, 50%, 0%, 0.2);
+  --border-default: hsl(0, 0%, 90%);
+  --border-hover: hsl(0, 0%, 82%);
+  --border-focus: var(--color-primary-500);
+
+  --shadow-xs: 0 1px 2px hsla(0, 0%, 0%, 0.05);
+  --shadow-sm: 0 1px 3px hsla(0, 0%, 0%, 0.08);
+  --shadow-md: 0 4px 6px hsla(0, 0%, 0%, 0.08);
 }
+
+/* --- Customer Flow Theme: Dark Mode Overrides --- */
+[data-theme='dark'] .customer-theme {
+  --bg-primary: hsl(0, 0%, 6%);
+  --bg-secondary: hsl(0, 0%, 10%);
+  --bg-card: hsl(0, 0%, 12%);
+  --bg-elevated: hsl(0, 0%, 16%);
+  --bg-input: hsl(0, 0%, 10%);
+
+  --text-primary: hsl(60, 10%, 96%);
+  --text-secondary: hsl(60, 4%, 72%);
+  --text-tertiary: hsl(60, 2%, 52%);
+  --text-inverse: hsl(0, 0%, 6%);
+
+  --border-default: hsl(0, 0%, 16%);
+  --border-hover: hsl(0, 0%, 24%);
+
+  --shadow-xs: 0 1px 2px hsla(0, 0%, 0%, 0.3);
+  --shadow-sm: 0 2px 4px hsla(0, 0%, 0%, 0.4);
+  --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.5);
+}
+
+/* --- Dark Mode Active Navigation Tab Styling (lime-accented dark capsule) --- */
+.rider-theme .navItemActive,
+.merchant-theme .navItemActive,
+.ops-theme .navItemActive,
+[data-theme='dark'] .navItemActive {
+  background: hsla(72, 100%, 46%, 0.15) !important;
+  color: var(--color-primary-400) !important;
+}
+
+/* --- Rider Flow Theme: Slate/Dark (#1E293B) --- */
+.rider-theme {
+  --bg-primary: hsl(222, 47%, 11%); /* Slate (#0f172a) */
+  --bg-secondary: hsl(222, 47%, 15%); /* Slate secondary (#1e293b) */
+  --bg-card: hsl(222, 47%, 18%);
+  --bg-elevated: hsl(222, 47%, 22%);
+  --bg-input: hsl(222, 47%, 15%);
+
+  --text-primary: hsl(210, 40%, 98%);
+  --text-secondary: hsl(215, 20%, 75%);
+  --text-tertiary: hsl(215, 16%, 57%);
+  --text-inverse: hsl(222, 47%, 11%);
+
+  --border-default: hsl(222, 47%, 24%);
+  --border-hover: hsl(222, 47%, 30%);
+  --border-focus: var(--color-primary-500);
+}
+
+/* --- Merchant Flow Theme: Premium Grid Glassmorphism --- */
+.merchant-theme {
+  --bg-primary: hsl(225, 25%, 8%);
+  --bg-secondary: hsl(225, 20%, 11%);
+  --bg-card: hsla(225, 20%, 14%, 0.7);
+  --bg-elevated: hsla(225, 20%, 18%, 0.85);
+  --bg-input: hsla(225, 20%, 12%, 0.6);
+
+  --text-primary: hsl(210, 25%, 96%);
+  --text-secondary: hsl(210, 15%, 72%);
+  --text-tertiary: hsl(210, 10%, 54%);
+
+  --border-default: hsla(210, 15%, 90%, 0.08);
+  --border-hover: hsla(210, 15%, 90%, 0.18);
+}
+
+/* --- Admin / Ops Flow Theme --- */
+.ops-theme {
+  --bg-primary: hsl(0, 0%, 4%);
+  --bg-secondary: hsl(0, 0%, 7%);
+  --bg-card: hsl(0, 0%, 9%);
+  --bg-elevated: hsl(0, 0%, 12%);
+
+  --text-primary: hsl(120, 100%, 75%); /* Retro Terminal look */
+  --text-secondary: hsl(120, 40%, 60%);
+  --text-tertiary: hsl(120, 30%, 45%);
+
+  --border-default: hsl(120, 40%, 20%);
+  --border-hover: hsl(120, 40%, 30%);
+}
+
+/* ============================================================
+   LIGHT/DARK FALLBACKS
+   ============================================================ */
+[data-theme='light'] {
+  --bg-primary: hsl(0, 0%, 98%);
+  --bg-secondary: hsl(0, 0%, 94%);
+  --bg-card: hsl(0, 0%, 100%);
+  --bg-elevated: hsl(0, 0%, 100%);
+  --bg-overlay: hsla(0, 0%, 0%, 0.5);
+  --bg-input: hsl(0, 0%, 96%);
+
+  --text-primary: hsl(0, 0%, 10%);
+  --text-secondary: hsl(0, 0%, 40%);
+  --text-tertiary: hsl(0, 0%, 60%);
+  --text-inverse: hsl(0, 0%, 100%);
+
+  --border-default: hsl(0, 0%, 90%);
+  --border-hover: hsl(0, 0%, 82%);
+  --border-focus: var(--color-primary-500);
+
+  --shadow-xs: 0 1px 2px hsla(0, 0%, 0%, 0.05);
+  --shadow-sm: 0 1px 3px hsla(0, 0%, 0%, 0.08);
+  --shadow-md: 0 4px 6px hsla(0, 0%, 0%, 0.08);
+  --shadow-xl: 0 12px 20px hsla(0, 0%, 0%, 0.12);
+}
+
 
 /* ============================================================
    RESET & BASE
@@ -279,10 +386,40 @@ ul, ol {
 }
 
 h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-header);
   font-weight: 700;
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
 }
+
+/* ---- Branded Skeleton Pulsing (lime/dark) ---- */
+.skeleton {
+  background-color: var(--bg-secondary);
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(204, 255, 0, 0.08) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.6s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 
 /* ============================================================
    TYPOGRAPHY UTILITIES
@@ -1489,4 +1626,45 @@ h1, h2, h3, h4, h5, h6 {
   100% {
     background-position: 0% 50%;
   }
+}
+
+/* ---- Premium Vector Icons Animations & Styles ---- */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 12s linear infinite;
+}
+
+@keyframes icon-spring {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-icon-spring {
+  animation: icon-spring 0.4s var(--ease-spring);
+}
+
+.premium-icon-wrapper {
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.premium-icon-wrapper:hover {
+  transform: scale(1.1);
 }

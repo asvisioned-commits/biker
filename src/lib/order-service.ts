@@ -16,9 +16,52 @@ import {
   getAllDisputes as dbGetAllDisputes,
   addDisputeEvidence as dbAddDisputeEvidence,
   withdrawDisputeInDb as dbWithdrawDisputeInDb,
-  resolveDisputeInDb as dbResolveDisputeInDb
+  resolveDisputeInDb as dbResolveDisputeInDb,
+  updateOrderPurchaseDetails as dbUpdateOrderPurchaseDetails
 } from './database';
 import type { ServiceType, FulfillmentMode, ProtectionLevel } from '@/types';
+import { PricingService } from './pricing';
+
+function encryptPin(pin: string, userId: string): string {
+  if (!userId) return pin;
+  let result = '';
+  for (let i = 0; i < pin.length; i++) {
+    const charCode = pin.charCodeAt(i) ^ userId.charCodeAt(i % userId.length);
+    result += String.fromCharCode(charCode);
+  }
+  return btoa(result);
+}
+
+function decryptPin(encryptedPin: string, userId: string): string {
+  if (!userId) return encryptedPin;
+  try {
+    const pin = atob(encryptedPin);
+    let result = '';
+    for (let i = 0; i < pin.length; i++) {
+      const charCode = pin.charCodeAt(i) ^ userId.charCodeAt(i % userId.length);
+      result += String.fromCharCode(charCode);
+    }
+    return result;
+  } catch {
+    return '';
+  }
+}
+
+function saveSecurePin(orderId: string, pin: string, userId: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(`biker_pin_${orderId}`, encryptPin(pin, userId));
+}
+
+function getSecurePin(orderId: string, userId: string): string {
+  if (typeof window === 'undefined') return '';
+  const encrypted = localStorage.getItem(`biker_pin_${orderId}`);
+  return encrypted ? decryptPin(encrypted, userId) : '';
+}
+
+function clearSecurePin(orderId: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(`biker_pin_${orderId}`);
+}
 
 export interface OrderPayload {
   customer_id: string;
@@ -47,6 +90,10 @@ export interface OrderPayload {
   cod_amount_collected?: number;
   cod_collection_confirmed_at?: string;
   cod_discrepancy_flag?: boolean;
+  shopping_list?: any[];
+  estimated_item_cost?: number;
+  purchase_amount?: number;
+  proofs?: any[];
 }
 
 export interface BikerOrder extends OrderPayload {
@@ -59,6 +106,7 @@ export interface BikerOrder extends OrderPayload {
     full_name?: string;
     avatar_url?: string;
     phone?: string;
+    trust_tier?: string;
   } | null;
   customer?: {
     full_name?: string;
@@ -81,17 +129,9 @@ const LOCAL_STORAGE_KEY = 'biker_local_orders_v2';
 export function getIsOnline(): boolean {
   if (typeof window === 'undefined') return false;
   
-  const devMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
   const useLiveDb = process.env.NEXT_PUBLIC_USE_LIVE_DB !== 'false';
-  const isExplicitOffline = window.location.search.includes('offline=1');
   
-  if (isExplicitOffline) return false;
   if (!useLiveDb) return false;
-  
-  // In dev mode, default to offline/localStorage unless explicitly requested via NEXT_PUBLIC_USE_LIVE_DB=true
-  if (devMode) {
-    return process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true';
-  }
   
   return true;
 }
@@ -111,7 +151,11 @@ export function getLocalOrders(): BikerOrder[] {
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (!stored) return [];
   try {
-    return JSON.parse(stored);
+    const orders = JSON.parse(stored);
+    return orders.map((o: any) => {
+      const { delivery_pin, ...rest } = o;
+      return rest;
+    });
   } catch (e) {
     console.error('Failed to parse local orders', e);
     return [];
@@ -126,7 +170,10 @@ function saveLocalOrders(orders: BikerOrder[]) {
   
   // Clean up synced orders older than 7 days to prevent storage bloat
   const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const filtered = orders.filter(order => {
+  const filtered = orders.map(order => {
+    const { delivery_pin, ...rest } = order;
+    return rest;
+  }).filter(order => {
     if (order.syncStatus === 'synced' && order.created_at) {
       const orderTime = new Date(order.created_at).getTime();
       return orderTime > sevenDaysAgo;
@@ -155,14 +202,38 @@ export const OrderService = {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     const reference = 'BKR-L-' + Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     
-    // Default pricing if missing
-    const deliveryFee = payload.delivery_fee ?? 5.0;
-    const serviceFee = payload.service_fee ?? 0.38;
-    const protectionFee = payload.protection_fee ?? (payload.protection_level === 'protected' ? 0.5 : 0.0);
-    const totalAmount = payload.total_amount ?? (deliveryFee + serviceFee + protectionFee);
+    // Recalculate pricing server-side using PricingService to prevent client-side fee manipulation
+    let deliveryFee = payload.delivery_fee ?? 5.0;
+    let serviceFee = payload.service_fee ?? 0.38;
+    let protectionFee = payload.protection_fee ?? (payload.protection_level === 'protected' ? 0.5 : 0.0);
+    
+    if (payload.pickup_lat !== undefined && payload.pickup_lng !== undefined && 
+        payload.dropoff_lat !== undefined && payload.dropoff_lng !== undefined) {
+      try {
+        const est = PricingService.estimateFare({
+          pickupLat: payload.pickup_lat,
+          pickupLng: payload.pickup_lng,
+          dropoffLat: payload.dropoff_lat,
+          dropoffLng: payload.dropoff_lng,
+          fulfillmentMode: (payload.fulfillment_mode || 'standard') as any,
+          protectionLevel: (payload.protection_level || 'none') as any,
+        });
+        deliveryFee = est.suggestedFare;
+        serviceFee = est.serviceFee;
+        protectionFee = est.protectionFee;
+      } catch (err) {
+        console.error('Failed to estimate fare in OrderService:', err);
+      }
+    }
+    const totalAmount = deliveryFee + serviceFee + protectionFee;
     const deliveryPin = payload.delivery_pin ?? Array.from({ length: 4 }, () => Math.floor(Math.random() * 10)).join('');
     
     const isCOD = payload.payment_method === 'cash';
+
+    // Save plaintext PIN securely in separate localStorage key (obfuscated)
+    if (payload.customer_id) {
+      saveSecurePin(localId, deliveryPin, payload.customer_id);
+    }
 
     const newOrder: BikerOrder = {
       ...payload,
@@ -174,7 +245,6 @@ export const OrderService = {
       service_fee: serviceFee,
       protection_fee: protectionFee,
       total_amount: totalAmount,
-      delivery_pin: deliveryPin,
       payment_method: payload.payment_method || 'ecocash',
       cod_amount_expected: isCOD ? totalAmount : undefined,
       syncStatus: 'pending',
@@ -182,7 +252,7 @@ export const OrderService = {
       supabaseId: null,
     };
 
-    // 2. Write to local storage immediately
+    // 2. Write to local storage immediately (without plaintext delivery_pin in newOrder)
     const currentOrders = getLocalOrders();
     currentOrders.unshift(newOrder);
     saveLocalOrders(currentOrders);
@@ -211,10 +281,12 @@ export const OrderService = {
           service_fee: serviceFee,
           protection_fee: protectionFee,
           total_amount: totalAmount,
-          delivery_pin_hash: deliveryPin,
           payment_method: payload.payment_method || 'ecocash',
           cod_amount_expected: isCOD ? totalAmount : undefined,
           status: isCOD ? 'payment_held' : 'payment_pending',
+          shopping_list: payload.shopping_list,
+          estimated_item_cost: payload.estimated_item_cost,
+          purchase_amount: payload.purchase_amount,
         };
 
         const { data, error } = await dbCreateOrder(dbPayload);
@@ -222,6 +294,13 @@ export const OrderService = {
         if (error) throw error;
         
         if (data) {
+          // Save secure pin matching Supabase ID
+          const realPin = (data as any).plaintext_pin || deliveryPin;
+          if (payload.customer_id) {
+            saveSecurePin(data.id, realPin, payload.customer_id);
+            clearSecurePin(localId); // clean up local id key
+          }
+
           // Success: update local record with Supabase ID and synced state
           const updatedOrders = getLocalOrders().map(order => {
             if (order.id === localId) {
@@ -241,17 +320,20 @@ export const OrderService = {
             ...newOrder,
             id: data.id,
             reference_code: data.reference_code || reference,
+            delivery_pin: realPin,
             syncStatus: 'synced',
             supabaseId: data.id,
           };
         }
       } catch (err) {
         console.error('Failed to write order to Supabase, marked as pending sync', err);
-        // Keep as pending, retry will handle it later
       }
     }
 
-    return newOrder;
+    return {
+      ...newOrder,
+      delivery_pin: deliveryPin,
+    };
   },
 
   /**
@@ -280,15 +362,18 @@ export const OrderService = {
 
     // Add local orders first (these contain unsynced ones)
     for (const local of localOrders) {
-      mergedMap.set(local.id, local);
+      const pin = getSecurePin(local.id, userId) || (local.supabaseId ? getSecurePin(local.supabaseId, userId) : '');
+      const localWithPin = { ...local, delivery_pin: pin || undefined };
+      mergedMap.set(local.id, localWithPin);
       if (local.supabaseId) {
-        mergedMap.set(local.supabaseId, local);
+        mergedMap.set(local.supabaseId, localWithPin);
       }
     }
 
     // Add live orders (overwrite local synced versions with fresh DB data)
     for (const live of liveOrders) {
       const localMatch = localOrders.find(l => l.supabaseId === live.id || l.id === live.id);
+      const securePin = getSecurePin(live.id, userId) || getSecurePin(localMatch?.id || '', userId);
       
       const mappedOrder: BikerOrder = {
         id: live.id,
@@ -318,7 +403,7 @@ export const OrderService = {
         service_fee: Number(live.service_fee || 0),
         protection_fee: Number(live.protection_fee || 0),
         total_amount: Number(live.total_amount || 0),
-        delivery_pin: live.delivery_pin_hash || localMatch?.delivery_pin,
+        delivery_pin: securePin || undefined,
         syncStatus: 'synced',
         retryCount: 0,
         supabaseId: live.id,
@@ -335,51 +420,6 @@ export const OrderService = {
 
     // Sort by created_at descending
     result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    // In dev mode/sandbox, if we have no orders, we can prepend/append static mocks for visual completeness
-    if (process.env.NEXT_PUBLIC_DEV_MODE === 'true' && result.length === 0) {
-      const mockOrders: BikerOrder[] = [
-        {
-          id: 'mock-1',
-          reference_code: 'BKR-7X2K9M',
-          customer_id: userId,
-          service_type: 'send_item',
-          fulfillment_mode: 'standard',
-          protection_level: 'protected',
-          pickup_address: "Sam Levy's Village, Borrowdale",
-          dropoff_address: 'Borrowdale Brooke',
-          status: 'completed',
-          created_at: new Date(Date.now() - 2 * 3600000).toISOString(),
-          delivery_fee: 4.50,
-          service_fee: 0.38,
-          protection_fee: 0.50,
-          total_amount: 5.38,
-          delivery_pin: '1234',
-          syncStatus: 'synced',
-          retryCount: 0,
-        },
-        {
-          id: 'mock-2',
-          reference_code: 'BKR-A3F7B2',
-          customer_id: userId,
-          service_type: 'buy_for_me',
-          fulfillment_mode: 'jet',
-          protection_level: 'protected',
-          pickup_address: 'Avondale Shops',
-          dropoff_address: "Sam Levy's Village",
-          status: 'en_route_delivery',
-          created_at: new Date(Date.now() - 35 * 60000).toISOString(),
-          delivery_fee: 12.80,
-          service_fee: 0.38,
-          protection_fee: 0.50,
-          total_amount: 13.68,
-          delivery_pin: '5678',
-          syncStatus: 'synced',
-          retryCount: 0,
-        }
-      ];
-      result = [...result, ...mockOrders];
-    }
 
     return result;
   },
@@ -402,6 +442,8 @@ export const OrderService = {
       try {
         const { data, error } = await dbGetOrderById(dbId);
         if (!error && data) {
+          const userId = data.customer_id || '';
+          const securePin = getSecurePin(data.id, userId) || getSecurePin(localMatch?.id || '', userId);
           return {
             id: data.id,
             reference_code: data.reference_code,
@@ -430,7 +472,7 @@ export const OrderService = {
             service_fee: Number(data.service_fee || 0),
             protection_fee: Number(data.protection_fee || 0),
             total_amount: Number(data.total_amount || 0),
-            delivery_pin: data.delivery_pin_hash || localMatch?.delivery_pin || '4729',
+            delivery_pin: securePin || undefined,
             syncStatus: 'synced',
             retryCount: 0,
             supabaseId: data.id,
@@ -443,7 +485,9 @@ export const OrderService = {
 
     // 2. Local storage lookup
     if (localMatch) {
-      return localMatch;
+      const userId = localMatch.customer_id || '';
+      const securePin = getSecurePin(localMatch.id, userId) || (localMatch.supabaseId ? getSecurePin(localMatch.supabaseId, userId) : '');
+      return { ...localMatch, delivery_pin: securePin || undefined };
     }
 
     // 3. Fallback mock order if ID matches mock-new-order or mock pattern
@@ -468,6 +512,13 @@ export const OrderService = {
       saveLocalOrders(currentOrders);
     }
 
+    if (status === 'completed' || status === 'cancelled') {
+      clearSecurePin(orderId);
+      if (idx !== -1 && currentOrders[idx]?.supabaseId) {
+        clearSecurePin(currentOrders[idx].supabaseId!);
+      }
+    }
+
     if (this.isOnline) {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId) ||
                      (idx !== -1 && currentOrders[idx]?.supabaseId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentOrders[idx].supabaseId || ''));
@@ -478,6 +529,37 @@ export const OrderService = {
           return !error;
         } catch (e) {
           console.error('Failed to update status in Supabase', e);
+        }
+      }
+    }
+    return true;
+  },
+
+  /**
+   * Update purchase details (amount and items list) for Buy For Me service
+   */
+  async updateOrderPurchaseDetails(orderId: string, purchaseAmount: number, shoppingList?: any[]): Promise<boolean> {
+    const currentOrders = getLocalOrders();
+    const idx = currentOrders.findIndex(o => o.id === orderId || o.supabaseId === orderId);
+    if (idx !== -1) {
+      currentOrders[idx] = {
+        ...currentOrders[idx],
+        purchase_amount: purchaseAmount,
+        shopping_list: shoppingList,
+      };
+      saveLocalOrders(currentOrders);
+    }
+
+    if (this.isOnline) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId) ||
+                     (idx !== -1 && currentOrders[idx]?.supabaseId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentOrders[idx].supabaseId || ''));
+      const dbId = isUuid ? (orderId.startsWith('local_') ? currentOrders[idx]?.supabaseId! : orderId) : null;
+      if (dbId) {
+        try {
+          const { error } = await dbUpdateOrderPurchaseDetails(dbId, purchaseAmount, shoppingList);
+          return !error;
+        } catch (e) {
+          console.error('Failed to update purchase details in Supabase', e);
         }
       }
     }
@@ -507,6 +589,11 @@ export const OrderService = {
         cod_discrepancy_flag: params.hasDiscrepancy,
       };
       saveLocalOrders(currentOrders);
+    }
+
+    clearSecurePin(params.orderId);
+    if (idx !== -1 && currentOrders[idx]?.supabaseId) {
+      clearSecurePin(currentOrders[idx].supabaseId!);
     }
 
     if (this.isOnline) {
@@ -545,7 +632,7 @@ export const OrderService = {
     
     // Offline / Dev mode simulation
     // PIN simulation: verify pin is correct
-    const orderPin = idx !== -1 ? currentOrders[idx].delivery_pin : '4729';
+    const orderPin = idx !== -1 ? getSecurePin(currentOrders[idx].id, currentOrders[idx].customer_id || '') : '4729';
     if (params.pin !== orderPin) {
       return { success: false, error: 'Invalid delivery PIN code', attemptsRemaining: 2 };
     }
@@ -569,6 +656,11 @@ export const OrderService = {
       saveLocalOrders(currentOrders);
     }
 
+    clearSecurePin(orderId);
+    if (idx !== -1 && currentOrders[idx]?.supabaseId) {
+      clearSecurePin(currentOrders[idx].supabaseId!);
+    }
+
     if (this.isOnline) {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId) ||
                      (idx !== -1 && currentOrders[idx]?.supabaseId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentOrders[idx].supabaseId || ''));
@@ -586,7 +678,7 @@ export const OrderService = {
     }
 
     // Offline / Dev mode simulation
-    const orderPin = idx !== -1 ? currentOrders[idx].delivery_pin : '4729';
+    const orderPin = idx !== -1 ? getSecurePin(currentOrders[idx].id, currentOrders[idx].customer_id || '') : '4729';
     if (pin !== orderPin) {
       return { success: false, error: 'Invalid delivery PIN code' };
     }
@@ -658,6 +750,7 @@ export const OrderService = {
 
       try {
         const isCOD = order.payment_method === 'cash';
+        const pin = getSecurePin(order.id, order.customer_id || '');
         const dbPayload = {
           customer_id: order.customer_id,
           service_type: order.service_type as any,
@@ -679,7 +772,6 @@ export const OrderService = {
           service_fee: order.service_fee,
           protection_fee: order.protection_fee,
           total_amount: order.total_amount,
-          delivery_pin_hash: order.delivery_pin,
           payment_method: order.payment_method || 'ecocash',
           cod_amount_expected: isCOD ? order.total_amount : undefined,
           status: isCOD ? 'payment_held' : 'payment_pending',
@@ -696,6 +788,11 @@ export const OrderService = {
               lastSyncAttempt: new Date().toISOString(),
             };
           } else if (data) {
+            const realPin = (data as any).plaintext_pin || pin;
+            if (order.customer_id) {
+              saveSecurePin(data.id, realPin, order.customer_id);
+              clearSecurePin(order.id);
+            }
             updatedOrders[idx] = {
               ...order,
               id: data.id,
@@ -888,7 +985,7 @@ export const OrderService = {
     const allowed = recent.length < 3;
     return {
       allowed,
-      details: allowed ? undefined : 'Booking limit exceeded. You can only place up to 3 orders every 10 minutes.'
+      details: allowed ? undefined : 'Dispatch limit exceeded. You can only place up to 3 orders every 10 minutes.'
     };
   },
 

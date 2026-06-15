@@ -18,6 +18,8 @@ interface LiveTrackingMapProps {
   riderName?: string;
   className?: string;
   nearbyRiders?: NearbyRider[] | null;
+  isScanning?: boolean;
+  showHeatmap?: boolean;
 }
 
 export default function LiveTrackingMap({
@@ -28,18 +30,23 @@ export default function LiveTrackingMap({
   riderName = 'Rider',
   className = '',
   nearbyRiders = null,
+  isScanning = false,
+  showHeatmap = false,
 }: LiveTrackingMapProps) {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
   const [isRoutingLoading, setIsRoutingLoading] = useState(false);
-
+  
   const mapRef = useRef<any>(null);
   const pickupMarkerRef = useRef<any>(null);
   const dropoffMarkerRef = useRef<any>(null);
   const riderMarkerRef = useRef<any>(null);
   const nearbyMarkersRef = useRef<any[]>([]);
   const routePolylineRef = useRef<any>(null);
+  const heatmapCirclesRef = useRef<any[]>([]);
+  const scanRadarRef = useRef<any>(null);
   const mapId = useRef(`live-tracking-map-${Math.random().toString(36).substr(2, 9)}`);
+
 
   // Load Leaflet dynamically
   useEffect(() => {
@@ -249,6 +256,42 @@ export default function LiveTrackingMap({
       });
     }
 
+    // Update Heatmap Circles
+    heatmapCirclesRef.current.forEach(c => c.remove());
+    heatmapCirclesRef.current = [];
+    if (showHeatmap) {
+      const hotZones = [
+        { coords: [pickupCoords[0] + 0.005, pickupCoords[1] - 0.005] as [number, number], radius: 400, color: '#ef4444', label: 'Borrowdale • 1.9x Surge' },
+        { coords: [pickupCoords[0] - 0.004, pickupCoords[1] + 0.004] as [number, number], radius: 350, color: '#f59e0b', label: 'CBD • 1.4x Surge' },
+        { coords: [pickupCoords[0] + 0.002, pickupCoords[1] + 0.006] as [number, number], radius: 300, color: '#CCFF00', label: 'Avondale • High Demand' },
+      ];
+      hotZones.forEach(zone => {
+        const circle = L.circle(zone.coords, {
+          color: 'transparent',
+          fillColor: zone.color,
+          fillOpacity: 0.18,
+          radius: zone.radius,
+        }).addTo(mapRef.current);
+        circle.bindTooltip(zone.label, { permanent: true, direction: 'center', className: styles.heatmapTooltip });
+        heatmapCirclesRef.current.push(circle);
+      });
+    }
+
+    // Update Sonar Scan Radar
+    if (scanRadarRef.current) {
+      scanRadarRef.current.remove();
+      scanRadarRef.current = null;
+    }
+    if (isScanning) {
+      const scanRadarIcon = L.divIcon({
+        html: `<div class="${styles.sonarRadarPulse}"></div>`,
+        className: 'leaflet-sonar-radar',
+        iconSize: [240, 240],
+        iconAnchor: [120, 120],
+      });
+      scanRadarRef.current = L.marker(pickupCoords, { icon: scanRadarIcon }).addTo(mapRef.current);
+    }
+
     // Adjust bounds if coordinates update
     const boundsPoints = [pickupCoords, dropoffCoords];
     if (riderCoords) {
@@ -257,7 +300,7 @@ export default function LiveTrackingMap({
     const bounds = L.latLngBounds(boundsPoints);
     mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
 
-  }, [pickupCoords, dropoffCoords, riderCoords, riderHeading, routeCoords, leafletLoaded, riderName, nearbyRiders]);
+  }, [pickupCoords, dropoffCoords, riderCoords, riderHeading, routeCoords, leafletLoaded, riderName, nearbyRiders, isScanning, showHeatmap]);
 
   // Invalidate map size on coordinates or loading change to prevent grey/empty map boxes
   useEffect(() => {
