@@ -8,6 +8,8 @@ import { signOut } from '@/lib/auth';
 import NotificationsDropdown from '@/components/notifications';
 import LocationPermissionBanner from '@/components/LocationPermissionBanner';
 import type { UserRole } from '@/types';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
+import { OrderService } from '@/lib/order-service';
 
 import { useProfile } from '@/context/ProfileContext';
 import { setActiveRole as dbSetActiveRole } from '@/lib/database';
@@ -79,6 +81,20 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
       }
     }
   }, [session, loading]);
+
+  // Log device fingerprint for security auditing on dashboard load
+  useEffect(() => {
+    if (session?.user_id) {
+      try {
+        const fingerprint = getDeviceFingerprint();
+        OrderService.logDeviceFingerprint(session.user_id, fingerprint).catch((e) =>
+          console.error('Failed to log device fingerprint on dashboard load:', e)
+        );
+      } catch (err) {
+        console.error('Error logging device fingerprint:', err);
+      }
+    }
+  }, [session]);
 
   if (loading) {
     return (
