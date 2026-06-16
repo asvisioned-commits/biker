@@ -1298,10 +1298,10 @@ function SignupContent() {
                       {cameraStream && (
                         <div className={styles.checkpoints}>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'align' ? styles.checkpointDotActive : styles.checkpointDotSuccess}`}>
-                            {livenessStep !== 'align' ? <Check size={10} style={{ marginRight: '2px' }} : '1'} Align
+                            {livenessStep !== 'align' ? <Check size={10} style={{ marginRight: '2px' }} /> : '1'} Align
                           </div>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'blink' ? styles.checkpointDotActive : (livenessStep === 'turn' ? styles.checkpointDotSuccess : '')}`}>
-                            {livenessStep === 'turn' ? <Check size={10} style={{ marginRight: '2px' }} : '2'} Blink
+                            {livenessStep === 'turn' ? <Check size={10} style={{ marginRight: '2px' }} /> : '2'} Blink
                           </div>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'turn' ? styles.checkpointDotActive : ''}`}>
                             3 Turn
