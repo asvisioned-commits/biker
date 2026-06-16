@@ -276,19 +276,65 @@ function SignupContent() {
   const roles = [
     {
       role: 'customer' as UserRole,
-      icon: <Package size={28} style={{ color: 'var(--color-primary-500)' }} />,
+      icon: (
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="customerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="100%" stopColor="#00E5FF" />
+            </linearGradient>
+          </defs>
+          <path d="M16 3L3 9.5L16 16L29 9.5L16 3Z" fill="url(#customerGrad)" fillOpacity="0.15" stroke="url(#customerGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          <path d="M3 9.5V22.5L16 29V16L3 9.5Z" stroke="url(#customerGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          <path d="M29 9.5V22.5L16 29V16L29 9.5Z" stroke="url(#customerGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          <path d="M16 16V29" stroke="url(#customerGrad)" strokeWidth="1.5" strokeLinejoin="round"/>
+          <path d="M9.5 6.25L22.5 12.75" stroke="url(#customerGrad)" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      ),
       title: 'Customer',
       description: 'Send, buy, and receive deliveries safely.',
     },
     {
       role: 'rider' as UserRole,
-      icon: <Bike size={28} style={{ color: 'var(--color-primary-500)' }} />,
+      icon: (
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="bikerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="100%" stopColor="#FF9F00" />
+            </linearGradient>
+          </defs>
+          <path d="M2 10H8" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round" strokeDasharray="1 3"/>
+          <path d="M1 16H6" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3"/>
+          <path d="M3 22H7" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round"/>
+          <path d="M11 23H22L26 14H18L15 20H11V23Z" fill="url(#bikerGrad)" fillOpacity="0.15" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          <circle cx="11" cy="24" r="3" stroke="url(#bikerGrad)" strokeWidth="2"/>
+          <circle cx="25" cy="24" r="3" stroke="url(#bikerGrad)" strokeWidth="2"/>
+          <rect x="11" y="9" width="7" height="8" rx="1.5" stroke="url(#bikerGrad)" strokeWidth="2" fill="url(#bikerGrad)" fillOpacity="0.1"/>
+          <path d="M22 14L24 7H21" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
       title: 'Biker',
       description: 'Earn by delivering. Drive your bike. Manage your own earnings.',
     },
     {
       role: 'merchant' as UserRole,
-      icon: <Store size={28} style={{ color: 'var(--color-primary-500)' }} />,
+      icon: (
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="merchantGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="100%" stopColor="#A855F7" />
+            </linearGradient>
+          </defs>
+          <path d="M4 28H28" stroke="url(#merchantGrad)" strokeWidth="2" strokeLinecap="round"/>
+          <rect x="6" y="14" width="20" height="14" fill="url(#merchantGrad)" fillOpacity="0.1" stroke="url(#merchantGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          <path d="M4 8H28L26 14H6L4 8Z" fill="url(#merchantGrad)" fillOpacity="0.25" stroke="url(#merchantGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          <path d="M9 8V14M14 8V14M19 8V14M23 8V14" stroke="url(#merchantGrad)" strokeWidth="1.5"/>
+          <rect x="10" y="20" width="5" height="8" stroke="url(#merchantGrad)" strokeWidth="1.5"/>
+          <rect x="18" y="20" width="5" height="5" rx="1" stroke="url(#merchantGrad)" strokeWidth="1.5"/>
+        </svg>
+      ),
       title: 'Merchant',
       description: 'Generate delivery links. Let us deliver for your business.',
     },
