@@ -562,7 +562,7 @@ function SignupContent() {
             const { error: riderErr } = await createRiderProfile({
               user_id: currentUser.user_id,
               vehicle_type: vehicleType,
-              vehicle_registration: vehicleType === 'bicycle' ? 'N/A' : vehicleReg;
+              vehicle_registration: vehicleType === 'bicycle' ? 'N/A' : vehicleReg,
               license_number: vehicleType === 'bicycle' ? 'N/A' : licenseNumber,
               operating_zone: operatingZone,
               national_id_card_url: finalIdUrl,
