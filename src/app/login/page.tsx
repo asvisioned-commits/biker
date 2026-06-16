@@ -70,7 +70,11 @@ function LoginContent() {
     setError('');
     setSuccessMsg('');
     setOtp('');
-    const { error: phoneError } = await signInWithPhone(phone, dialPrefix);
+    
+    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+    setPhone(cleanPhone);
+    
+    const { error: phoneError } = await signInWithPhone(cleanPhone, dialPrefix);
     if (phoneError) {
       setError(typeof phoneError === 'string' ? phoneError : (phoneError as { message?: string }).message || 'Failed to send OTP');
       setLoading(false);
@@ -458,7 +462,7 @@ function LoginContent() {
                       Cooldown: {resendCooldown}s
                     </span>
                   )}
-                  <button type="button" className={styles.backBtn} style={{ marginLeft: 'auto' }} onClick={() => { setStep('credentials'); setError(''); setSuccessMsg(''); }}>Back to Login</button>
+                  <button type="button" className="btn-apple-secondary" style={{ marginLeft: 'auto' }} onClick={() => { setStep('credentials'); setError(''); setSuccessMsg(''); }}>Back to Login</button>
                 </div>
               </form>
             )}

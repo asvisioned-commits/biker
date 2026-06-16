@@ -376,9 +376,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  background: rgba(255, 255, 255, 0.03);
+  width: 60px;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   transition: all var(--duration-normal) var(--ease-spring);
@@ -386,10 +386,11 @@
 }
 
 .roleCardSelected .roleIcon {
-  background: hsla(72, 100%, 50%, 0.12);
-  border-color: var(--color-primary-400);
-  transform: scale(1.05) rotate(-3deg);
-  box-shadow: 0 0 15px hsla(72, 100%, 50%, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: scale(1.08);
+  box-shadow: 0 0 20px rgba(204, 255, 0, 0.12),
+              0 0 40px rgba(204, 255, 0, 0.04);
 }
 
 .roleTitle {
@@ -905,4 +906,3 @@
   user-select: none;
   text-align: left;
 }
-

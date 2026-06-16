@@ -277,18 +277,35 @@ function SignupContent() {
     {
       role: 'customer' as UserRole,
       icon: (
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="customerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="custGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="50%" stopColor="#88EE44" />
               <stop offset="100%" stopColor="#00E5FF" />
             </linearGradient>
+            <linearGradient id="custGrad2" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#CCFF00" stopOpacity="0.3" />
+            </linearGradient>
           </defs>
-          <path d="M16 3L3 9.5L16 16L29 9.5L16 3Z" fill="url(#customerGrad)" fillOpacity="0.15" stroke="url(#customerGrad)" strokeWidth="2" strokeLinejoin="round"/>
-          <path d="M3 9.5V22.5L16 29V16L3 9.5Z" stroke="url(#customerGrad)" strokeWidth="2" strokeLinejoin="round"/>
-          <path d="M29 9.5V22.5L16 29V16L29 9.5Z" stroke="url(#customerGrad)" strokeWidth="2" strokeLinejoin="round"/>
-          <path d="M16 16V29" stroke="url(#customerGrad)" strokeWidth="1.5" strokeLinejoin="round"/>
-          <path d="M9.5 6.25L22.5 12.75" stroke="url(#customerGrad)" strokeWidth="1.5" strokeLinecap="round"/>
+          {/* Parcel body - 3D box */}
+          <path d="M8 14L20 8L32 14V28L20 34L8 28V14Z" fill="url(#custGrad2)" stroke="url(#custGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          {/* Top face */}
+          <path d="M8 14L20 20L32 14" stroke="url(#custGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          {/* Center line */}
+          <path d="M20 20V34" stroke="url(#custGrad)" strokeWidth="2"/>
+          {/* Tape strip horizontal */}
+          <path d="M14 11L26 17" stroke="#CCFF00" strokeWidth="2.5" strokeLinecap="round" opacity="0.9"/>
+          {/* Tape strip vertical */}
+          <path d="M20 8V20" stroke="#CCFF00" strokeWidth="2" strokeLinecap="round" opacity="0.5"/>
+          {/* Speed lines - parcel in motion */}
+          <path d="M3 18H6" stroke="url(#custGrad)" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+          <path d="M2 22H5.5" stroke="url(#custGrad)" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+          <path d="M4 26H6" stroke="url(#custGrad)" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
+          {/* Location pin */}
+          <circle cx="33" cy="10" r="3" fill="#CCFF00" opacity="0.8"/>
+          <circle cx="33" cy="10" r="1.2" fill="#0a0a0a"/>
         </svg>
       ),
       title: 'Customer',
@@ -297,21 +314,47 @@ function SignupContent() {
     {
       role: 'rider' as UserRole,
       icon: (
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="bikerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="bikeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="50%" stopColor="#E5CC00" />
               <stop offset="100%" stopColor="#FF9F00" />
             </linearGradient>
+            <linearGradient id="bikeGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#FF9F00" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#CCFF00" stopOpacity="0.15" />
+            </linearGradient>
           </defs>
-          <path d="M2 10H8" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round" strokeDasharray="1 3"/>
-          <path d="M1 16H6" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3"/>
-          <path d="M3 22H7" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round"/>
-          <path d="M11 23H22L26 14H18L15 20H11V23Z" fill="url(#bikerGrad)" fillOpacity="0.15" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinejoin="round"/>
-          <circle cx="11" cy="24" r="3" stroke="url(#bikerGrad)" strokeWidth="2"/>
-          <circle cx="25" cy="24" r="3" stroke="url(#bikerGrad)" strokeWidth="2"/>
-          <rect x="11" y="9" width="7" height="8" rx="1.5" stroke="url(#bikerGrad)" strokeWidth="2" fill="url(#bikerGrad)" fillOpacity="0.1"/>
-          <path d="M22 14L24 7H21" stroke="url(#bikerGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          {/* Rear wheel */}
+          <circle cx="11" cy="29" r="6" stroke="url(#bikeGrad)" strokeWidth="2.2"/>
+          <circle cx="11" cy="29" r="2" fill="url(#bikeGrad)" opacity="0.6"/>
+          {/* Front wheel */}
+          <circle cx="31" cy="29" r="6" stroke="url(#bikeGrad)" strokeWidth="2.2"/>
+          <circle cx="31" cy="29" r="2" fill="url(#bikeGrad)" opacity="0.6"/>
+          {/* Bike frame - bold motorcycle shape */}
+          <path d="M11 29L17 19L24 17L31 29" stroke="url(#bikeGrad)" strokeWidth="2.5" strokeLinejoin="round" fill="url(#bikeGrad2)"/>
+          {/* Engine block */}
+          <path d="M15 24L22 22L20 28L13 29" fill="url(#bikeGrad)" opacity="0.35" stroke="url(#bikeGrad)" strokeWidth="1.5" strokeLinejoin="round"/>
+          {/* Handlebar */}
+          <path d="M24 17L28 12L33 11" stroke="url(#bikeGrad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          {/* Headlight */}
+          <circle cx="33" cy="11" r="2" fill="#CCFF00" opacity="0.9"/>
+          <circle cx="33" cy="11" r="3.5" fill="#CCFF00" opacity="0.15"/>
+          {/* Seat */}
+          <path d="M15 18L21 16" stroke="url(#bikeGrad)" strokeWidth="3" strokeLinecap="round"/>
+          {/* Exhaust pipes */}
+          <path d="M13 30L8 33" stroke="#FF9F00" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+          <path d="M8 33L5 32" stroke="#FF9F00" strokeWidth="1" strokeLinecap="round" opacity="0.4"/>
+          {/* Speed streaks */}
+          <path d="M1 16H5" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
+          <path d="M0 20H4.5" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+          <path d="M2 24H5" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
+          {/* Rider silhouette */}
+          <path d="M18 16L17 11L19 8L21 8L20 12L22 15" stroke="url(#bikeGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="url(#bikeGrad2)"/>
+          {/* Helmet */}
+          <ellipse cx="20" cy="7" rx="3" ry="2.5" fill="url(#bikeGrad)" opacity="0.7"/>
+          <path d="M17.5 7.5L23 6.5" stroke="#0a0a0a" strokeWidth="1" strokeLinecap="round" opacity="0.6"/>
         </svg>
       ),
       title: 'Biker',
@@ -320,19 +363,44 @@ function SignupContent() {
     {
       role: 'merchant' as UserRole,
       icon: (
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="merchantGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="merchGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="50%" stopColor="#BB88FF" />
               <stop offset="100%" stopColor="#A855F7" />
             </linearGradient>
+            <linearGradient id="merchGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#A855F7" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="#CCFF00" stopOpacity="0.1" />
+            </linearGradient>
           </defs>
-          <path d="M4 28H28" stroke="url(#merchantGrad)" strokeWidth="2" strokeLinecap="round"/>
-          <rect x="6" y="14" width="20" height="14" fill="url(#merchantGrad)" fillOpacity="0.1" stroke="url(#merchantGrad)" strokeWidth="2" strokeLinejoin="round"/>
-          <path d="M4 8H28L26 14H6L4 8Z" fill="url(#merchantGrad)" fillOpacity="0.25" stroke="url(#merchantGrad)" strokeWidth="2" strokeLinejoin="round"/>
-          <path d="M9 8V14M14 8V14M19 8V14M23 8V14" stroke="url(#merchantGrad)" strokeWidth="1.5"/>
-          <rect x="10" y="20" width="5" height="8" stroke="url(#merchantGrad)" strokeWidth="1.5"/>
-          <rect x="18" y="20" width="5" height="5" rx="1" stroke="url(#merchantGrad)" strokeWidth="1.5"/>
+          {/* Awning */}
+          <path d="M4 14H36L34 9H6L4 14Z" fill="url(#merchGrad)" opacity="0.5" stroke="url(#merchGrad)" strokeWidth="2" strokeLinejoin="round"/>
+          {/* Awning scallops */}
+          <path d="M4 14C4 14 7 17 10 14C13 11 16 17 20 14C24 11 27 17 30 14C33 11 36 14 36 14" stroke="url(#merchGrad)" strokeWidth="2" fill="url(#merchGrad2)"/>
+          {/* Building body */}
+          <rect x="6" y="14" width="28" height="18" fill="url(#merchGrad2)" stroke="url(#merchGrad)" strokeWidth="2" rx="1"/>
+          {/* Ground */}
+          <path d="M3 32H37" stroke="url(#merchGrad)" strokeWidth="2" strokeLinecap="round"/>
+          {/* Door */}
+          <rect x="15" y="22" width="10" height="10" rx="2" fill="url(#merchGrad)" opacity="0.25" stroke="url(#merchGrad)" strokeWidth="1.5"/>
+          {/* Door handle */}
+          <circle cx="23" cy="27" r="1" fill="#CCFF00" opacity="0.9"/>
+          {/* Left window */}
+          <rect x="8" y="17" width="5" height="4" rx="1" fill="url(#merchGrad)" opacity="0.3" stroke="url(#merchGrad)" strokeWidth="1.2"/>
+          {/* Right window */}
+          <rect x="27" y="17" width="5" height="4" rx="1" fill="url(#merchGrad)" opacity="0.3" stroke="url(#merchGrad)" strokeWidth="1.2"/>
+          {/* Signage/name plate */}
+          <rect x="12" y="5" width="16" height="4" rx="2" fill="url(#merchGrad)" opacity="0.2" stroke="url(#merchGrad)" strokeWidth="1.5"/>
+          {/* Signage text lines */}
+          <path d="M15 7H25" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+          {/* Open sign glow */}
+          <circle cx="34" cy="20" r="2.5" fill="#CCFF00" opacity="0.6"/>
+          <circle cx="34" cy="20" r="1" fill="#0a0a0a"/>
+          {/* Window light glow */}
+          <rect x="8.5" y="17.5" width="4" height="3" rx="0.5" fill="#CCFF00" opacity="0.08"/>
+          <rect x="27.5" y="17.5" width="4" height="3" rx="0.5" fill="#CCFF00" opacity="0.08"/>
         </svg>
       ),
       title: 'Merchant',
@@ -356,13 +424,67 @@ function SignupContent() {
     setStep('details');
   };
 
-  const handleDetailsSubmit = (e: React.FormEvent) => {
+  const handleDetailsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agreedToTerms) {
       setError('You must agree to the Terms & Trust Charter and Privacy Policy to continue.');
       return;
     }
     setError('');
+    setLoading(true);
+
+    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+    setPhone(cleanPhone);
+
+    const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+
+    // ── Pre-Validation: Check for duplicate email, phone, and device ──
+    if (!IS_DEV && !currentUser) {
+      try {
+        const { createClient: createSupClient } = await import('@/lib/supabase/client');
+        const supabase = createSupClient();
+        const fingerprint = getDeviceFingerprint();
+        const fullPhone = cleanPhone ? activePrefix + cleanPhone : '';
+
+        const { data: availability, error: rpcError } = await supabase.rpc(
+          'check_registration_availability',
+          {
+            p_email: email,
+            p_phone: fullPhone,
+            p_fingerprint: fingerprint,
+          }
+        );
+
+        if (rpcError) {
+          console.warn('Registration availability check failed:', rpcError);
+          // Non-blocking: allow signup if the check itself fails (RPC may not exist yet)
+        } else if (availability) {
+          const warnings: string[] = [];
+
+          if (availability.email_taken) {
+            warnings.push('⚠️ This email address is already registered. Please log in instead, or use a different email.');
+          }
+          if (availability.phone_taken) {
+            warnings.push('⚠️ This phone number is already linked to an existing account.');
+          }
+          if (availability.device_blocked) {
+            warnings.push('⚠️ Multiple account registration limit reached on this device. For security, each device may register up to 2 accounts.');
+          }
+
+          if (warnings.length > 0) {
+            setError(warnings.join('\n'));
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (checkErr) {
+        console.warn('Pre-validation check encountered an error:', checkErr);
+        // Non-blocking fallback — proceed with signup; the DB constraints are the final guard
+      }
+    }
+
+    setLoading(false);
+
     if (selectedRole === 'rider') {
       setStep('rider_kyc');
     } else if (selectedRole === 'merchant') {
@@ -376,6 +498,11 @@ function SignupContent() {
     setLoading(true);
     setError('');
     const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+
+    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+    setPhone(cleanPhone);
+    const cleanWhatsapp = whatsapp.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+    setWhatsapp(cleanWhatsapp);
 
     let finalIdUrl = nationalIdCardUrl;
     let finalRegUrl = vehicleRegUrl;
@@ -392,7 +519,7 @@ function SignupContent() {
             parsed.role = selectedRole;
             parsed.roles = [selectedRole];
             parsed.full_name = fullName || parsed.full_name;
-            parsed.phone = phone ? activePrefix + phone : parsed.phone;
+            parsed.phone = cleanPhone ? activePrefix + cleanPhone : parsed.phone;
 
             if (selectedRole === 'rider') {
               parsed.vehicle_type = vehicleType;
@@ -408,7 +535,7 @@ function SignupContent() {
             } else if (selectedRole === 'merchant') {
               parsed.business_name = businessName;
               parsed.business_type = businessType;
-              parsed.whatsapp = whatsapp ? activePrefix + whatsapp : null;
+              parsed.whatsapp = cleanWhatsapp ? activePrefix + cleanWhatsapp : null;
             }
             localStorage.setItem('biker_mock_session', JSON.stringify(parsed));
           }
@@ -423,9 +550,9 @@ function SignupContent() {
             console.warn('Document upload failed, using fallback base64:', uploadErr);
           }
 
-          if (phone || fullName) {
+          if (cleanPhone || fullName) {
             const { error: profileErr } = await updateProfile(currentUser.user_id, {
-              phone: phone ? activePrefix + phone : undefined,
+              phone: cleanPhone ? activePrefix + cleanPhone : undefined,
               full_name: fullName || undefined,
             });
             if (profileErr) throw profileErr;
@@ -435,7 +562,7 @@ function SignupContent() {
             const { error: riderErr } = await createRiderProfile({
               user_id: currentUser.user_id,
               vehicle_type: vehicleType,
-              vehicle_registration: vehicleType === 'bicycle' ? 'N/A' : vehicleReg,
+              vehicle_registration: vehicleType === 'bicycle' ? 'N/A' : vehicleReg;
               license_number: vehicleType === 'bicycle' ? 'N/A' : licenseNumber,
               operating_zone: operatingZone,
               national_id_card_url: finalIdUrl,
@@ -450,7 +577,7 @@ function SignupContent() {
               user_id: currentUser.user_id,
               business_name: businessName,
               business_type: businessType as any,
-              whatsapp_number: whatsapp ? activePrefix + whatsapp : undefined,
+              whatsapp_number: cleanWhatsapp ? activePrefix + cleanWhatsapp : undefined,
             });
             if (merchErr) throw merchErr;
           }
@@ -478,8 +605,9 @@ function SignupContent() {
     // Flow B: Standard Email Signup
     const metadata: Record<string, unknown> = {
       full_name: fullName,
-      phone: activePrefix + phone,
+      phone: activePrefix + cleanPhone,
       role: selectedRole,
+      device_fingerprint: getDeviceFingerprint(),
     };
 
     if (selectedRole === 'rider') {
@@ -496,7 +624,7 @@ function SignupContent() {
     } else if (selectedRole === 'merchant') {
       metadata.business_name = businessName;
       metadata.business_type = businessType;
-      metadata.whatsapp = whatsapp ? activePrefix + whatsapp : null;
+      metadata.whatsapp = cleanWhatsapp ? activePrefix + cleanWhatsapp : null;
     }
     const targetEmail = email;
     const { data: signUpData, error: signUpError } = await signUpWithEmail(
@@ -619,9 +747,12 @@ function SignupContent() {
           console.warn('Document upload failed:', uploadErr);
         }
 
-        if (phone || fullName) {
+        const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+        const cleanWhatsapp = whatsapp.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+
+        if (cleanPhone || fullName) {
           await updateProfile(sess.user_id, {
-            phone: phone ? activePrefix + phone : undefined,
+            phone: cleanPhone ? activePrefix + cleanPhone : undefined,
             full_name: fullName || undefined,
           });
         }
@@ -644,7 +775,7 @@ function SignupContent() {
             user_id: sess.user_id,
             business_name: businessName,
             business_type: businessType as any,
-            whatsapp_number: whatsapp ? activePrefix + whatsapp : undefined,
+            whatsapp_number: cleanWhatsapp ? activePrefix + cleanWhatsapp : undefined,
           });
         }
 
