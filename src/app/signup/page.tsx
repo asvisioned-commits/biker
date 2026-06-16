@@ -257,12 +257,26 @@ function SignupContent() {
           const isGoogleOnboarding = searchParams.get('google_onboarding') === '1';
           const storedRole = localStorage.getItem('biker_signup_role') as UserRole | null;
 
-          if (isGoogleOnboarding && storedRole && storedRole !== 'customer') {
-            setSelectedRole(storedRole);
-            if (storedRole === 'rider') {
-              setStep('rider_kyc');
-            } else if (storedRole === 'merchant') {
-              setStep('merchant_details');
+          if (isGoogleOnboarding) {
+            // Always go to details step first so phone number is collected
+            if (storedRole) {
+              setSelectedRole(storedRole);
+            }
+            // If user already has a phone, skip to role-specific step
+            if (sess.phone && sess.phone.trim() !== '') {
+              if (storedRole === 'rider') {
+                setStep('rider_kyc');
+              } else if (storedRole === 'merchant') {
+                setStep('merchant_details');
+              } else {
+                // Customer with phone — onboarding complete, go to dashboard
+                localStorage.removeItem('biker_signup_role');
+                window.location.href = '/dashboard';
+                return;
+              }
+            } else {
+              // No phone — must collect it on the details step
+              setStep('details');
             }
           }
         }
@@ -925,9 +939,9 @@ function SignupContent() {
             {/* Step 2: Basic Details */}
             {step === 'details' && (
               <form onSubmit={handleDetailsSubmit} className={styles.stepContent}>
-                <h1 className={styles.formTitle}>Create your account</h1>
+                <h1 className={styles.formTitle}>{currentUser ? 'Complete your profile' : 'Create your account'}</h1>
                 <p className={styles.formSubtitle}>
-                  Enter your details to get started.
+                  {currentUser ? 'Please provide your phone number to continue.' : 'Enter your details to get started.'}
                 </p>
                 <div className={styles.form}>
                   <div className="input-group">
@@ -958,6 +972,7 @@ function SignupContent() {
                       />
                     </div>
                   </div>
+                  {!currentUser && (
                   <div className="input-group">
                     <label className="input-label input-label--required" htmlFor="sEmail">Email</label>
                     <input
@@ -970,6 +985,8 @@ function SignupContent() {
                       required
                     />
                   </div>
+                  )}
+                  {!currentUser && (
                   <div className="input-group">
                     <label className="input-label input-label--required" htmlFor="sPassword">Password</label>
                     <input
@@ -984,6 +1001,7 @@ function SignupContent() {
                     />
                     <span className="input-hint">At least 8 characters</span>
                   </div>
+                  )}
                   
                   <div className={styles.checkboxGroup}>
                     <input
@@ -1280,10 +1298,10 @@ function SignupContent() {
                       {cameraStream && (
                         <div className={styles.checkpoints}>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'align' ? styles.checkpointDotActive : styles.checkpointDotSuccess}`}>
-                            {livenessStep !== 'align' ? <Check size={10} style={{ marginRight: '2px' }} /> : '1'} Align
+                            {livenessStep !== 'align' ? <Check size={10} style={{ marginRight: '2px' }} : '1'} Align
                           </div>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'blink' ? styles.checkpointDotActive : (livenessStep === 'turn' ? styles.checkpointDotSuccess : '')}`}>
-                            {livenessStep === 'turn' ? <Check size={10} style={{ marginRight: '2px' }} /> : '2'} Blink
+                            {livenessStep === 'turn' ? <Check size={10} style={{ marginRight: '2px' }} : '2'} Blink
                           </div>
                           <div className={`${styles.checkpointDot} ${livenessStep === 'turn' ? styles.checkpointDotActive : ''}`}>
                             3 Turn
