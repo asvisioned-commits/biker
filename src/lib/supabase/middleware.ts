@@ -36,25 +36,32 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
+  // Static assets and API routes should pass through immediately
+  if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.includes('.')) {
+    return supabaseResponse;
+  }
+
+  // Public routes that don't require redirect checks
+  const publicRoutes = ['/', '/auth/callback', '/about', '/privacy', '/terms', '/disputes-policy'];
+  const isPublicRoute = publicRoutes.some(
+    (route) => pathname === route
+  ) || pathname.startsWith('/reset-password');
+
+  // Skip auth checks on public pages (improves speed & avoids PKCE session verifier errors)
+  if (isPublicRoute) {
+    return supabaseResponse;
+  }
+
   // IMPORTANT: Use getUser() which validates the token with Supabase Auth server.
   // Do NOT use getSession() — it reads from storage which can be tampered.
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Public routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/signup', '/auth/callback', '/about', '/privacy', '/terms', '/disputes-policy'];
-  const isPublicRoute = publicRoutes.some(
-    (route) => pathname === route
-  ) || pathname.startsWith('/reset-password');
-
-  // Static assets and API routes should pass through
-  if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.includes('.')) {
-    return supabaseResponse;
-  }
+  const isAuthPage = pathname === '/login' || pathname === '/signup';
 
   // If user is not authenticated and trying to access protected route
-  if (!user && !isPublicRoute) {
+  if (!user && !isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', pathname);

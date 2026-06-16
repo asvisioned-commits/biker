@@ -51,11 +51,24 @@ export async function signInWithEmail(email: string, password: string) {
 }
 
 /**
+ * Sanitizes and normalizes phone number to digits only, removing spaces/dashes/parentheses,
+ * and stripping any leading zero.
+ */
+export function sanitizePhoneNumber(phone: string): string {
+  const clean = phone.replace(/[\s\-\(\)]/g, '');
+  if (clean.startsWith('+')) {
+    return clean;
+  }
+  return clean.startsWith('0') ? clean.slice(1) : clean;
+}
+
+/**
  * Sign in with phone OTP
  */
 export async function signInWithPhone(phone: string, countryPrefix = '+263') {
   const supabase = createClient();
-  const formattedPhone = phone.startsWith('+') ? phone : `${countryPrefix}${phone}`;
+  const cleanPhone = sanitizePhoneNumber(phone);
+  const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : `${countryPrefix}${cleanPhone}`;
   const { data, error } = await supabase.auth.signInWithOtp({ phone: formattedPhone });
   return { data, error };
 }
@@ -64,7 +77,8 @@ export async function signInWithPhone(phone: string, countryPrefix = '+263') {
  * Verify phone OTP
  */
 export async function verifyPhoneOtp(phone: string, token: string, countryPrefix = '+263') {
-  const formattedPhone = phone.startsWith('+') ? phone : `${countryPrefix}${phone}`;
+  const cleanPhone = sanitizePhoneNumber(phone);
+  const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : `${countryPrefix}${cleanPhone}`;
   const supabase = createClient();
   const { data, error } = await supabase.auth.verifyOtp({
     phone: formattedPhone,
