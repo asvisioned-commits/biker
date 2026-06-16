@@ -487,3 +487,13 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+.colSpan2 {
+  grid-column: 1 / -1;
+}
+@media (min-width: 768px) {
+  .colSpan2 {
+    grid-column: span 2;
+  }
+}
+

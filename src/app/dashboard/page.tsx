@@ -11,10 +11,11 @@ import RiderCard from '@/components/RiderCard';
 import type { UserRole } from '@/types';
 import PremiumIcon from '@/components/primitives/PremiumIcon';
 import OpsCommandTerminal from '@/components/OpsCommandTerminal';
+import styles from './dashboard.module.css';
 
 export default function DashboardHome() {
   const router = useRouter();
-  const { country } = useProfile();
+  const { country, session, refreshSession } = useProfile();
   const [profile, setProfile] = useState<any>(null);
 
   const formatPrice = (usdVal: number) => {
@@ -114,23 +115,18 @@ export default function DashboardHome() {
 
         {/* Role switching */}
         <div style={{ display: 'flex', gap: '8px' }}>
-          {role !== 'customer' && (
-            <button className="btn btn--secondary btn--sm" onClick={() => switchRole('customer')}>
-              Switch to Customer
+          {(session?.roles || ['customer']).filter(r => r !== role).map((r) => (
+            <button key={r} className="btn btn--secondary btn--sm" style={{ textTransform: 'capitalize' }} onClick={() => switchRole(r)}>
+              Switch to {r}
             </button>
-          )}
-          {role !== 'rider' && (
-            <button className="btn btn--secondary btn--sm" onClick={() => switchRole('rider')}>
-              Switch to Rider
-            </button>
-          )}
+          ))}
         </div>
       </div>
 
       {/* Main dashboard widgets */}
       {role === 'customer' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="card p-6 md:col-span-2 display-flex flex-column justify-center align-start">
+        <div className="grid grid-cols-3 gap-6 mb-8">
+          <div className={`card p-6 ${styles.colSpan2} flex flex-col justify-center items-start`}>
             <h2 className="title title--sm mb-2">Need to send something instantly?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
               {country === 'ZM' ? "Zambia's" : "Zimbabwe's"} premier secure escrow courier logistics service. Real-time path tracing, dynamic pricing, and cash collection.
@@ -140,7 +136,7 @@ export default function DashboardHome() {
             </Link>
           </div>
 
-          <div className="card p-6 display-flex flex-column justify-between">
+          <div className="card p-6 flex flex-col justify-between">
             <div style={{ marginBottom: '12px' }}>
               <PremiumIcon name="ShieldCheck" variant="protect" glow size={48} />
             </div>
@@ -156,8 +152,8 @@ export default function DashboardHome() {
 
       {role === 'merchant' && (
         <div className="flex flex-col gap-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="card p-6 md:col-span-2 display-flex flex-column justify-center align-start">
+          <div className="grid grid-cols-3 gap-6">
+            <div className={`card p-6 ${styles.colSpan2} flex flex-col justify-center items-start`}>
               <h2 className="title title--sm mb-2">WhatsApp Store Logistics</h2>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
                 Generate pre-filled checkout links to copy and paste to your WhatsApp or Instagram buyers. They confirm their drop-off coordinates, authorize escrow payments, and we auto-dispatch the nearest verified rider.
@@ -172,7 +168,7 @@ export default function DashboardHome() {
               </div>
             </div>
 
-            <div className="card p-6 display-flex flex-col justify-between">
+            <div className="card p-6 flex flex-col justify-between">
               <div>
                 <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Escrow Funds Held</div>
                 <div style={{ fontSize: '2rem', fontWeight: 850, color: 'var(--text-primary)', marginTop: '4px' }}>
@@ -185,7 +181,7 @@ export default function DashboardHome() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div className="p-4 card" style={{ padding: '16px' }}>
               <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Orders Today</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '4px' }}>12</div>
@@ -211,8 +207,8 @@ export default function DashboardHome() {
 
       {(role === 'ops' || role === 'admin') && (
         <div className="flex flex-col gap-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="card p-6 md:col-span-2 display-flex flex-column justify-center align-start">
+          <div className="grid grid-cols-3 gap-6">
+            <div className={`card p-6 ${styles.colSpan2} flex flex-col justify-center items-start`}>
               <h2 className="title title--sm mb-2">Operations Control Desk</h2>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', fontSize: '14px' }}>
                 Verify rider documentation queues, moderate payment disputes, and reconcile cash on delivery collections.
@@ -227,7 +223,7 @@ export default function DashboardHome() {
               </div>
             </div>
 
-            <div className="card p-6 display-flex flex-col justify-between">
+            <div className="card p-6 flex flex-col justify-between">
               <div>
                 <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>System Status</div>
                 <div style={{ fontSize: '1.3rem', fontWeight: 850, color: '#10b981', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -306,8 +302,8 @@ export default function DashboardHome() {
           )}
 
           {/* Quick Metrics (Online status + active console link) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="card p-6 md:col-span-2 flex flex-col justify-between" style={{ minHeight: '160px' }}>
+          <div className="grid grid-cols-3 gap-6">
+            <div className={`card p-6 ${styles.colSpan2} flex flex-col justify-between`} style={{ minHeight: '160px' }}>
               <div className="flex justify-between items-start">
                 <div>
                   <h2 className="title title--sm mb-2">Rider Work Console</h2>
@@ -350,11 +346,11 @@ export default function DashboardHome() {
           </div>
 
           {/* Rolling Earnings, Trust Score, and Tier Badge */}
-          <div className="card p-6" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01))' }}>
+          <div className="card p-6" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)), var(--bg-card)' }}>
             <h3 className="title title--sm mb-4">Performance & Earnings Metrics</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               {/* Today Earnings */}
-              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div className="p-4" style={{ borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Today's Earnings</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
                   {formatPrice(riderStats?.todayEarnings ?? 0)}
@@ -362,7 +358,7 @@ export default function DashboardHome() {
               </div>
 
               {/* Week Earnings */}
-              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div className="p-4" style={{ borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Weekly Earnings</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#3b82f6', marginTop: '4px' }}>
                   {formatPrice(riderStats?.weekEarnings ?? 0)}
@@ -370,7 +366,7 @@ export default function DashboardHome() {
               </div>
 
               {/* Month Earnings */}
-              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div className="p-4" style={{ borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Monthly Earnings</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8b5cf6', marginTop: '4px' }}>
                   {formatPrice(riderStats?.monthEarnings ?? 0)}
@@ -378,7 +374,7 @@ export default function DashboardHome() {
               </div>
 
               {/* Trust Score & Tier status */}
-              <div className="p-4" style={{ borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div className="p-4" style={{ borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-default)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Trust Score & Tier</div>
                 <div className="flex items-center gap-2 mt-1">
                   <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f59e0b' }}>

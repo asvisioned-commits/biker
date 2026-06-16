@@ -218,8 +218,10 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         {sidebarOpen && <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />}
         <main className={styles.main}>
           <header className={styles.mobileHeader}>
-            <button className={styles.hamburger} onClick={() => setSidebarOpen(true)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+            <button className={`${styles.hamburger} ${sidebarOpen ? styles.hamburgerOpen : ''}`} onClick={() => setSidebarOpen(!sidebarOpen)}>
+              <span className={styles.hamburgerLine} />
+              <span className={styles.hamburgerLine} />
+              <span className={styles.hamburgerLine} />
             </button>
             <span className={styles.mobileTitle}>Biker<span className={styles.logoDot}>.</span></span>
             <div className={styles.headerRight}>
