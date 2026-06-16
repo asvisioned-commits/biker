@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSession, type BikerSession } from '@/lib/auth';
+import { SyncManager } from '@/lib/SyncManager';
 
 interface ProfileContextType {
   session: BikerSession | null;
@@ -9,8 +10,9 @@ interface ProfileContextType {
   refreshSession: (showLoading?: boolean) => Promise<void>;
   country: 'ZW' | 'ZM';
   setCountry: (country: 'ZW' | 'ZM') => void;
-  theme: 'light' | 'dark';
-  setTheme: (theme: 'light' | 'dark') => void;
+  theme: 'light' | 'dark' | 'system';
+  setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  resolvedTheme: 'light' | 'dark';
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
@@ -19,7 +21,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<BikerSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [country, setCountryState] = useState<'ZW' | 'ZM'>('ZW');
-  const [theme, setThemeState] = useState<'light' | 'dark'>('light');
+  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>('system');
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
 
   // Load persisted country preference from localStorage on mount or auto-detect
   useEffect(() => {
@@ -74,16 +77,37 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Load persisted theme preference from localStorage on mount or auto-detect system theme
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedTheme = localStorage.getItem('biker_theme');
-      if (savedTheme === 'light' || savedTheme === 'dark') {
-        setThemeState(savedTheme);
-        document.documentElement.setAttribute('data-theme', savedTheme);
-      } else {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const initialTheme = prefersDark ? 'dark' : 'light';
-        setThemeState(initialTheme);
-        document.documentElement.setAttribute('data-theme', initialTheme);
-      }
+      const savedTheme = localStorage.getItem('biker_theme') as 'light' | 'dark' | 'system' | null;
+      const initialTheme = savedTheme || 'system';
+      setThemeState(initialTheme);
+      
+      const applyTheme = (t: 'light' | 'dark' | 'system') => {
+        let active: 'light' | 'dark' = 'light';
+        if (t === 'system') {
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          active = prefersDark ? 'dark' : 'light';
+        } else {
+          active = t;
+        }
+        setResolvedTheme(active);
+        document.documentElement.setAttribute('data-theme', active);
+      };
+      
+      applyTheme(initialTheme);
+
+      // Listen for system theme changes dynamically
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleSystemThemeChange = (e: MediaQueryListEvent) => {
+        const currentSaved = localStorage.getItem('biker_theme') as 'light' | 'dark' | 'system' | null;
+        if (!currentSaved || currentSaved === 'system') {
+          const active = e.matches ? 'dark' : 'light';
+          setResolvedTheme(active);
+          document.documentElement.setAttribute('data-theme', active);
+        }
+      };
+
+      mediaQuery.addEventListener('change', handleSystemThemeChange);
+      return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
     }
   }, []);
 
@@ -92,10 +116,19 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('biker_country', newCountry);
   };
 
-  const setTheme = (newTheme: 'light' | 'dark') => {
+  const setTheme = (newTheme: 'light' | 'dark' | 'system') => {
     setThemeState(newTheme);
     localStorage.setItem('biker_theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    
+    let active: 'light' | 'dark' = 'light';
+    if (newTheme === 'system') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      active = prefersDark ? 'dark' : 'light';
+    } else {
+      active = newTheme;
+    }
+    setResolvedTheme(active);
+    document.documentElement.setAttribute('data-theme', active);
   };
 
   const refreshSession = async (showLoading = false) => {
@@ -114,10 +147,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshSession();
+    SyncManager.initialize();
+    return () => {
+      SyncManager.destroy();
+    };
   }, []);
 
   return (
-    <ProfileContext.Provider value={{ session, loading, refreshSession, country, setCountry, theme, setTheme }}>
+    <ProfileContext.Provider value={{ session, loading, refreshSession, country, setCountry, theme, setTheme, resolvedTheme }}>
       {children}
     </ProfileContext.Provider>
   );

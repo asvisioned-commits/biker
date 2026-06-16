@@ -10,6 +10,7 @@ import { useProfile } from '@/context/ProfileContext';
 import RiderCard from '@/components/RiderCard';
 import type { UserRole } from '@/types';
 import PremiumIcon from '@/components/primitives/PremiumIcon';
+import OpsCommandTerminal from '@/components/OpsCommandTerminal';
 
 export default function DashboardHome() {
   const router = useRouter();
@@ -199,7 +200,10 @@ export default function DashboardHome() {
             </div>
             <div className="p-4 card" style={{ padding: '16px' }}>
               <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Rating</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '4px', color: '#fbbf24' }}>⭐ 4.90</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '4px', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <PremiumIcon name="Star" variant="warning" size={16} glow />
+                <span>4.90</span>
+              </div>
             </div>
           </div>
         </div>
@@ -215,10 +219,10 @@ export default function DashboardHome() {
               </p>
               <div className="flex gap-2">
                 <Link href="/dashboard/ops/cod" className="btn btn--primary">
-                  💵 Cash float audit
+                  Cash Float Audit
                 </Link>
                 <Link href="/dashboard/admin/billing" className="btn btn--secondary">
-                  ⚙️ Admin Moderation Queue
+                  Admin Moderation Queue
                 </Link>
               </div>
             </div>
@@ -235,6 +239,11 @@ export default function DashboardHome() {
                 Harare dispatch queues matched 148 active couriers in the last hour.
               </p>
             </div>
+          </div>
+
+          {/* Interactive Retro Ops Command Terminal */}
+          <div className="grid grid-cols-1 gap-6">
+            <OpsCommandTerminal />
           </div>
         </div>
       )}
@@ -253,10 +262,16 @@ export default function DashboardHome() {
               gap: '12px',
               boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.75rem' }}>
-                  {riderStats?.kycStatus === 'rejected' ? '❌' : riderStats?.kycStatus === 'pending_ops_approval' ? '⏳' : '⚠️'}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {riderStats?.kycStatus === 'rejected' ? (
+                    <PremiumIcon name="XCircle" variant="danger" size={24} backdrop="circle" glow />
+                  ) : riderStats?.kycStatus === 'pending_ops_approval' ? (
+                    <PremiumIcon name="Clock" variant="warning" size={24} backdrop="circle" glow />
+                  ) : (
+                    <PremiumIcon name="AlertTriangle" variant="warning" size={24} backdrop="circle" glow />
+                  )}
+                </div>
                 <div>
                   <h3 style={{ fontWeight: 800, margin: 0, fontSize: '15px', color: 'var(--text-primary)' }}>
                     {riderStats?.kycStatus === 'rejected' ? 'Verification Rejected' : 
@@ -306,16 +321,16 @@ export default function DashboardHome() {
                   onClick={toggleRiderAvailability}
                   disabled={updatingOnlineStatus || riderStats?.kycStatus !== 'approved'}
                 >
-                  {updatingOnlineStatus ? 'Updating...' : riderStats?.kycStatus !== 'approved' ? '🔒 Locked' : riderOnline ? '🟢 Online' : '🔴 Offline'}
+                  {updatingOnlineStatus ? 'Updating...' : riderStats?.kycStatus !== 'approved' ? 'Locked' : riderOnline ? 'Online' : 'Offline'}
                 </button>
               </div>
 
               <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
                 <Link href="/dashboard/jobs" className="btn btn--primary btn--full text-center">
-                  🚴 Available Jobs list
+                  Available Jobs List
                 </Link>
                 <Link href="/dashboard/active" className="btn btn--secondary btn--full text-center">
-                  🛠️ Active Job Console
+                  Active Job Console
                 </Link>
               </div>
             </div>

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { PricingService, PricingEstimate } from '@/lib/pricing';
 import { OrderService } from '@/lib/order-service';
 import Link from 'next/link';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
 import { useProfile } from '@/context/ProfileContext';
 import { reverseGeocode, searchAddress } from '@/lib/geocoding';
 import styles from './new-order.module.css';
@@ -187,6 +188,34 @@ export default function NewOrderPage() {
   const [suggestedBasePrice, setSuggestedBasePrice] = useState(5.0);
   const [userOfferPrice, setUserOfferPrice] = useState<number>(5.0);
   const [estimate, setEstimate] = useState<PricingEstimate | null>(null);
+
+  const getProbabilityPercent = () => {
+    if (!suggestedBasePrice || suggestedBasePrice <= 0) return 100;
+    const ratio = userOfferPrice / suggestedBasePrice;
+    if (ratio >= 1.2) return 98;
+    if (ratio >= 1.0) {
+      return Math.min(95, Math.round(75 + (ratio - 1.0) * 100));
+    }
+    if (ratio >= 0.8) {
+      return Math.round(30 + ((ratio - 0.8) / 0.2) * 45);
+    }
+    return Math.max(5, Math.round(10 + ((ratio - 0.6) / 0.2) * 20));
+  };
+
+  const getProbabilityText = () => {
+    const pct = getProbabilityPercent();
+    if (pct >= 85) return 'Excellent offer. Riders will accept this instantly.';
+    if (pct >= 70) return 'Good offer. High chance of finding a rider quickly.';
+    if (pct >= 45) return 'Fair offer. Acceptance might take a few minutes.';
+    return 'Low offer. Riders may decline or request higher bids.';
+  };
+
+  const getProbabilityColor = () => {
+    const pct = getProbabilityPercent();
+    if (pct >= 70) return '#CCFF00'; // Electric Lime
+    if (pct >= 45) return '#f59e0b'; // Amber / Orange
+    return '#ef4444'; // Red
+  };
 
   const mapRef = useRef<any>(null);
   const pickupMarkerRef = useRef<any>(null);
@@ -548,6 +577,19 @@ export default function NewOrderPage() {
     setLoading(true);
     setError('');
 
+    // Client-side fraud prevention: check order velocity
+    try {
+      const fingerprint = getDeviceFingerprint();
+      const velocityCheck = await OrderService.checkOrderVelocity(userId, fingerprint);
+      if (!velocityCheck.allowed) {
+        setError(velocityCheck.details || 'Dispatch limit exceeded. You can only place up to 3 orders every 10 minutes.');
+        setLoading(false);
+        return;
+      }
+    } catch (err: any) {
+      console.error('Failed to run order velocity check:', err);
+    }
+
     // Compute dynamic fees scaled to the user's custom bid payout
     const bidScale = userOfferPrice / suggestedBasePrice;
     const finalServiceFee = estimate ? Math.round(estimate.serviceFee * bidScale * 100) / 100 : 0.38;
@@ -678,6 +720,7 @@ export default function NewOrderPage() {
         defaultSnap="half"
         showCloseButton={false}
         overlayClassName={styles.mapOverlaySheet}
+        className={styles.bottomSheet}
       >
         {error && (
           <div className="alert alert--danger" style={{ fontSize: '12px', padding: '8px 12px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -978,26 +1021,83 @@ export default function NewOrderPage() {
               </div>
             </div>
 
-            {/* InDrive-style Name Your Price Bid card */}
+            {/* Apple-grade Interactive Offer Bid Slider & Probability Meter */}
             <div className={styles.fareBidContainer}>
-              <span className={styles.fareLabel}>Name Your Payout Offer</span>
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className={styles.fareLabel}>Name Your Offer</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  Base: {formatPrice(suggestedBasePrice)}
+                </span>
+              </div>
               
-              <div className={styles.fareControlGroup}>
-                <button type="button" className={styles.fareBtn} onClick={() => adjustBid(country === 'ZM' ? -10 : -0.5)}>
-                  -
-                </button>
-                <div className={styles.fareDisplay}>
-                  <span className={styles.fareCurrency}>{country === 'ZM' ? 'ZK' : '$'}</span>
-                  <span>{country === 'ZM' ? (userOfferPrice * 25).toFixed(0) : userOfferPrice.toFixed(2)}</span>
-                </div>
-                <button type="button" className={styles.fareBtn} onClick={() => adjustBid(country === 'ZM' ? 10 : 0.5)}>
-                  +
-                </button>
+              <div className={styles.fareDisplayContainer}>
+                <span className={styles.fareCurrency}>{country === 'ZM' ? 'ZK' : '$'}</span>
+                <span className={styles.fareValue}>
+                  {country === 'ZM' ? (userOfferPrice * 25).toFixed(0) : userOfferPrice.toFixed(2)}
+                </span>
               </div>
 
-              <span className={styles.fareHint}>
-                Recommended Base: {formatPrice(suggestedBasePrice)} ({estimate?.distanceKm} km trip)
-              </span>
+              {/* Range Slider */}
+              <div className={styles.sliderWrapper}>
+                <input
+                  type="range"
+                  min={Math.round(suggestedBasePrice * 0.6 * 10) / 10}
+                  max={Math.round(suggestedBasePrice * 2.0 * 10) / 10}
+                  step={0.1}
+                  value={userOfferPrice}
+                  onChange={(e) => setUserOfferPrice(parseFloat(e.target.value))}
+                  className={styles.rangeSlider}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                  <span>Min: {formatPrice(suggestedBasePrice * 0.6)}</span>
+                  <span>Max: {formatPrice(suggestedBasePrice * 2.0)}</span>
+                </div>
+              </div>
+
+              {/* Match Probability Meter */}
+              <div className={styles.probabilityWrapper}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Acceptance Probability</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: getProbabilityColor() }}>
+                    {getProbabilityPercent()}%
+                  </span>
+                </div>
+                <div className={styles.progressBarBg}>
+                  <div
+                    className={styles.progressBarFill}
+                    style={{
+                      width: `${getProbabilityPercent()}%`,
+                      backgroundColor: getProbabilityColor(),
+                      boxShadow: `0 0 10px ${getProbabilityColor()}`
+                    }}
+                  />
+                </div>
+                <p className={styles.probabilityText}>
+                  {getProbabilityText()}
+                </p>
+              </div>
+
+              {/* CO2 Savings Indicator */}
+              {estimate && estimate.co2SavedKg > 0 && (
+                <div
+                  style={{
+                    marginTop: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    borderRadius: '12px',
+                    background: 'rgba(34, 197, 94, 0.08)',
+                    border: '1px solid rgba(34, 197, 94, 0.2)',
+                    color: '#22c55e'
+                  }}
+                >
+                  <PremiumIcon name="Leaf" variant="success" size={16} glow animate="spring" />
+                  <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                    <strong>Green Fleet Impact</strong>: This trip saves approximately <strong>{estimate.co2SavedKg} kg</strong> of CO₂ compared to a standard delivery van!
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Input Details Grid */}

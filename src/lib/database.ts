@@ -333,117 +333,12 @@ export async function withdrawDisputeInDb(disputeId: string) {
 }
 
 export async function resolveDisputeInDb(disputeId: string, action: 'approve' | 'deny', resolvedBy: string, notes: string) {
-  const { data: dispute, error: fetchErr } = await supabase
-    .from('disputes')
-    .select('*')
-    .eq('id', disputeId)
-    .single();
-    
-  if (fetchErr || !dispute) return { error: fetchErr || new Error('Dispute not found') };
-  
-  const orderId = dispute.request_id;
-  const customerId = dispute.initiated_by;
-  const refundAmount = Number(dispute.refund_amount || 0);
-  const originalStatus = dispute.original_status || 'completed';
-  
-  if (action === 'approve') {
-    const { data: updatedDispute, error: disputeErr } = await supabase
-      .from('disputes')
-      .update({
-        status: 'resolved_customer_favor',
-        resolved_by: resolvedBy,
-        resolved_at: new Date().toISOString(),
-        resolution_notes: notes
-      })
-      .eq('id', disputeId)
-      .select()
-      .single();
-      
-    if (disputeErr) return { error: disputeErr };
-    
-    await supabase.from('delivery_requests').update({ status: 'disputed_resolved' }).eq('id', orderId);
-    
-    let customerEscrowId = null;
-    const { data: escrowAcc } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('owner_id', customerId)
-      .eq('account_name', 'customer_escrow')
-      .single();
-      
-    if (escrowAcc) {
-      customerEscrowId = escrowAcc.id;
-    } else {
-      const { data: newEscrow } = await supabase
-        .from('accounts')
-        .insert({ owner_id: customerId, account_type: 'liability', account_name: 'customer_escrow', balance: 0 })
-        .select('id')
-        .single();
-      if (newEscrow) customerEscrowId = newEscrow.id;
-    }
-    
-    let refundExpenseId = null;
-    const { data: refundAcc } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('account_name', 'refund_expense')
-      .single();
-      
-    if (refundAcc) {
-      refundExpenseId = refundAcc.id;
-    } else {
-      const { data: newRefund } = await supabase
-        .from('accounts')
-        .insert({ owner_id: null, account_type: 'expense', account_name: 'refund_expense', balance: 0 })
-        .select('id')
-        .single();
-      if (newRefund) refundExpenseId = newRefund.id;
-    }
-    
-    if (customerEscrowId && refundExpenseId && refundAmount > 0) {
-      const { data: journalEntry } = await supabase
-        .from('journal_entries')
-        .insert({
-          account_id: customerId,
-          request_id: orderId,
-          entry_type: 'dispute_refund',
-          amount: refundAmount,
-          description: `Dispute approved refund: ${notes}`
-        })
-        .select('id')
-        .single();
-        
-      if (journalEntry) {
-        await supabase.from('journal_lines').insert([
-          { journal_entry_id: journalEntry.id, account_id: refundExpenseId, debit: refundAmount, credit: 0 },
-          { journal_entry_id: journalEntry.id, account_id: customerEscrowId, debit: 0, credit: refundAmount }
-        ]);
-        
-        await supabase.rpc('increment_account_balance', { acc_id: refundExpenseId, amount: refundAmount });
-        await supabase.rpc('increment_account_balance', { acc_id: customerEscrowId, amount: refundAmount });
-      }
-    }
-    
-    return { data: updatedDispute };
-  } else {
-    const { data: updatedDispute, error: disputeErr } = await supabase
-      .from('disputes')
-      .update({
-        status: 'closed',
-        resolved_by: resolvedBy,
-        resolved_at: new Date().toISOString(),
-        resolution_notes: notes
-      })
-      .eq('id', disputeId)
-      .select()
-      .single();
-      
-    if (disputeErr) return { error: disputeErr };
-    
-    await supabase.from('delivery_requests').update({ status: originalStatus }).eq('id', orderId);
-    
-    return { data: updatedDispute };
-  }
+  const { data, error } = await supabase.rpc('resolve_dispute_transactional', {
+    p_dispute_id: disputeId,
+    p_action: action,
+    p_notes: notes
+  });
+  return { data, error };
 }
 
 // ─── Safety Alerts ──────────────────────────────────────────────────

@@ -12,6 +12,7 @@ interface BottomSheetProps {
   defaultSnap?: 'min' | 'half' | 'full';
   showCloseButton?: boolean;
   overlayClassName?: string;
+  className?: string;
 }
 
 export function BottomSheet({
@@ -23,6 +24,7 @@ export function BottomSheet({
   defaultSnap = 'half',
   showCloseButton = true,
   overlayClassName = '',
+  className = '',
 }: BottomSheetProps) {
   const [snap, setSnap] = useState<'min' | 'half' | 'full'>(defaultSnap);
   const [isDragging, setIsDragging] = useState(false);
@@ -100,7 +102,7 @@ export function BottomSheet({
     <div className={`${styles.overlay} ${isOpen ? styles.overlayOpen : ''} ${overlayClassName}`} onClick={onClose}>
       <div
         ref={sheetRef}
-        className={`${styles.sheet} ${isDragging ? styles.noTransition : ''}`}
+        className={`${styles.sheet} ${isDragging ? styles.noTransition : ''} ${className}`}
         style={{ height: getSnapHeight() }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import styles from './layout.module.css';
 import { signOut } from '@/lib/auth';
 import NotificationsDropdown from '@/components/notifications';
@@ -59,8 +59,16 @@ const renderIcon = (key: string) => {
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { session, loading, refreshSession, country, setCountry, theme, setTheme } = useProfile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!loading && !session) {
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+    }
+  }, [session, loading, router, pathname]);
 
   // Safeguard: Redirect Google sign-up users to the KYC wizard if role-metadata is pending
   useEffect(() => {
@@ -97,7 +105,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   const navItems: Record<UserRole, { label: string; href: string; icon: string }[]> = {
     customer: [
-      { label: 'Home', href: '/dashboard', icon: 'home' }, { label: 'Send Now ⚡', href: '/dashboard/order/new', icon: 'send' },
+      { label: 'Home', href: '/dashboard', icon: 'home' }, { label: 'Send Now', href: '/dashboard/order/new', icon: 'send' },
       { label: 'My Deliveries', href: '/dashboard/orders', icon: 'orders' }, { label: 'Tracking', href: '/dashboard/tracking', icon: 'tracking' },
       { label: 'Addresses', href: '/dashboard/addresses', icon: 'addresses' }, { label: 'Disputes', href: '/dashboard/disputes', icon: 'disputes' },
       { label: 'Settings', href: '/dashboard/settings', icon: 'settings' },
@@ -125,7 +133,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   };
 
   const currentNav = navItems[activeRole] || navItems.customer;
-  const roleLabels: Record<UserRole, string> = { customer: '📦 Customer', rider: '🚴 Rider', merchant: '🏪 Merchant', ops: '🔧 Ops', admin: '👑 Admin' };
+  const roleLabels: Record<UserRole, string> = { customer: 'Customer', rider: 'Rider', merchant: 'Merchant', ops: 'Ops', admin: 'Admin' };
 
   const themeClass = activeRole === 'customer'
     ? 'customer-theme'
@@ -141,7 +149,9 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
           <div className={styles.sidebarHeader}>
             <Link href="/" className={styles.logo}>Biker<span className={styles.logoDot}>.</span></Link>
-            <button className={styles.sidebarClose} onClick={() => setSidebarOpen(false)}>✕</button>
+            <button className={styles.sidebarClose} onClick={() => setSidebarOpen(false)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
           <div className={styles.switchers}>
             <div className={styles.switcher}>
@@ -155,15 +165,16 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             <div className={styles.switcher}>
               <span className={styles.switcherLabel}>Country</span>
               <select className={styles.roleSelect} value={country} onChange={(e) => setCountry(e.target.value as 'ZW' | 'ZM')}>
-                <option value="ZW">🇿🇼 ZW</option>
-                <option value="ZM">🇿🇲 ZM</option>
+                <option value="ZW">Zimbabwe (ZW)</option>
+                <option value="ZM">Zambia (ZM)</option>
               </select>
             </div>
             <div className={styles.switcher}>
               <span className={styles.switcherLabel}>Theme</span>
-              <select className={styles.roleSelect} value={theme} onChange={(e) => setTheme(e.target.value as 'light' | 'dark')}>
-                <option value="light">☀️ Light</option>
-                <option value="dark">🌙 Dark</option>
+              <select className={styles.roleSelect} value={theme} onChange={(e) => setTheme(e.target.value as 'light' | 'dark' | 'system')}>
+                <option value="system">System Default</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
               </select>
             </div>
           </div>
@@ -185,13 +196,15 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                 </span>
               </div>
             </Link>
-            <button className={styles.logoutBtn} onClick={() => signOut()}>↗ Logout</button>
+            <button className={styles.logoutBtn} onClick={() => signOut()}>Logout</button>
           </div>
         </aside>
         {sidebarOpen && <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />}
         <main className={styles.main}>
           <header className={styles.mobileHeader}>
-            <button className={styles.hamburger} onClick={() => setSidebarOpen(true)}>☰</button>
+            <button className={styles.hamburger} onClick={() => setSidebarOpen(true)}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+            </button>
             <span className={styles.mobileTitle}>Biker<span className={styles.logoDot}>.</span></span>
             <div className={styles.headerRight}>
               <NotificationsDropdown />

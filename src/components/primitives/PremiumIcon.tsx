@@ -89,14 +89,15 @@ export default function PremiumIcon({
     if (backdrop === 'none') return {};
 
     const baseBackdrop: React.CSSProperties = {
-      padding: `${size * 0.4}px`,
-      background: 'rgba(255, 255, 255, 0.03)',
-      border: '1px solid rgba(255, 255, 255, 0.08)',
-      backdropFilter: 'blur(8px)',
-      boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.05)',
+      padding: `${size * 0.45}px`,
+      background: 'var(--bg-input)',
+      border: '1px solid var(--border-default)',
+      backdropFilter: 'blur(12px)',
+      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
+      transition: 'all var(--duration-fast) var(--ease-spring)',
     };
 
     if (backdrop === 'circle') {
@@ -109,7 +110,7 @@ export default function PremiumIcon({
     if (backdrop === 'squircle') {
       return {
         ...baseBackdrop,
-        borderRadius: `${size * 0.5}px`,
+        borderRadius: `${size * 0.55}px`,
       };
     }
 
@@ -140,7 +141,7 @@ export default function PremiumIcon({
       <IconComponent 
         size={size} 
         stroke={`url(#${gradientId})`}
-        strokeWidth={2.2}
+        strokeWidth={1.8}
       />
     </span>
   );

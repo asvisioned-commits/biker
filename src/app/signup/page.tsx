@@ -9,6 +9,8 @@ import type { UserRole, VehicleType } from '@/types';
 import { useProfile } from '@/context/ProfileContext';
 import { updateProfile, createRiderProfile, createMerchantProfile, setActiveRole } from '@/lib/database';
 import { Package, Bike, Store, FileText, ShieldCheck, Camera, Sparkles, Check, Info, Lock } from 'lucide-react';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
+import { OrderService } from '@/lib/order-service';
 
 
 function SignupContent() {
@@ -32,6 +34,7 @@ function SignupContent() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // Verification and Cooldown States
   const [unconfirmedEmail, setUnconfirmedEmail] = useState('');
@@ -309,6 +312,11 @@ function SignupContent() {
 
   const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!agreedToTerms) {
+      setError('You must agree to the Terms & Trust Charter and Privacy Policy to continue.');
+      return;
+    }
+    setError('');
     if (selectedRole === 'rider') {
       setStep('rider_kyc');
     } else if (selectedRole === 'merchant') {
@@ -403,6 +411,13 @@ function SignupContent() {
 
           const { error: roleErr } = await setActiveRole(currentUser.user_id, selectedRole);
           if (roleErr) throw roleErr;
+        }
+
+        try {
+          const fingerprint = getDeviceFingerprint();
+          await OrderService.logDeviceFingerprint(currentUser.user_id, fingerprint);
+        } catch (err) {
+          console.error('Failed to log device fingerprint on onboarding:', err);
         }
 
         localStorage.removeItem('biker_signup_role');
@@ -510,6 +525,15 @@ function SignupContent() {
       }
     }
 
+    if (signUpData?.user) {
+      try {
+        const fingerprint = getDeviceFingerprint();
+        await OrderService.logDeviceFingerprint(signUpData.user.id, fingerprint);
+      } catch (err) {
+        console.error('Failed to log device fingerprint on signup:', err);
+      }
+    }
+
     localStorage.removeItem('biker_signup_role');
     window.location.href = '/dashboard';
     setLoading(false);
@@ -581,6 +605,15 @@ function SignupContent() {
         await setActiveRole(sess.user_id, selectedRole);
       } catch (provError) {
         console.warn('App-side provisioning fallback caught error:', provError);
+      }
+    }
+
+    if (sess) {
+      try {
+        const fingerprint = getDeviceFingerprint();
+        await OrderService.logDeviceFingerprint(sess.user_id, fingerprint);
+      } catch (err) {
+        console.error('Failed to log device fingerprint on email OTP verification:', err);
       }
     }
 
@@ -774,12 +807,33 @@ function SignupContent() {
                     />
                     <span className="input-hint">At least 8 characters</span>
                   </div>
+                  
+                  <div className={styles.checkboxGroup}>
+                    <input
+                      id="agreedToTerms"
+                      type="checkbox"
+                      className={styles.checkboxInput}
+                      checked={agreedToTerms}
+                      onChange={(e) => setAgreedToTerms(e.target.checked)}
+                      required
+                    />
+                    <label htmlFor="agreedToTerms" className={styles.checkboxLabel}>
+                      I agree to the{' '}
+                      <Link href="/terms" target="_blank" className={styles.link}>
+                        Terms & Trust Charter
+                      </Link>{' '}
+                      and{' '}
+                      <Link href="/privacy" target="_blank" className={styles.link}>
+                        Privacy Policy
+                      </Link>
+                    </label>
+                  </div>
                 </div>
                 <div className={styles.formActions}>
                   <button type="button" className="btn btn--ghost" onClick={() => setStep('role')}>
                     Back
                   </button>
-                  <button type="submit" className="btn btn--primary btn--lg" style={{ flex: 1 }}>
+                  <button type="submit" className="btn btn--primary btn--lg" style={{ flex: 1 }} disabled={!agreedToTerms}>
                     {selectedRole === 'customer' ? 'Create account' : 'Continue'}
                   </button>
                 </div>

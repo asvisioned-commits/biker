@@ -7,11 +7,60 @@ import { updateProfile, getRiderProfile, updateRiderProfile } from '@/lib/databa
 import type { UserRole, VehicleType } from '@/types';
 import { useProfile } from '@/context/ProfileContext';
 import { createClient } from '@/lib/supabase/client';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 export default function SettingsPage() {
   const { session, loading: sessionLoading, refreshSession, country, theme, setTheme } = useProfile();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'danger' | 'verification'>('profile');
+  
+  // OCR states
+  const [isScanningOcr, setIsScanningOcr] = useState(false);
+  const [ocrResult, setOcrResult] = useState<{ idMatched: boolean; nameMatched: boolean; confidence: number; message: string } | null>(null);
+
+  const runOcrOnId = async (imageUrl: string) => {
+    setIsScanningOcr(true);
+    setOcrResult(null);
+    try {
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('eng');
+      
+      const { data: { text, confidence } } = await worker.recognize(imageUrl);
+      await worker.terminate();
+
+      // Parse ID Number format
+      const idMatch = text.match(/\d{2}-\d{6,8}-[A-Z]-\d{2}/i) || text.match(/\d{9,11}/);
+      const extractedId = idMatch ? idMatch[0] : '';
+      if (extractedId) {
+        setKycNationalId(extractedId);
+      }
+
+      // Check Name match
+      const cleanText = text.toLowerCase();
+      const nameParts = fullName.toLowerCase().split(/\s+/);
+      const matchedParts = nameParts.filter(part => part.length > 2 && cleanText.includes(part));
+      const nameMatched = matchedParts.length >= Math.min(2, nameParts.length);
+
+      setOcrResult({
+        idMatched: !!extractedId,
+        nameMatched,
+        confidence,
+        message: extractedId 
+          ? `Successfully scanned ID: ${extractedId}. Name match: ${nameMatched ? 'Verified' : 'Unmatched'}`
+          : `Scanned document but could not find a clear ID number. Please enter manually.`
+      });
+    } catch (e) {
+      console.error('OCR analysis failed:', e);
+      setOcrResult({
+        idMatched: false,
+        nameMatched: false,
+        confidence: 0,
+        message: 'Unable to scan document automatically. Please fill details manually.'
+      });
+    } finally {
+      setIsScanningOcr(false);
+    }
+  };
   const [role, setRole] = useState<UserRole>('customer');
   const [fullName, setFullName] = useState('Test User');
   const [email, setEmail] = useState('test@biker.co.zw');
@@ -152,16 +201,36 @@ export default function SettingsPage() {
   const handleKycFileUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
     setUrl: (url: string) => void,
-    setLoading: (loading: boolean) => void
+    setLoading: (loading: boolean) => void,
+    onComplete?: (url: string) => void
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate file size (max 5MB)
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      alert(`⚠️ File is too large. Max allowed size is 5MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB.`);
+      return;
+    }
+
+    // Validate MIME type
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      alert('⚠️ Invalid file type. Please upload a JPEG, PNG, WEBP image or a PDF document.');
+      return;
+    }
+
     setLoading(true);
     const reader = new FileReader();
     reader.onload = () => {
       setTimeout(() => {
-        setUrl(reader.result as string);
+        const resultUrl = reader.result as string;
+        setUrl(resultUrl);
         setLoading(false);
+        if (onComplete) {
+          onComplete(resultUrl);
+        }
       }, 700);
     };
     reader.readAsDataURL(file);
@@ -814,6 +883,91 @@ export default function SettingsPage() {
             </div>
           ) : !isEditingKyc ? (
             <div className={styles.verificationContainer}>
+              {/* Gamified Rider Trust Tier Progression Card */}
+              {riderProfile && (
+                <div 
+                  style={{
+                    background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                    borderRadius: '24px',
+                    padding: '24px',
+                    marginBottom: '20px',
+                    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255,255,255,0.05)',
+                    color: '#ffffff',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', borderRadius: '50%', background: 'var(--color-primary-500)', opacity: 0.1, filter: 'blur(50px)' }} />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div>
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                        Rider Trust Progression
+                      </span>
+                      <h4 style={{ fontSize: '1.25rem', fontWeight: 800, margin: '4px 0 0 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>
+                          {riderProfile.tier === 'diamond' ? '💎 Diamond' :
+                           riderProfile.tier === 'platinum' ? '👑 Platinum' :
+                           riderProfile.tier === 'gold' ? '🏆 Gold' :
+                           riderProfile.tier === 'silver' ? '🥈 Silver' : '🥉 Bronze'} Tier
+                        </span>
+                      </h4>
+                    </div>
+                    <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '6px 12px', borderRadius: '30px', fontSize: '11px', fontWeight: 700, border: '1px solid rgba(255, 255, 255, 0.1)', color: '#38bdf8' }}>
+                      Score: {riderProfile.trust_score || 50} / 100
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+                      <span>Progress to Next Tier</span>
+                      <span>{riderProfile.trust_score || 50}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div 
+                        style={{ 
+                          width: `${riderProfile.trust_score || 50}%`, 
+                          height: '100%', 
+                          background: 'linear-gradient(90deg, #0284c7 0%, #38bdf8 100%)', 
+                          borderRadius: '10px',
+                          boxShadow: '0 0 8px #38bdf8'
+                        }} 
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '16px' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8' }}>Dispatch Radius</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px', color: '#38bdf8' }}>
+                        {riderProfile.tier === 'diamond' ? 'Unlimited' :
+                         riderProfile.tier === 'platinum' ? '20 km' :
+                         riderProfile.tier === 'gold' ? '15 km' :
+                         riderProfile.tier === 'silver' ? '10 km' : '5 km'}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8' }}>Commission</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px', color: '#10b981' }}>
+                        {riderProfile.tier === 'diamond' ? '5%' :
+                         riderProfile.tier === 'platinum' ? '8%' :
+                         riderProfile.tier === 'gold' ? '10%' :
+                         riderProfile.tier === 'silver' ? '12%' : '15%'}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8' }}>Job Priority</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px', color: '#e2e8f0' }}>
+                        {riderProfile.tier === 'diamond' ? 'Instant (1st)' :
+                         riderProfile.tier === 'platinum' ? 'High (2nd)' :
+                         riderProfile.tier === 'gold' ? 'Medium' : 'Standard'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className={styles.statusCard}>
                 <div className={styles.statusCardIcon}>
                   {riderProfile?.kyc_status === 'approved' ? '🛡️' : riderProfile?.kyc_status === 'pending_ops_approval' ? '⏳' : riderProfile?.kyc_status === 'rejected' ? '❌' : '⚠️'}
@@ -977,8 +1131,13 @@ export default function SettingsPage() {
                   <div className={styles.uploadGroup}>
                     <label className={styles.uploadLabel}>National ID Card Photo (Front)</label>
                     <div className={styles.uploadBox} onClick={() => document.getElementById('settings-id-upload')?.click()}>
-                      {uploadingKycId ? (
-                        <span className="spinner" />
+                      {uploadingKycId || isScanningOcr ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                          <span className="spinner" />
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {isScanningOcr ? 'Analyzing with AI OCR...' : 'Uploading...'}
+                          </span>
+                        </div>
                       ) : kycIdCardUrl ? (
                         <>
                           <img src={kycIdCardUrl} className={styles.uploadPreview} alt="National ID preview" />
@@ -994,10 +1153,29 @@ export default function SettingsPage() {
                         id="settings-id-upload"
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleKycFileUpload(e, setKycIdCardUrl, setUploadingKycId)}
+                        onChange={(e) => handleKycFileUpload(e, setKycIdCardUrl, setUploadingKycId, runOcrOnId)}
                         style={{ display: 'none' }}
                       />
                     </div>
+                    {ocrResult && (
+                      <div 
+                        style={{ 
+                          marginTop: '8px', 
+                          fontSize: '11px', 
+                          padding: '8px 12px', 
+                          borderRadius: '8px', 
+                          background: ocrResult.nameMatched ? 'rgba(34, 197, 94, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+                          border: ocrResult.nameMatched ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(245, 158, 11, 0.2)',
+                          color: ocrResult.nameMatched ? '#22c55e' : '#f59e0b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <span>{ocrResult.nameMatched ? '🛡️' : '⚠️'}</span>
+                        <span>{ocrResult.message} (Confidence: {Math.round(ocrResult.confidence)}%)</span>
+                      </div>
+                    )}
                   </div>
 
                   {kycVehicleType !== 'bicycle' && (

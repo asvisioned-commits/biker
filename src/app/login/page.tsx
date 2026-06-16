@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './login.module.css';
 import { useProfile } from '@/context/ProfileContext';
+import PremiumIcon from '@/components/primitives/PremiumIcon';
 import {
   signInWithGoogle,
   signInWithEmail,
@@ -14,6 +15,9 @@ import {
   verifyEmailOtp,
   sendPasswordResetEmail,
 } from '@/lib/auth';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
+import { OrderService } from '@/lib/order-service';
+import { createClient } from '@/lib/supabase/client';
 
 function LoginContent() {
   const router = useRouter();
@@ -113,6 +117,18 @@ function LoginContent() {
       return;
     }
     
+    // Log client device fingerprint on successful sign-in
+    try {
+      const fingerprint = getDeviceFingerprint();
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await OrderService.logDeviceFingerprint(user.id, fingerprint);
+      }
+    } catch (err) {
+      console.error('Failed to log device fingerprint on email login:', err);
+    }
+    
     router.push(redirect);
   };
 
@@ -155,6 +171,19 @@ function LoginContent() {
       setError(typeof otpError === 'string' ? otpError : (otpError as { message?: string }).message || 'Invalid OTP');
       return;
     }
+    
+    // Log client device fingerprint on successful phone sign-in
+    try {
+      const fingerprint = getDeviceFingerprint();
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await OrderService.logDeviceFingerprint(user.id, fingerprint);
+      }
+    } catch (err) {
+      console.error('Failed to log device fingerprint on phone login:', err);
+    }
+    
     router.push(redirect);
   };
 
@@ -170,6 +199,19 @@ function LoginContent() {
       setError(typeof otpError === 'string' ? otpError : (otpError as { message?: string }).message || 'Invalid confirmation code');
       return;
     }
+    
+    // Log client device fingerprint on successful OTP sign-in
+    try {
+      const fingerprint = getDeviceFingerprint();
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await OrderService.logDeviceFingerprint(user.id, fingerprint);
+      }
+    } catch (err) {
+      console.error('Failed to log device fingerprint on OTP login:', err);
+    }
+    
     setSuccessMsg('Email successfully verified! Logged in.');
     setTimeout(() => router.push(redirect), 1000);
   };
@@ -271,7 +313,7 @@ function LoginContent() {
 
             {error && (
               <div className={styles.error}>
-                <span>⚠️</span>
+                <PremiumIcon name="AlertTriangle" variant="danger" size={16} />
                 <div style={{ flex: 1 }}>
                   <div>{error}</div>
                   {/* If unconfirmed email lock, show action links */}
@@ -300,7 +342,8 @@ function LoginContent() {
 
             {successMsg && (
               <div className={styles.success}>
-                ✨ {successMsg}
+                <PremiumIcon name="CheckCircle2" variant="success" size={16} />
+                <span>{successMsg}</span>
               </div>
             )}
 
@@ -310,11 +353,11 @@ function LoginContent() {
                   <label className="input-label" htmlFor="phone">Phone number</label>
                   <div className={styles.phoneInput}>
                     <span className={styles.phonePrefix}>{dialPrefix}</span>
-                    <input id="phone" type="tel" className="input" placeholder={country === 'ZM' ? '97 123 4567' : '77 123 4567'} value={phone} onChange={(e) => setPhone(e.target.value)} required style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} />
+                    <input id="phone" type="tel" className="apple-input" placeholder={country === 'ZM' ? '97 123 4567' : '77 123 4567'} value={phone} onChange={(e) => setPhone(e.target.value)} required style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} />
                   </div>
                 </div>
-                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
-                  {loading ? <span className="spinner" /> : 'Send OTP'}\
+                <button type="submit" className="btn-apple btn-apple-primary" style={{ width: '100%' }} disabled={loading}>
+                  {loading ? <span className="spinner" /> : 'Send OTP'}
                 </button>
               </form>
             )}
@@ -323,7 +366,7 @@ function LoginContent() {
               <form onSubmit={handleEmailSubmit} className={styles.form}>
                 <div className="input-group">
                   <label className="input-label" htmlFor="email">Email</label>
-                  <input id="email" type="email" className="input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  <input id="email" type="email" className="apple-input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div className="input-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -336,10 +379,10 @@ function LoginContent() {
                       Forgot password?
                     </button>
                   </div>
-                  <input id="password" type="password" className="input" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                  <input id="password" type="password" className="apple-input" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
-                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
-                  {loading ? <span className="spinner" /> : 'Log in'}\
+                <button type="submit" className="btn-apple btn-apple-primary" style={{ width: '100%' }} disabled={loading}>
+                  {loading ? <span className="spinner" /> : 'Log in'}
                 </button>
               </form>
             )}
@@ -355,8 +398,8 @@ function LoginContent() {
                     />
                   ))}
                 </div>
-                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading || otp.length < 6}>
-                  {loading ? <span className="spinner" /> : 'Verify'}\
+                <button type="submit" className="btn-apple btn-apple-primary" style={{ width: '100%' }} disabled={loading || otp.length < 6}>
+                  {loading ? <span className="spinner" /> : 'Verify'}
                 </button>
                 <div className={styles.otpActionRow}>
                   <button 
@@ -383,8 +426,8 @@ function LoginContent() {
                     />
                   ))}
                 </div>
-                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading || otp.length < 6}>
-                  {loading ? <span className="spinner" /> : 'Confirm Code'}\
+                <button type="submit" className="btn-apple btn-apple-primary" style={{ width: '100%' }} disabled={loading || otp.length < 6}>
+                  {loading ? <span className="spinner" /> : 'Confirm Code'}
                 </button>
                 <div className={styles.otpActionRow}>
                   <button 
@@ -404,10 +447,10 @@ function LoginContent() {
               <form onSubmit={handleForgotPasswordSubmit} className={styles.form}>
                 <div className="input-group">
                   <label className="input-label" htmlFor="reset-email">Email Address</label>
-                  <input id="reset-email" type="email" className="input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  <input id="reset-email" type="email" className="apple-input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
-                <button type="submit" className="btn btn--primary btn--lg btn--full" disabled={loading}>
-                  {loading ? <span className="spinner" /> : 'Send Recovery Link'}\
+                <button type="submit" className="btn-apple btn-apple-primary" style={{ width: '100%' }} disabled={loading}>
+                  {loading ? <span className="spinner" /> : 'Send Recovery Link'}
                 </button>
                 <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                   {resendCooldown > 0 && (

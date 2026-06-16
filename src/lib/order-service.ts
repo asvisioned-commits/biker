@@ -17,7 +17,8 @@ import {
   addDisputeEvidence as dbAddDisputeEvidence,
   withdrawDisputeInDb as dbWithdrawDisputeInDb,
   resolveDisputeInDb as dbResolveDisputeInDb,
-  updateOrderPurchaseDetails as dbUpdateOrderPurchaseDetails
+  updateOrderPurchaseDetails as dbUpdateOrderPurchaseDetails,
+  uploadProof as dbUploadProof
 } from './database';
 import type { ServiceType, FulfillmentMode, ProtectionLevel } from '@/types';
 import { PricingService } from './pricing';
@@ -94,6 +95,7 @@ export interface OrderPayload {
   estimated_item_cost?: number;
   purchase_amount?: number;
   proofs?: any[];
+  estimated_distance_km?: number;
 }
 
 export interface BikerOrder extends OrderPayload {
@@ -1161,6 +1163,127 @@ export const OrderService = {
       return true;
     } catch {
       return false;
+    }
+  },
+
+  /**
+   * Upload a delivery proof (photo/receipt/signature) - supporting offline queues!
+   */
+  async uploadProof(proof: {
+    request_id: string;
+    uploaded_by: string;
+    proof_type: 'pickup_photo' | 'delivery_photo' | 'receipt_photo' | 'signature' | 'condition_note';
+    file_url: string; // base64 or url
+    notes?: string;
+  }): Promise<{ success: boolean; data?: any; error?: string }> {
+    const isLocalOrder = proof.request_id.startsWith('local_');
+    
+    if (this.isOnline && !isLocalOrder) {
+      try {
+        const { data, error } = await dbUploadProof(proof);
+        if (!error && data) {
+          return { success: true, data };
+        }
+        throw error || new Error('Upload failed');
+      } catch (err: any) {
+        console.error('Failed to upload proof live, queuing offline:', err);
+      }
+    }
+
+    // Offline / Pending Queue Caching
+    if (typeof window === 'undefined') return { success: false, error: 'SSR environment' };
+    
+    const queueKey = 'biker_pending_proofs';
+    const pendingProofs = localStorage.getItem(queueKey);
+    let queue = [];
+    if (pendingProofs) {
+      try { queue = JSON.parse(pendingProofs); } catch {}
+    }
+    
+    const newPendingProof = {
+      id: `proof_local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      ...proof,
+      created_at: new Date().toISOString(),
+      retryCount: 0
+    };
+    
+    queue.push(newPendingProof);
+    localStorage.setItem(queueKey, JSON.stringify(queue));
+    
+    // Optimistically insert into local order's proofs array so it renders immediately client-side
+    const localOrders = getLocalOrders();
+    const idx = localOrders.findIndex(o => o.id === proof.request_id || o.supabaseId === proof.request_id);
+    if (idx !== -1) {
+      const currentProofs = localOrders[idx].proofs || [];
+      localOrders[idx] = {
+        ...localOrders[idx],
+        proofs: [...currentProofs, { proof_type: proof.proof_type, file_url: proof.file_url, notes: proof.notes, created_at: newPendingProof.created_at }]
+      };
+      saveLocalOrders(localOrders);
+    }
+    
+    return { success: true, data: newPendingProof };
+  },
+
+  /**
+   * Synchronize pending proofs to Supabase
+   */
+  async syncPendingProofs(): Promise<void> {
+    if (!this.isOnline) return;
+
+    const queueKey = 'biker_pending_proofs';
+    const pendingProofs = localStorage.getItem(queueKey);
+    if (!pendingProofs) return;
+    
+    let queue = [];
+    try { queue = JSON.parse(pendingProofs); } catch { return; }
+    if (queue.length === 0) return;
+
+    const remainingQueue = [];
+    for (const proof of queue) {
+      // If the order is still local_, wait until the order itself is synced first!
+      if (proof.request_id.startsWith('local_')) {
+        const localOrders = getLocalOrders();
+        const order = localOrders.find(o => o.id === proof.request_id);
+        if (order && order.supabaseId) {
+          proof.request_id = order.supabaseId; // update to real supabase ID!
+        } else {
+          // Wait for next sync tick
+          remainingQueue.push(proof);
+          continue;
+        }
+      }
+
+      if (proof.retryCount >= 3) {
+        // Discard or log as permanent error to avoid infinite loops
+        console.error('Proof sync exceeded retries for order:', proof.request_id);
+        continue;
+      }
+
+      try {
+        const { error } = await dbUploadProof({
+          request_id: proof.request_id,
+          uploaded_by: proof.uploaded_by,
+          proof_type: proof.proof_type,
+          file_url: proof.file_url,
+          notes: proof.notes
+        });
+        
+        if (error) {
+          proof.retryCount += 1;
+          remainingQueue.push(proof);
+        }
+      } catch (err) {
+        console.error('Failed to retry proof sync:', err);
+        proof.retryCount += 1;
+        remainingQueue.push(proof);
+      }
+    }
+
+    if (remainingQueue.length === 0) {
+      localStorage.removeItem(queueKey);
+    } else {
+      localStorage.setItem(queueKey, JSON.stringify(remainingQueue));
     }
   }
 };

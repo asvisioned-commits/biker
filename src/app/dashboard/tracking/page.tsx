@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { OrderService, BikerOrder } from '@/lib/order-service';
 import { EcoCashService, EcoCashTransaction } from '@/lib/ecocash';
+import ScratchOffCard from '@/components/primitives/ScratchOffCard';
 import { createClient } from '@/lib/supabase/client';
 import { getCounterOffersForOrder, respondToCounterOffer } from '../earnings/actions';
 import { FLAGS } from '@/lib/flags';
@@ -503,6 +504,36 @@ function TrackingContent() {
     };
   }, [liveOrder?.status, liveOrder?.assigned_rider_id]);
 
+  // Trigger online matchmaking ticks
+  useEffect(() => {
+    if (!OrderService.isOnline || !liveOrder || liveOrder.status !== 'payment_held' || liveOrder.assigned_rider_id) return;
+
+    const supabase = createClient();
+    console.log('🤖 Matchmaking: Triggering online matching loop via RPC...');
+
+    const runTick = async () => {
+      try {
+        const { error } = await supabase.rpc('run_matchmaking_tick');
+        if (error) {
+          console.error('Matchmaking tick failed:', error);
+        }
+      } catch (err) {
+        console.error('Matchmaking tick execution error:', err);
+      }
+    };
+    
+    // Immediate match trigger
+    runTick();
+
+    // Poll matching tick every 10 seconds
+    const interval = setInterval(() => {
+      console.log('🤖 Matchmaking: Polling matchmaking tick via RPC...');
+      runTick();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [liveOrder?.status, liveOrder?.assigned_rider_id]);
+
   // Simulated rider en-route checkpoints tracker
   useEffect(() => {
     if (!liveOrder || liveOrder.status !== 'rider_assigned' || !riderLocation) return;
@@ -787,218 +818,212 @@ function TrackingContent() {
   const timeline = getTimeline();
 
   return (
-    <div className={`container ${styles.page}`}>
-      {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <Link href="/dashboard" className="btn btn--secondary btn--sm">
-            ←
+    <div className={styles.container}>
+      {/* Left Column: Map Tracker (Dynamic) */}
+      <div className={`${styles.mapArea} ${activeTab === 'map' ? styles.mapAreaVisible : ''}`} style={{ position: 'relative' }}>
+        <LiveTrackingMap
+          pickupCoords={[order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292), order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)]}
+          dropoffCoords={[order.dropoff_lat || (country === 'ZM' ? -15.3994 : -17.7994), order.dropoff_lng || (country === 'ZM' ? 28.3078 : 31.0378)]}
+          riderCoords={riderLocation ? [riderLocation.lat, riderLocation.lng] : null}
+          riderHeading={riderLocation?.heading ?? null}
+          riderName={order.rider?.full_name || 'Tinashe M.'}
+          nearbyRiders={order.status === 'payment_held' ? getNearbyRiders() : null}
+          isScanning={order.status === 'payment_held'}
+          showHeatmap={order.status === 'payment_held'}
+        />
+
+        {/* Floating Header Navigation Back Button (on map) */}
+        <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}>
+          <Link
+            href="/dashboard"
+            className="btn btn--secondary btn--sm shadow-lg font-bold"
+            style={{ background: 'var(--bg-card)', backdropFilter: 'blur(10px)' }}
+          >
+            ← Back
           </Link>
-          <div>
-            <h1 className={styles.title}>Track Package</h1>
-            <span className={styles.refCode}>{order.reference_code}</span>
-          </div>
         </div>
 
-        <div className={styles.headerRight}>
-          <span className="badge badge--success" style={{ textTransform: 'capitalize' }}>
-            {order.status.replace(/_/g, ' ')}
-          </span>
-          {order.syncStatus !== 'synced' && (
-            <span className="badge badge--warning">Syncing...</span>
-          )}
-        </div>
-      </div>
-
-      {/* Safety Distress Alert Banner */}
-      {activeAlerts.length > 0 && (
-        <div className="alert alert--danger" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', borderRadius: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
-            <span>🆘 ACTIVE SAFETY ALERT</span>
-          </div>
-          {activeAlerts.map((alert) => (
-            <div key={alert.id} style={{ fontSize: '13px' }}>
-              • {alert.type === 'sos_alert' ? 'Distress SOS trigger signal received from device.' : 'Transit check-in missed by Biker rider.'} Status: Active Ops Dispatch.
-            </div>
-          ))}
-        </div>
-      )}
-
-
-      {/* Tabs for mobile */}
-      <div className={styles.tabs}>
-        <button 
-          className={`${styles.tab} ${activeTab === 'map' ? styles.tabActive : ''}`}
-          onClick={() => setActiveTab('map')}
-        >
-          📍 Map Tracker
-        </button>
-        <button 
-          className={`${styles.tab} ${activeTab === 'details' ? styles.tabActive : ''}`}
-          onClick={() => setActiveTab('details')}
-        >
-          📋 Details
-        </button>
-      </div>
-
-      <div className={styles.content}>
-        {/* Left Column: Map Tracker (Dynamic) */}
-        <div className={`${styles.mapArea} ${activeTab === 'map' ? styles.mapAreaVisible : ''}`} style={{ minHeight: '350px', position: 'relative' }}>
-          <LiveTrackingMap
-            pickupCoords={[order.pickup_lat || (country === 'ZM' ? -15.3875 : -17.8292), order.pickup_lng || (country === 'ZM' ? 28.3228 : 31.0522)]}
-            dropoffCoords={[order.dropoff_lat || (country === 'ZM' ? -15.3994 : -17.7994), order.dropoff_lng || (country === 'ZM' ? 28.3078 : 31.0378)]}
-            riderCoords={riderLocation ? [riderLocation.lat, riderLocation.lng] : null}
-            riderHeading={riderLocation?.heading ?? null}
-            riderName={order.rider?.full_name || 'Tinashe M.'}
-            nearbyRiders={order.status === 'payment_held' ? getNearbyRiders() : null}
-            isScanning={order.status === 'payment_held'}
-            showHeatmap={order.status === 'payment_held'}
-          />
-
-          {/* Floating Top-Center Payment Pending Card */}
-          {order.status === 'payment_pending' && (
-            <div className={styles.topPaymentBanner}>
-              <div className={styles.topPaymentCard}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '1.25rem' }}>⚠️</span>
-                  <div style={{ flex: 1, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 850, fontSize: '13px', color: 'var(--text-primary)' }}>Awaiting Payment Escrow</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Approve the MoMo/EcoCash push prompt to secure escrow and scan riders.
-                    </div>
-                  </div>
-                </div>
-                <button 
-                  type="button"
-                  className="btn btn--primary btn--xs"
-                  onClick={() => triggerEcoCashUSSDPush(order, ecocashPhone || (country === 'ZM' ? '0971234567' : '0771234567'))}
-                  style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '6px', fontWeight: 'bold' }}
-                >
-                  📱 Open USSD Push Simulator
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Floating Bids Overlay (InDrive layout on map) */}
-          {order.status === 'payment_held' && counterOffers.length > 0 && (
-            <div className={styles.floatingBidsContainer}>
-              {counterOffers.map((offer) => (
-                <div key={offer.id} className={styles.floatingBidCard}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.5rem' }}>🏍️</span>
-                      <div style={{ textAlign: 'left' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {offer.rider_name}
-                          {offer.is_verified && <span title="Verified Biker" style={{ fontSize: '12px', color: '#10b981' }}>✅</span>}
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>⭐ {offer.rider_rating} rating</div>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--color-success-500)' }}>
-                        {formatPrice(Number(offer.counter_offer_amount))}
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>counter offer</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                    <button
-                      className="btn btn--success btn--sm btn--full"
-                      style={{ fontSize: '12px', padding: '6px' }}
-                      disabled={respondingToOfferId !== null}
-                      onClick={() => handleRespondToOffer(offer.id, 'accept')}
-                    >
-                      {respondingToOfferId === offer.id ? 'Accepting...' : 'Accept'}
-                    </button>
-                    <button
-                      className="btn btn--secondary btn--sm"
-                      style={{ fontSize: '12px', padding: '6px 12px' }}
-                      disabled={respondingToOfferId !== null}
-                      onClick={() => handleRespondToOffer(offer.id, 'decline')}
-                    >
-                      Decline
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Pulsing Radar Scanning Overlay over Map */}
-          {order.status === 'payment_held' && (
-            <div className={styles.radarOverlay}>
-              {/* Giant transparent radial pulsing lines centered on map area */}
-              <div className={styles.largeRadarSweep}></div>
-              <div className={`${styles.largeRadarCircle} ${styles.radarCircle1}`}></div>
-              <div className={`${styles.largeRadarCircle} ${styles.radarCircle2}`}></div>
-              <div className={`${styles.largeRadarCircle} ${styles.radarCircle3}`}></div>
-
-              {/* Compact Floating Matching Card */}
-              <div className={styles.radarCardCompact}>
-                <div className={styles.radarMiniPulse}>
-                  <div className={styles.miniCore} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <PremiumIcon name="Search" variant="primary" animate="pulse" glow size={18} />
-                  </div>
-                  <div className={styles.miniPulseCircle}></div>
-                </div>
-                <div className={styles.radarInfoCompact}>
-                  <h3 className={styles.scanStatusTitle}>{getScanningStatusText()}</h3>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
-                    <span className={styles.scanOfferBadge}>
-                      Offer: {formatPrice(order.delivery_fee ?? 5.0)}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn--secondary btn--xs"
-                      onClick={async () => {
-                        await OrderService.updateOrderStatus(order.id, 'cancelled', 'Cancelled search by customer');
-                        router.push('/dashboard');
-                      }}
-                      style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 'bold' }}
-                    >
-                      Cancel Search
-                    </button>
+        {/* Floating Top-Center Payment Pending Card */}
+        {order.status === 'payment_pending' && (
+          <div className={styles.topPaymentBanner}>
+            <div className={styles.topPaymentCard}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <PremiumIcon name="AlertTriangle" variant="warning" size={20} glow />
+                <div style={{ flex: 1, textAlign: 'left' }}>
+                  <div style={{ fontWeight: 850, fontSize: '13px', color: 'var(--text-primary)' }}>Awaiting Payment Escrow</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Approve the MoMo/EcoCash push prompt to secure escrow and scan riders.
                   </div>
                 </div>
               </div>
+              <button 
+                type="button"
+                className="btn btn--primary btn--xs"
+                onClick={() => triggerEcoCashUSSDPush(order, ecocashPhone || (country === 'ZM' ? '0971234567' : '0771234567'))}
+                style={{ width: '100%', padding: '6px', fontSize: '11px', marginTop: '6px', fontWeight: 'bold' }}
+              >
+                Open USSD Push Simulator
+              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Real-time simulation log ticker for transparency */}
-          <div className="card p-4" style={{ marginTop: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h4 style={{ fontWeight: 800, fontSize: '12px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-                Developer Console Log
-              </h4>
-              <span className="badge badge--primary btn--xs">SANDBOX</span>
+        {/* Floating Bids Overlay (InDrive layout on map) */}
+        {order.status === 'payment_held' && counterOffers.length > 0 && (
+          <div className={styles.floatingBidsContainer}>
+            {counterOffers.map((offer) => (
+              <div key={offer.id} className={styles.floatingBidCard}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <PremiumIcon name="Bike" variant="success" size={24} backdrop="circle" />
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {offer.rider_name}
+                        {offer.is_verified && <PremiumIcon name="ShieldCheck" variant="success" size={14} glow />}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>⭐ {offer.rider_rating} rating</div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 900, color: 'var(--color-success-500)' }}>
+                      {formatPrice(Number(offer.counter_offer_amount))}
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>counter offer</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    className="btn btn--success btn--sm btn--full"
+                    style={{ fontSize: '12px', padding: '6px' }}
+                    disabled={respondingToOfferId !== null}
+                    onClick={() => handleRespondToOffer(offer.id, 'accept')}
+                  >
+                    {respondingToOfferId === offer.id ? 'Accepting...' : 'Accept'}
+                  </button>
+                  <button
+                    className="btn btn--secondary btn--sm"
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                    disabled={respondingToOfferId !== null}
+                    onClick={() => handleRespondToOffer(offer.id, 'decline')}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pulsing Radar Scanning Overlay over Map */}
+        {order.status === 'payment_held' && (
+          <div className={styles.radarOverlay}>
+            <div className={styles.largeRadarSweep}></div>
+            <div className={`${styles.largeRadarCircle} ${styles.radarCircle1}`}></div>
+            <div className={`${styles.largeRadarCircle} ${styles.radarCircle2}`}></div>
+            <div className={`${styles.largeRadarCircle} ${styles.radarCircle3}`}></div>
+
+            <div className={styles.radarCardCompact}>
+              <div className={styles.radarMiniPulse}>
+                <div className={styles.miniCore} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PremiumIcon name="Search" variant="primary" animate="pulse" glow size={18} />
+                </div>
+                <div className={styles.miniPulseCircle}></div>
+              </div>
+              <div className={styles.radarInfoCompact}>
+                <h3 className={styles.scanStatusTitle}>{getScanningStatusText()}</h3>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                  <span className={styles.scanOfferBadge}>
+                    Offer: {formatPrice(order.delivery_fee ?? 5.0)}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--xs"
+                    onClick={async () => {
+                      await OrderService.updateOrderStatus(order.id, 'cancelled', 'Cancelled search by customer');
+                      router.push('/dashboard');
+                    }}
+                    style={{ padding: '4px 10px', fontSize: '10px', fontWeight: 'bold' }}
+                  >
+                    Cancel Search
+                  </button>
+                </div>
+              </div>
             </div>
-            
-            <div style={{
-              height: '90px',
-              overflowY: 'auto',
-              background: 'var(--bg-secondary)',
-              borderRadius: '6px',
-              padding: '8px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
-              color: 'var(--text-secondary)',
-              lineHeight: '1.4'
-            }}>
-              {simulationLogs.length === 0 ? (
-                <div style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Awaiting system events...</div>
-              ) : (
-                simulationLogs.map((log, index) => (
-                  <div key={index} style={{ marginBottom: '2px' }}>{log}</div>
-                ))
-              )}
-            </div>
+          </div>
+        )}
+
+        {/* Developer sandbox console logs inside map view */}
+        <div className={styles.logsOverlay}>
+          <div className={styles.logsHeader}>
+            <span>SANDBOX DEV CONSOLE</span>
+          </div>
+          <div className={styles.logsBody}>
+            {simulationLogs.length === 0 ? (
+              <div style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Awaiting system events...</div>
+            ) : (
+              simulationLogs.map((log, index) => (
+                <div key={index} style={{ marginBottom: '2px' }}>{log}</div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Right Column: Information & Controls Panel */}
-        <div className={`${styles.infoPanel} ${activeTab === 'details' ? styles.infoPanelVisible : ''}`}>
+        {/* Tabs for mobile */}
+        <div className={styles.tabs}>
+          <button 
+            className={`${styles.tab} ${activeTab === 'map' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('map')}
+          >
+            Map Tracker
+          </button>
+          <button 
+            className={`${styles.tab} ${activeTab === 'details' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('details')}
+          >
+            Details
+          </button>
+        </div>
+      </div>
+
+      {/* Right Column: Information & Controls Panel */}
+      <div className={`${styles.infoPanel} ${activeTab === 'details' ? styles.infoPanelVisible : ''}`}>
+        
+        {/* Header (Inside infoPanel for mobile view toggle and desktop layout) */}
+        <div className={styles.panelHeader}>
+          <div className={styles.headerLeft}>
+            <Link href="/dashboard" className={`btn btn--secondary btn--sm ${styles.hideOnDesktop}`}>
+              ←
+            </Link>
+            <div>
+              <h1 className={styles.title}>Track Package</h1>
+              <span className={styles.refCode}>{order.reference_code}</span>
+            </div>
+          </div>
+
+          <div className={styles.headerRight}>
+            <span className="badge badge--success" style={{ textTransform: 'capitalize' }}>
+              {order.status.replace(/_/g, ' ')}
+            </span>
+            {order.syncStatus !== 'synced' && (
+              <span className="badge badge--warning">Syncing...</span>
+            )}
+          </div>
+        </div>
+
+        {/* Safety Distress Alert Banner */}
+        {activeAlerts.length > 0 && (
+          <div className="alert alert--danger" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+              <PremiumIcon name="ShieldAlert" variant="danger" size={16} glow />
+              <span>ACTIVE SAFETY ALERT</span>
+            </div>
+            {activeAlerts.map((alert) => (
+              <div key={alert.id} style={{ fontSize: '13px' }}>
+                • {alert.type === 'sos_alert' ? 'Distress SOS trigger signal received from device.' : 'Transit check-in missed by Biker rider.'} Status: Active Ops Dispatch.
+              </div>
+            ))}
+          </div>
+        )}
           {/* Escrow Status Badge */}
           <div style={{ marginBottom: '16px' }}>
             <EscrowBadge
@@ -1082,10 +1107,8 @@ function TrackingContent() {
                 <span>Secure Escrow PIN</span>
               </div>
               
-              <div className={styles.pinDigits}>
-                {String(order.delivery_pin || '----').split('').map((char, i) => (
-                  <div key={i} className={styles.pinDigit}>{char}</div>
-                ))}
+              <div style={{ margin: '16px 0' }}>
+                <ScratchOffCard pin={order.delivery_pin || '----'} />
               </div>
 
               <p className={styles.pinNote}>
@@ -1093,6 +1116,26 @@ function TrackingContent() {
                   ? 'Give this 4-digit code to the rider only after they verify cash collection.' 
                   : 'Give this 4-digit verification code to the rider upon receipt to release escrow funds.'}
               </p>
+
+              {/* Carbon Offset badge */}
+              {(() => {
+                const dist = order.estimated_distance_km || 5.0;
+                let co2OffsetPerKm = 0.15;
+                if (order.fulfillment_mode === 'scheduled_saver') co2OffsetPerKm = 0.35;
+                else if (order.fulfillment_mode === 'jet') co2OffsetPerKm = 0.08;
+                const co2Saved = Math.round(dist * co2OffsetPerKm * 100) / 100;
+                if (co2Saved > 0) {
+                  return (
+                    <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '12px', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.2)', color: '#22c55e', textAlign: 'left' }}>
+                      <PremiumIcon name="Leaf" variant="success" size={16} glow animate="spring" />
+                      <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                        <strong>Green Fleet Impact</strong>: By selecting a {order.fulfillment_mode === 'scheduled_saver' ? 'Bicycle/Walker' : 'Motorcycle'} speed, you saved approximately <strong>{co2Saved} kg</strong> of CO₂ compared to a delivery van!
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               {/* Developer Bypass simulation shortcut */}
               <div className="divider" style={{ margin: '16px 0' }} />
@@ -1472,7 +1515,6 @@ function TrackingContent() {
             )}
           </div>
         </div>
-      </div>
       {showEcoCashOverlay && (() => {
         const activeMethod = order.payment_method || (launchMtnMomo ? 'mtn_momo' : launchAirtelMoney ? 'airtel_money' : 'ecocash');
         const theme = getModalStyles(activeMethod);

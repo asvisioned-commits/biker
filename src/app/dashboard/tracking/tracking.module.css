@@ -2,17 +2,31 @@
    Tracking Page Styles
    ============================================================ */
 
-.page {
-  animation: fadeIn var(--duration-normal) var(--ease-out);
+.container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - var(--header-height) - var(--bottom-nav-height));
+  height: calc(100dvh - var(--header-height) - var(--bottom-nav-height));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.header {
-  display: flex; 
+@media (min-width: 768px) {
+  .container {
+    height: calc(100vh - var(--header-height));
+    height: calc(100dvh - var(--header-height));
+  }
+}
+
+.panelHeader {
+  display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  padding-bottom: var(--space-4);
 }
 
 .headerLeft {
@@ -22,8 +36,11 @@
 }
 
 .title {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: 800;
+  color: var(--text-primary);
+  font-family: var(--font-header);
+  letter-spacing: -0.02em;
 }
 
 .refCode {
@@ -34,6 +51,8 @@
   padding: var(--space-1) var(--space-2);
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
+  margin-top: 2px;
+  display: inline-block;
 }
 
 .headerRight {
@@ -45,10 +64,22 @@
 /* ---- Tabs (mobile) ---- */
 .tabs {
   display: flex;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  padding: 3px;
-  margin-bottom: var(--space-6);
+  background: hsla(0, 0%, 100%, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 4px;
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 100;
+  box-shadow: var(--shadow-lg);
+}
+
+[data-theme='dark'] .tabs {
+  background: hsla(240, 5%, 5%, 0.85);
 }
 
 @media (min-width: 768px) {
@@ -57,43 +88,36 @@
 
 .tab {
   flex: 1;
-  padding: var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: 700;
   text-align: center;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   color: var(--text-secondary);
   transition: all var(--duration-fast) var(--ease-out);
   background: transparent;
   border: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .tabActive {
-  background: var(--bg-card);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-sm);
-}
-
-/* ---- Content ---- */
-.content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-
-@media (min-width: 768px) {
-  .content {
-    display: grid;
-    grid-template-columns: 1fr 400px;
-    gap: var(--space-6);
-  }
+  background: var(--color-primary-500);
+  color: white;
+  box-shadow: var(--shadow-glow);
 }
 
 /* ---- Map Area ---- */
 .mapArea {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
   display: none;
-  position: relative;
 }
 
 .mapAreaVisible {
@@ -107,66 +131,6 @@
   .mapAreaVisible {
     display: block;
   }
-}
-
-.mapPlaceholder {
-  width: 100%;
-  height: 55vh;
-  min-height: 380px;
-  max-height: 600px;
-  background: linear-gradient(135deg, var(--color-primary-50), var(--bg-secondary));
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-}
-
-@media (min-width: 768px) {
-  .mapPlaceholder {
-    height: calc(100vh - 200px);
-    max-height: none;
-    min-height: none;
-    position: sticky;
-    top: var(--space-8);
-  }
-}
-
-.mapDotPickup {
-  position: absolute;
-  top: 30%;
-  left: 25%;
-  font-size: 1.5rem;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.mapDotRider {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  font-size: 2rem;
-  transform: translate(-50%, -50%);
-  animation: bounce 2s ease-in-out infinite;
-}
-
-.mapDotDropoff {
-  position: absolute;
-  bottom: 25%;
-  right: 25%;
-  font-size: 1.5rem;
-}
-
-.mapLabel {
-  font-size: var(--text-sm);
-  color: var(--text-tertiary);
-  font-weight: 500;
-  position: absolute;
-  bottom: var(--space-4);
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
 }
 
 /* ETA Card */
@@ -185,7 +149,7 @@
 @media (max-width: 767px) {
   .etaCard {
     position: absolute;
-    bottom: 16px;
+    bottom: 80px; /* Float above the tabs */
     left: 16px;
     right: 16px;
     z-index: 10;
@@ -223,6 +187,13 @@
   display: none;
   flex-direction: column;
   gap: var(--space-4);
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-default);
+  padding: var(--space-4);
+  overflow-y: auto;
+  z-index: 10;
+  flex: 1;
+  padding-bottom: 80px; /* Space for tabs */
 }
 
 .infoPanelVisible {
@@ -231,11 +202,80 @@
 
 @media (min-width: 768px) {
   .infoPanel {
-    display: flex;
+    display: flex !important;
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    bottom: 24px;
+    right: auto;
+    width: 420px;
+    height: calc(100% - 48px);
+    border-radius: var(--radius-2xl);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-2xl);
+    background: hsla(0, 0%, 100%, 0.85); /* Light glass */
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    padding: var(--space-6);
+    padding-bottom: var(--space-6);
   }
-  .infoPanelVisible {
-    display: flex;
+  
+  [data-theme='dark'] .infoPanel {
+    background: hsla(240, 5%, 5%, 0.85); /* Dark glass */
   }
+
+  .hideOnDesktop {
+    display: none !important;
+  }
+}
+
+/* Developer Sandbox Console Log Overlay inside Map */
+.logsOverlay {
+  position: absolute;
+  bottom: 80px;
+  right: 16px;
+  width: 320px;
+  max-height: 180px;
+  background: hsla(240, 5%, 5%, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+@media (max-width: 767px) {
+  .logsOverlay {
+    display: none; /* Hide dev logs on mobile to declutter */
+  }
+}
+
+.logsHeader {
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--border-default);
+  padding: var(--space-2) var(--space-3);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-tertiary);
+  letter-spacing: 0.05em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logsBody {
+  padding: var(--space-3);
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+  flex: 1;
 }
 
 /* Rider Card */

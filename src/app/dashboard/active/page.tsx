@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { OrderService, BikerOrder } from '@/lib/order-service';
-import { getProfile, insertLocationCheckpoint, uploadProof } from '@/lib/database';
+import { getProfile, insertLocationCheckpoint } from '@/lib/database';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { useProfile } from '@/context/ProfileContext';
@@ -15,6 +15,21 @@ import ReceiptOcrUploader from '@/components/ReceiptOcrUploader';
 import QrPinModal from '@/components/QrPinModal';
 import PremiumIcon from '@/components/primitives/PremiumIcon';
 
+
+// Haversine distance helper (in kilometers)
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+}
 
 export default function ActiveOrderRiderPage() {
   const router = useRouter();
@@ -36,6 +51,10 @@ export default function ActiveOrderRiderPage() {
   const [pinSuccess, setPinSuccess] = useState(false);
   const [submittingPin, setSubmittingPin] = useState(false);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+
+  // Stored base64 photo proofs
+  const [pickupPhotoUrl, setPickupPhotoUrl] = useState<string | null>(null);
+  const [deliveryPhotoUrl, setDeliveryPhotoUrl] = useState<string | null>(null);
 
   // Safety & Secure Communication
   const { session, country } = useProfile();
@@ -109,6 +128,22 @@ export default function ActiveOrderRiderPage() {
         
         setRiderCoords(currentCoords);
         setRiderHeading(heading);
+
+        // Automatic Geofencing
+        const distanceToPickup = order.pickup_lat && order.pickup_lng 
+          ? calculateDistance(latitude, longitude, order.pickup_lat, order.pickup_lng) 
+          : null;
+        const distanceToDropoff = order.dropoff_lat && order.dropoff_lng 
+          ? calculateDistance(latitude, longitude, order.dropoff_lat, order.dropoff_lng) 
+          : null;
+
+        if (order.status === 'rider_en_route_pickup' && distanceToPickup !== null && distanceToPickup <= 0.05) {
+          console.log('📍 Geofence: Rider arrived at pickup point.');
+          handleStatusTransition('at_pickup');
+        } else if (order.status === 'en_route_delivery' && distanceToDropoff !== null && distanceToDropoff <= 0.05) {
+          console.log('📍 Geofence: Rider arrived at dropoff point.');
+          handleStatusTransition('at_delivery');
+        }
 
         // Broadcast coordinates to Realtime channel
         locationChannel.send({
@@ -241,6 +276,22 @@ export default function ActiveOrderRiderPage() {
 
   const handleStatusTransition = async (nextStatus: string) => {
     if (!order) return;
+    
+    // Upload pickup photo proof on transition to en_route_delivery
+    if (nextStatus === 'en_route_delivery' && pickupPhotoUrl) {
+      try {
+        await OrderService.uploadProof({
+          request_id: order.id,
+          uploaded_by: riderId || 'rider',
+          proof_type: 'pickup_photo',
+          file_url: pickupPhotoUrl,
+          notes: statusNotes || 'Pickup photo proof uploaded'
+        });
+      } catch (err) {
+        console.error('Failed to upload pickup photo proof:', err);
+      }
+    }
+
     setLoading(true);
     const success = await OrderService.updateOrderStatus(order.id, nextStatus, statusNotes || `Rider transitioned to ${nextStatus}`);
     if (success) {
@@ -266,6 +317,22 @@ export default function ActiveOrderRiderPage() {
 
   const handleVerifyDeliveryPin = async () => {
     if (!order || !pinCode) return;
+    
+    // Upload delivery proof photo if captured
+    if (deliveryPhotoUrl) {
+      try {
+        await OrderService.uploadProof({
+          request_id: order.id,
+          uploaded_by: riderId || 'rider',
+          proof_type: 'delivery_photo',
+          file_url: deliveryPhotoUrl,
+          notes: 'Delivery photo proof verified with PIN'
+        });
+      } catch (err) {
+        console.error('Failed to upload delivery photo proof:', err);
+      }
+    }
+
     setSubmittingPin(true);
     setPinError('');
     
@@ -290,6 +357,22 @@ export default function ActiveOrderRiderPage() {
 
   const handleCompleteCod = async () => {
     if (!order || !riderId || !pinCode || !cashCollected) return;
+
+    // Upload delivery proof photo if captured
+    if (deliveryPhotoUrl) {
+      try {
+        await OrderService.uploadProof({
+          request_id: order.id,
+          uploaded_by: riderId,
+          proof_type: 'delivery_photo',
+          file_url: deliveryPhotoUrl,
+          notes: 'Delivery photo proof verified with PIN (COD)'
+        });
+      } catch (err) {
+        console.error('Failed to upload delivery photo proof:', err);
+      }
+    }
+
     setSubmittingPin(true);
     setPinError('');
 
@@ -334,6 +417,22 @@ export default function ActiveOrderRiderPage() {
 
   const handleVerifyPinFromModal = async (enteredPin: string): Promise<boolean> => {
     if (!order) return false;
+
+    // Upload delivery proof photo if captured
+    if (deliveryPhotoUrl) {
+      try {
+        await OrderService.uploadProof({
+          request_id: order.id,
+          uploaded_by: riderId || 'rider',
+          proof_type: 'delivery_photo',
+          file_url: deliveryPhotoUrl,
+          notes: 'Delivery photo proof verified via QR/PIN modal'
+        });
+      } catch (err) {
+        console.error('Failed to upload delivery photo proof:', err);
+      }
+    }
+
     setSubmittingPin(true);
     setPinError('');
 
@@ -558,10 +657,10 @@ export default function ActiveOrderRiderPage() {
                     country={country}
                     required={true}
                     onOcrComplete={async (ocrData) => {
-                      // 1. Log the receipt proof in database (if online)
-                      if (OrderService.isOnline && riderId) {
+                      // 1. Log the receipt proof in database (with offline queue support)
+                      if (riderId) {
                         try {
-                          await uploadProof({
+                          await OrderService.uploadProof({
                             request_id: order.id,
                             uploaded_by: riderId,
                             proof_type: 'receipt_photo',
@@ -589,6 +688,7 @@ export default function ActiveOrderRiderPage() {
                     targetLat={order.pickup_lat}
                     targetLng={order.pickup_lng}
                     onUploadSuccess={(url) => {
+                      setPickupPhotoUrl(url);
                       setStatusNotes('Pickup photo proof uploaded successfully');
                     }}
                     required={true}
@@ -618,6 +718,7 @@ export default function ActiveOrderRiderPage() {
                   targetLat={order.dropoff_lat}
                   targetLng={order.dropoff_lng}
                   onUploadSuccess={(url) => {
+                    setDeliveryPhotoUrl(url);
                     setStatusNotes('Delivery photo proof uploaded successfully');
                   }}
                   required={true}

@@ -34,6 +34,19 @@ export default function PhotoProofUploader({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate size (max 5MB)
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      alert(`⚠️ File is too large. Max allowed size is 5MB. Selected file is ${(file.size / (1024 * 1024)).toFixed(2)}MB.`);
+      return;
+    }
+
+    // Validate MIME type
+    if (!file.type.startsWith('image/')) {
+      alert('⚠️ Invalid file type. Please upload an image.');
+      return;
+    }
+
     setIsProcessing(true);
     setPreviewUrl(null);
     setMetadata(null);

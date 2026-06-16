@@ -3,6 +3,8 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
+import { OrderService } from '@/lib/order-service';
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -26,6 +28,17 @@ function AuthCallbackContent() {
         if (token_hash && type) {
           const { error: otpError } = await supabase.auth.verifyOtp({ token_hash, type });
           if (otpError) throw otpError;
+
+          try {
+            const fingerprint = getDeviceFingerprint();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              await OrderService.logDeviceFingerprint(user.id, fingerprint);
+            }
+          } catch (e) {
+            console.error('Failed to log device fingerprint on OTP callback:', e);
+          }
+
           router.push(next);
           return;
         }
@@ -33,6 +46,17 @@ function AuthCallbackContent() {
         if (code) {
           const { error: codeError } = await supabase.auth.exchangeCodeForSession(code);
           if (codeError) throw codeError;
+
+          try {
+            const fingerprint = getDeviceFingerprint();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              await OrderService.logDeviceFingerprint(user.id, fingerprint);
+            }
+          } catch (e) {
+            console.error('Failed to log device fingerprint on OAuth callback:', e);
+          }
+
           router.push(next);
           return;
         }

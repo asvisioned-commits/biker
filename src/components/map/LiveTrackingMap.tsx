@@ -46,6 +46,8 @@ export default function LiveTrackingMap({
   const heatmapCirclesRef = useRef<any[]>([]);
   const scanRadarRef = useRef<any>(null);
   const mapId = useRef(`live-tracking-map-${Math.random().toString(36).substr(2, 9)}`);
+  const prevCoordsRef = useRef<[number, number] | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
 
   // Load Leaflet dynamically
@@ -177,6 +179,9 @@ export default function LiveTrackingMap({
       }
       nearbyMarkersRef.current.forEach(m => m.remove());
       nearbyMarkersRef.current = [];
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, [leafletLoaded]);
 
@@ -200,8 +205,12 @@ export default function LiveTrackingMap({
       routePolylineRef.current.setLatLngs(polylineCoords);
     }
 
-    // Update or create Rider Marker
+    // Update or create Rider Marker (using requestAnimationFrame smooth LERP)
     if (riderCoords) {
+      const startCoords = prevCoordsRef.current || riderCoords;
+      const endCoords = riderCoords;
+      prevCoordsRef.current = riderCoords;
+
       const riderHeadingStyle = riderHeading !== null ? `transform: rotate(${riderHeading}deg);` : '';
       const riderIcon = L.divIcon({
         html: `
@@ -216,20 +225,60 @@ export default function LiveTrackingMap({
         iconAnchor: [22, 22],
       });
 
-      if (riderMarkerRef.current) {
-        riderMarkerRef.current.setLatLng(riderCoords);
-        riderMarkerRef.current.setIcon(riderIcon);
-      } else {
-        riderMarkerRef.current = L.marker(riderCoords, { icon: riderIcon })
+      if (!riderMarkerRef.current) {
+        riderMarkerRef.current = L.marker(startCoords, { icon: riderIcon })
           .addTo(mapRef.current)
           .bindPopup(`<b>${riderName}</b> (Active Rider)`);
+      }
+
+      // If starting and ending coords are identical, set immediately
+      if (startCoords[0] === endCoords[0] && startCoords[1] === endCoords[1]) {
+        riderMarkerRef.current.setLatLng(endCoords);
+        riderMarkerRef.current.setIcon(riderIcon);
+      } else {
+        // Cancel any existing animation
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+
+        const duration = 2000; // 2 seconds animation duration
+        const startTime = performance.now();
+
+        const animateMarker = (now: number) => {
+          const elapsed = now - startTime;
+          const progress = Math.min(elapsed / duration, 1.0);
+
+          // Easing function: easeInOutQuad
+          const ease = progress < 0.5 
+            ? 2 * progress * progress 
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+          const lat = startCoords[0] + (endCoords[0] - startCoords[0]) * ease;
+          const lng = startCoords[1] + (endCoords[1] - startCoords[1]) * ease;
+
+          if (riderMarkerRef.current) {
+            riderMarkerRef.current.setLatLng([lat, lng]);
+            riderMarkerRef.current.setIcon(riderIcon);
+          }
+
+          if (progress < 1.0) {
+            animationFrameRef.current = requestAnimationFrame(animateMarker);
+          }
+        };
+
+        animationFrameRef.current = requestAnimationFrame(animateMarker);
       }
     } else {
       // Remove rider marker if it was active but is no longer provided
       if (riderMarkerRef.current) {
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
         riderMarkerRef.current.remove();
         riderMarkerRef.current = null;
       }
+      prevCoordsRef.current = null;
     }
 
     // Update nearby rider markers
@@ -292,15 +341,22 @@ export default function LiveTrackingMap({
       scanRadarRef.current = L.marker(pickupCoords, { icon: scanRadarIcon }).addTo(mapRef.current);
     }
 
-    // Adjust bounds if coordinates update
+  }, [pickupCoords[0], pickupCoords[1], dropoffCoords[0], dropoffCoords[1], riderCoords?.[0], riderCoords?.[1], riderHeading, routeCoords, leafletLoaded, riderName, JSON.stringify(nearbyRiders), isScanning, showHeatmap]);
+
+  // Decouple fitBounds: Only adjust map bounds when pickup or dropoff coordinates change,
+  // preventing constant resetting of user's zoom/pan on real-time rider updates.
+  useEffect(() => {
+    if (!leafletLoaded || !mapRef.current) return;
+    const L = (window as any).L;
+    if (!L) return;
+
     const boundsPoints = [pickupCoords, dropoffCoords];
     if (riderCoords) {
       boundsPoints.push(riderCoords);
     }
     const bounds = L.latLngBounds(boundsPoints);
     mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
-
-  }, [pickupCoords, dropoffCoords, riderCoords, riderHeading, routeCoords, leafletLoaded, riderName, nearbyRiders, isScanning, showHeatmap]);
+  }, [pickupCoords[0], pickupCoords[1], dropoffCoords[0], dropoffCoords[1], leafletLoaded]);
 
   // Invalidate map size on coordinates or loading change to prevent grey/empty map boxes
   useEffect(() => {
@@ -312,7 +368,7 @@ export default function LiveTrackingMap({
       }, 200);
       return () => clearTimeout(timer);
     }
-  }, [pickupCoords, dropoffCoords, riderCoords, leafletLoaded]);
+  }, [pickupCoords[0], pickupCoords[1], dropoffCoords[0], dropoffCoords[1], riderCoords?.[0], riderCoords?.[1], leafletLoaded]);
 
   return (
     <div className={`${styles.mapWrapper} ${className}`}>
