@@ -21,7 +21,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<BikerSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [country, setCountryState] = useState<'ZW' | 'ZM'>('ZW');
-  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>('system');
+  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>('light');
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
 
   // Load persisted country preference from localStorage on mount or auto-detect
@@ -40,7 +40,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
           if (tz.includes('Lusaka')) {
             setCountryState('ZM');
             return;
-          } else if (tz.includes('Harare')) {
+          } else if (
+            tz.includes('Harare') ||
+            tz.includes('Johannesburg') ||
+            tz.includes('Maputo') ||
+            tz.includes('Windhoek') ||
+            tz.includes('Gaborone') ||
+            tz.includes('Maseru') ||
+            tz.includes('Mbabane')
+          ) {
             setCountryState('ZW');
             return;
           }
@@ -78,7 +86,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedTheme = localStorage.getItem('biker_theme') as 'light' | 'dark' | 'system' | null;
-      const initialTheme = savedTheme || 'system';
+      const initialTheme = savedTheme || 'light';
       setThemeState(initialTheme);
       
       const applyTheme = (t: 'light' | 'dark' | 'system') => {
