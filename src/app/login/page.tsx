@@ -22,7 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { country } = useProfile();
+  const { country, setCountry } = useProfile();
   const dialPrefix = country === 'ZM' ? '+260' : '+263';
   let redirect = searchParams.get('redirect') || '/dashboard';
   if (!redirect.startsWith('/') || redirect.startsWith('//')) redirect = '/dashboard';
@@ -356,7 +356,15 @@ function LoginContent() {
                 <div className="input-group">
                   <label className="input-label" htmlFor="phone">Phone number</label>
                   <div className={styles.phoneInput}>
-                    <span className={styles.phonePrefix}>{dialPrefix}</span>
+                    <select
+                      className={styles.phonePrefixSelect}
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value as 'ZW' | 'ZM')}
+                      aria-label="Country Prefix"
+                    >
+                      <option value="ZW">🇿🇼 +263</option>
+                      <option value="ZM">🇿🇲 +260</option>
+                    </select>
                     <input id="phone" type="tel" className="apple-input" placeholder={country === 'ZM' ? '97 123 4567' : '77 123 4567'} value={phone} onChange={(e) => setPhone(e.target.value)} required style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }} />
                   </div>
                 </div>

@@ -110,7 +110,6 @@
 .brandContent {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   height: 100%;
   position: relative;
   z-index: 3;
@@ -337,7 +336,8 @@
   overflow: hidden;
 }
 
-.phonePrefix {
+.phonePrefix,
+.phonePrefixSelect {
   display: flex;
   align-items: center;
   padding: 0 var(--space-4);
@@ -348,6 +348,22 @@
   font-size: var(--text-sm);
   font-weight: 700;
   color: var(--text-secondary);
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  text-align: center;
+}
+
+.phonePrefixSelect::-ms-expand {
+  display: none;
+}
+
+.phonePrefixSelect option {
+  background: var(--bg-card);
+  color: var(--text-primary);
 }
 
 /* ---- OTP Verification Styling ---- */
