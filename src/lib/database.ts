@@ -793,6 +793,58 @@ export async function cancelDeliveryLink(linkId: string) {
   return { error };
 }
 
+// ─── Rider Matching ───────────────────────────────────────────────────
+
+/**
+ * Create pending offers for online riders near an order's pickup location.
+ * In a production app this should be an Edge Function or server action
+ * so the matching algorithm runs server-side.
+ */
+export async function requestRiderMatch(orderId: string, options?: {
+  maxRiders?: number;
+  radiusKm?: number;
+}) {
+  const maxRiders = options?.maxRiders ?? 10;
+
+  // Fetch the order
+  const { data: order, error: orderError } = await supabase
+    .from('delivery_requests')
+    .select('id, pickup_lat, pickup_lng, rider_payout')
+    .eq('id', orderId)
+    .single();
+
+  if (orderError || !order) return { data: null, error: orderError };
+
+  // Find online riders
+  const { data: riders, error: ridersError } = await supabase
+    .from('rider_profiles')
+    .select('user_id, lat, lng')
+    .eq('is_available', true)
+    .order('active_since', { ascending: false })
+    .limit(maxRiders);
+
+  if (ridersError || !riders || riders.length === 0) {
+    return { data: null, error: ridersError || new Error('No online riders') };
+  }
+
+  // Create offers
+  const offers = riders.map((rider) => ({
+    order_id: orderId,
+    rider_id: rider.user_id,
+    status: 'pending' as const,
+    timeout_seconds: 30,
+    expires_at: new Date(Date.now() + 30 * 1000).toISOString(),
+    estimated_rider_payout: order.rider_payout || 0,
+  }));
+
+  const { data, error } = await supabase
+    .from('order_offers')
+    .insert(offers)
+    .select();
+
+  return { data, error };
+}
+
 // ─── Rider Location ───────────────────────────────────────────────
 
 export async function insertLocationCheckpoint(checkpoint: {

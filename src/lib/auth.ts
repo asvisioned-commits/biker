@@ -5,6 +5,8 @@
 
 import { createClient } from '@/lib/supabase/client';
 
+const IS_DEV = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+
 export interface BikerSession {
   user_id: string;
   full_name: string;
@@ -79,6 +81,25 @@ export async function signInWithPhone(phone: string, countryPrefix = '+263') {
 export async function verifyPhoneOtp(phone: string, token: string, countryPrefix = '+263') {
   const cleanPhone = sanitizePhoneNumber(phone);
   const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : `${countryPrefix}${cleanPhone}`;
+
+  if (IS_DEV) {
+    const mockSession: BikerSession = {
+      user_id: 'mock-user-' + Date.now(),
+      full_name: 'Test User',
+      phone: formattedPhone,
+      role: 'customer',
+      roles: ['customer'],
+    };
+    localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
+    return {
+      data: {
+        user: { id: mockSession.user_id, phone: mockSession.phone } as any,
+        session: { access_token: 'mock-token', user: { id: mockSession.user_id } } as any,
+      },
+      error: null,
+    };
+  }
+
   const supabase = createClient();
   const { data, error } = await supabase.auth.verifyOtp({
     phone: formattedPhone,
@@ -109,9 +130,58 @@ export async function signUpWithEmail(
 }
 
 /**
+ * Sign up with phone + password + metadata (initiates SMS OTP verification)
+ */
+export async function signUpWithPhone(
+  phone: string,
+  password: string,
+  metadata: Record<string, unknown>
+) {
+  const cleanPhone = phone.startsWith('+') ? phone : `+263${phone.replace(/^0+/, '')}`;
+
+  if (IS_DEV) {
+    const mockSession: BikerSession = {
+      user_id: 'mock-user-' + Date.now(),
+      full_name: (metadata.full_name as string) || 'New User',
+      phone: cleanPhone,
+      role: (metadata.role as string) || 'customer',
+      roles: [(metadata.role as string) || 'customer'],
+    };
+    localStorage.setItem('biker_mock_session', JSON.stringify(mockSession));
+    return {
+      data: {
+        user: { id: mockSession.user_id, phone: mockSession.phone } as any,
+        session: { access_token: 'mock-token', user: { id: mockSession.user_id } } as any,
+      },
+      error: null,
+    };
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.signUp({
+    phone: cleanPhone,
+    password,
+    options: {
+      data: {
+        ...metadata,
+        phone: cleanPhone, // ensure phone is stored in metadata as well for the trigger
+      },
+      channel: 'sms',
+    },
+  });
+  return { data, error };
+}
+
+/**
  * Sign out
  */
 export async function signOut() {
+  if (IS_DEV) {
+    localStorage.removeItem('biker_mock_session');
+    window.location.href = '/';
+    return;
+  }
+
   const supabase = createClient();
   await supabase.auth.signOut();
   window.location.href = '/';
@@ -179,6 +249,20 @@ export async function updateUserEmail(email: string) {
  * This is the single source of truth for "who is the current user"
  */
 export async function getSession(): Promise<BikerSession | null> {
+  if (IS_DEV) {
+    if (typeof window === 'undefined') return null;
+    const stored = localStorage.getItem('biker_mock_session');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        localStorage.removeItem('biker_mock_session');
+        return null;
+      }
+    }
+    return null;
+  }
+
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;

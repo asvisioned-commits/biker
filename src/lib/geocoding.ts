@@ -2,6 +2,8 @@
  * Geocoding and Reverse Geocoding utilities using OpenStreetMap Nominatim
  */
 
+import { cleanAddress } from './geo';
+
 export interface GeocodeResult {
   address: string;
   lat: number;
@@ -42,8 +44,9 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
       const parts = data.display_name.split(',');
       // Take the first 3-4 parts for a concise display name (e.g. "Shop 21, Sam Levy's Village, Borrowdale")
       const conciseAddress = parts.slice(0, 4).map((p: string) => p.trim()).join(', ');
-      reverseCache.set(cacheKey, conciseAddress);
-      return conciseAddress;
+      const cleanedAddress = cleanAddress(conciseAddress);
+      reverseCache.set(cacheKey, cleanedAddress);
+      return cleanedAddress;
     }
   } catch (error) {
     console.warn('Reverse geocoding failed, using fallback:', error);
@@ -65,7 +68,7 @@ export async function searchAddress(query: string, country: 'ZW' | 'ZM' = 'ZW'):
   // 1. First lookup in our local fast dictionary
   const localMatches = searchLocalPlaces(query, country);
   const localResults: GeocodeResult[] = localMatches.map(place => ({
-    address: place.name,
+    address: cleanAddress(place.name),
     lat: place.lat,
     lng: place.lng
   }));
@@ -93,7 +96,7 @@ export async function searchAddress(query: string, country: 'ZW' | 'ZM' = 'ZW'):
         const parts = item.display_name.split(',');
         const conciseAddress = parts.slice(0, 4).map((p: string) => p.trim()).join(', ');
         return {
-          address: conciseAddress,
+          address: cleanAddress(conciseAddress),
           lat: parseFloat(item.lat),
           lng: parseFloat(item.lon),
         };

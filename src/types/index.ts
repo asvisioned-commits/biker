@@ -297,6 +297,7 @@ export interface Order {
   dropoff_contact_name: string;
   dropoff_contact_phone: string;
   dropoff_instructions: string | null;
+  dropoff_gate_color: string | null;
   dropoff_photo_urls: string[];
   dropoff_timestamp: string | null;
   delivery_pin_hash: string;
@@ -327,6 +328,7 @@ export interface Order {
   rider_payout: number;
   platform_commission: number;
   protection_reserve: number;
+  total_amount: number;
   customer_rating: number | null;
   customer_review: string | null;
   rider_rating_of_customer: number | null;

@@ -1,0 +1,278 @@
+/* ============================================================
+   Rider Matching Screen
+   ============================================================ */
+
+.page {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.mapBackground {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    to top,
+    hsla(215, 28%, 8%, 0.95) 0%,
+    hsla(215, 28%, 8%, 0.6) 40%,
+    hsla(215, 28%, 8%, 0.2) 100%
+  );
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+  padding: var(--space-6);
+  padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
+  animation: slideInUp var(--duration-normal) var(--ease-out);
+}
+
+@media (min-width: 768px) {
+  .content {
+    max-width: 520px;
+    margin: 0 auto;
+    justify-content: center;
+    padding-bottom: var(--space-12);
+  }
+}
+
+/* ---- Matching Card ---- */
+.matchingCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-xl);
+  text-align: center;
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-4);
+}
+
+/* ---- Search Animation ---- */
+.searchAnimation {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin: 0 auto var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.searchIcon {
+  font-size: 2.5rem;
+  z-index: 2;
+  animation: bounce 1.5s ease-in-out infinite;
+}
+
+.radarRing {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--color-primary-400);
+  opacity: 0;
+  animation: radarPulse 2.5s ease-out infinite;
+}
+
+.radarRing:nth-child(2) {
+  animation-delay: 0.6s;
+}
+
+.radarRing:nth-child(3) {
+  animation-delay: 1.2s;
+}
+
+@keyframes radarPulse {
+  0% { transform: scale(0.3); opacity: 0.8; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* ---- Timer ---- */
+.timer {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  margin-bottom: var(--space-5);
+}
+
+/* ---- Offer Card ---- */
+.offerCard {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  text-align: left;
+}
+
+.offerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: var(--space-4);
+}
+
+.offerAmount {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  color: var(--color-primary-600);
+}
+
+.offerSlider {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--border-default);
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  margin-bottom: var(--space-3);
+}
+
+.offerSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-primary-500);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  border: 3px solid white;
+}
+
+.offerSlider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-primary-500);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  border: 3px solid white;
+}
+
+.offerRange {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-3);
+}
+
+.offerHint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 0;
+}
+
+/* ---- Actions ---- */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---- Found Card ---- */
+.foundCard {
+  animation: scaleIn var(--duration-normal) var(--ease-spring);
+}
+
+.foundAvatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-success-400), var(--color-success-600));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  margin: 0 auto var(--space-5);
+  box-shadow: var(--shadow-glow-success);
+}
+
+.riderProfile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+  text-align: left;
+}
+
+.riderName {
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.riderMeta {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+}
+
+.riderVehicle {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* ---- Timeout ---- */
+.timeoutIcon {
+  font-size: 3rem;
+  margin-bottom: var(--space-4);
+}
+
+/* ---- Loading ---- */
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  background: var(--bg-primary);
+  z-index: 10;
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}

@@ -4,7 +4,7 @@ import { useState, Suspense, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './signup.module.css';
-import { signInWithGoogle, signUpWithEmail, getSession, verifyEmailOtp, resendVerificationEmail, type BikerSession } from '@/lib/auth';
+import { signInWithGoogle, signUpWithEmail, signUpWithPhone, verifyPhoneOtp, getSession, verifyEmailOtp, resendVerificationEmail, type BikerSession } from '@/lib/auth';
 import type { UserRole, VehicleType } from '@/types';
 import { useProfile } from '@/context/ProfileContext';
 import { updateProfile, createRiderProfile, createMerchantProfile, setActiveRole } from '@/lib/database';
@@ -640,9 +640,35 @@ function SignupContent() {
       metadata.business_type = businessType;
       metadata.whatsapp = cleanWhatsapp ? activePrefix + cleanWhatsapp : null;
     }
-    const targetEmail = email;
-    const { data: signUpData, error: signUpError } = await signUpWithEmail(
-      targetEmail,
+    if (!/^\d{9}$/.test(cleanPhone)) {
+      setError('Please enter a valid 9-digit phone number (e.g., 77 123 4567).');
+      setLoading(false);
+      return;
+    }
+
+    const fullPhone = activePrefix + cleanPhone;
+
+    // Check phone uniqueness via Supabase RPC function
+    try {
+      const { createClient: createSupClient } = await import('@/lib/supabase/client');
+      const supabase = createSupClient();
+      const { data: phoneExists, error: phoneCheckError } = await supabase.rpc('check_phone_exists', {
+        phone_number: fullPhone
+      });
+
+      if (phoneCheckError) {
+        console.warn('Phone uniqueness check failed:', phoneCheckError);
+      } else if (phoneExists) {
+        setError('This phone number is already registered to another account.');
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.warn('Phone check RPC call failed, proceeding:', e);
+    }
+
+    const { data: signUpData, error: signUpError } = await signUpWithPhone(
+      cleanPhone,
       password,
       metadata
     );
@@ -655,12 +681,12 @@ function SignupContent() {
 
     // Check if verification is required (session is null)
     if (!signUpData?.session && signUpData?.user) {
-      setUnconfirmedEmail(targetEmail);
+      setUnconfirmedEmail(email);
       setStep('verify_email');
       setLoading(false);
       setResendCooldown(60);
       if (IS_DEV) {
-        setSuccessMsg(`Verification code sent to ${targetEmail}! [DEV Mode: Use code 123456]`);
+        setSuccessMsg(`Verification code sent to ${activePrefix} ${cleanPhone}! [DEV Mode: Use code 123456]`);
       }
       return;
     }
@@ -732,7 +758,8 @@ function SignupContent() {
     setLoading(true);
     setError('');
     setSuccessMsg('');
-    const { error: otpError } = await verifyEmailOtp(unconfirmedEmail, otp);
+    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+    const { error: otpError } = await verifyPhoneOtp(cleanPhone, otp, activePrefix);
     setLoading(false);
     
     if (otpError) {
@@ -740,7 +767,7 @@ function SignupContent() {
       return;
     }
     
-    setSuccessMsg('Email successfully verified! Provisioning your account...');
+    setSuccessMsg('Phone successfully verified! Provisioning your account...');
     
     // Now that the session is active, run the App-Side Provisioning Fallback if not in Dev mode
     const sess = await getSession();
@@ -761,7 +788,6 @@ function SignupContent() {
           console.warn('Document upload failed:', uploadErr);
         }
 
-        const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
         const cleanWhatsapp = whatsapp.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
 
         if (cleanPhone || fullName) {
@@ -821,7 +847,20 @@ function SignupContent() {
     setError('');
     setSuccessMsg('');
     
-    const { error: resendError } = await resendVerificationEmail(unconfirmedEmail);
+    const cleanPhone = phone.replace(/[\s\-\(\)]/g, '').replace(/^0/, '');
+    const metadata: Record<string, unknown> = {
+      full_name: fullName,
+      phone: activePrefix + cleanPhone,
+      email: email || null,
+      role: selectedRole,
+      device_fingerprint: getDeviceFingerprint(),
+    };
+    
+    const { error: resendError } = await signUpWithPhone(
+      cleanPhone,
+      password,
+      metadata
+    );
     setLoading(false);
     
     if (resendError) {
@@ -830,7 +869,7 @@ function SignupContent() {
     }
     
     setResendCooldown(60);
-    setSuccessMsg(`Verification code sent to ${unconfirmedEmail}!`);
+    setSuccessMsg(`Verification code sent to ${activePrefix} ${cleanPhone}!`);
   };
 
   return (
@@ -1434,21 +1473,21 @@ function SignupContent() {
               </div>
             )}
 
-            {/* Step 4: Email OTP Verification */}
+            {/* Step 4: Phone OTP Verification */}
             {step === 'verify_email' && (
               <form onSubmit={handleEmailOtpVerify} className={styles.stepContent}>
-                <h1 className={styles.formTitle}>Verify your email</h1>
+                <h1 className={styles.formTitle}>Verify your phone</h1>
                 <p className={styles.formSubtitle}>
-                  Please check your inbox at <strong>{unconfirmedEmail}</strong> and click the verification link to activate your account.
+                  We sent a 6-digit verification code to <strong>{activePrefix} {phone}</strong>.
                 </p>
                 <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '14px', borderRadius: '12px', fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', border: '1px solid var(--border-default)', lineHeight: '1.5', textAlign: 'left' }}>
-                  <Info size={16} style={{ color: 'var(--color-primary-500)', display: 'inline-block', verticalAlign: 'middle', marginRight: '4px' }} /> <strong>Local Testing / No Emails?</strong><br />
-                  • <strong>Local Docker:</strong> If running Supabase locally, verification emails are captured by the local mail server (Inbucket). Open <strong>http://localhost:54324</strong> in your browser to view your sent emails and find the code/link.<br />
-                  • <strong>Supabase Cloud:</strong> If emails are not arriving due to default SMTP limits, you can confirm this user manually in the <strong>Supabase Dashboard &gt; Authentication &gt; Users</strong> by clicking the user and selecting <strong>Confirm User</strong>. Once confirmed, you can go back and log in directly.
+                  <Info size={16} style={{ color: 'var(--color-primary-500)', display: 'inline-block', verticalAlign: 'middle', marginRight: '4px' }} /> <strong>Local Testing / SMS OTP</strong><br />
+                  • <strong>Local Dev:</strong> If running locally with dev mode enabled, you can use the code <strong>123456</strong>.<br />
+                  • <strong>Supabase Cloud:</strong> If SMS messages are not arriving due to provider setup, you can confirm this user manually in the <strong>Supabase Dashboard &gt; Authentication &gt; Users</strong>.
                 </div>
                 <div style={{ marginBottom: '8px', textAlign: 'center' }}>
                   <label className="input-label" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Or enter the 6-digit code if you received one:
+                    Enter the 6-digit verification code:
                   </label>
                 </div>
                 <div className="pin-input-group">
@@ -1488,7 +1527,7 @@ function SignupContent() {
                     onClick={handleResendVerification}
                     disabled={loading || resendCooldown > 0}
                   >
-                    {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : 'Resend Email Verification'}
+                    {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : 'Resend Code'}
                   </button>
                   <button
                     type="button"
