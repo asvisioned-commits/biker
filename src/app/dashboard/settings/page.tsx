@@ -3,14 +3,26 @@
 import { useState, useEffect } from 'react';
 import styles from './settings.module.css';
 import { signOut, updateUserPassword, updateUserEmail, deleteAccount } from '@/lib/auth';
-import { updateProfile, getRiderProfile, updateRiderProfile } from '@/lib/database';
+import { updateProfile, getRiderProfile, updateRiderProfile, setActiveRole } from '@/lib/database';
 import type { UserRole, VehicleType } from '@/types';
 import { useProfile } from '@/context/ProfileContext';
 import { createClient } from '@/lib/supabase/client';
 import PremiumIcon from '@/components/primitives/PremiumIcon';
 
 export default function SettingsPage() {
-  const { session, loading: sessionLoading, refreshSession, country, theme, setTheme } = useProfile();
+  const { session, loading: sessionLoading, refreshSession, country, setCountry, theme, setTheme } = useProfile();
+
+  const handleRoleChange = async (newRole: UserRole) => {
+    if (process.env.NEXT_PUBLIC_USE_LIVE_DB === 'true' && session?.user_id) {
+      try {
+        await setActiveRole(session.user_id, newRole);
+      } catch (err) {
+        console.error('Failed to update live role in database:', err);
+      }
+    }
+    setRole(newRole);
+    await refreshSession();
+  };
 
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'danger' | 'verification'>('profile');
   
@@ -866,6 +878,46 @@ export default function SettingsPage() {
               <span className={styles.toggleKnob} />
             </button>
           </div>
+
+          <hr className={styles.separator} />
+          <h3 className={styles.sectionTitle}>Preferences & Region</h3>
+          <div className={styles.selectRow}>
+            <div>
+              <div className={styles.toggleLabel}>🌐 Country / Location</div>
+              <div className={styles.toggleDesc}>Set your active regional marketplace and prefix</div>
+            </div>
+            <select
+              className={styles.selectInput}
+              value={country}
+              onChange={(e) => setCountry(e.target.value as 'ZW' | 'ZM')}
+            >
+              <option value="ZW">Zimbabwe (ZW)</option>
+              <option value="ZM">Zambia (ZM)</option>
+            </select>
+          </div>
+
+          {(session?.roles && session.roles.length > 1) && (
+            <div className={styles.selectRow}>
+              <div>
+                <div className={styles.toggleLabel}>🎭 Active Role</div>
+                <div className={styles.toggleDesc}>Switch between your authorized profiles</div>
+              </div>
+              <select
+                className={styles.selectInput}
+                value={role}
+                onChange={(e) => handleRoleChange(e.target.value as UserRole)}
+              >
+                {session.roles.map((r) => (
+                  <option key={r} value={r}>
+                    {r === 'customer' ? '📦 Customer' :
+                     r === 'rider' ? '🚴 Rider' :
+                     r === 'merchant' ? '🏪 Merchant' :
+                     r === 'ops' ? '🔧 Ops' : '👑 Admin'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
