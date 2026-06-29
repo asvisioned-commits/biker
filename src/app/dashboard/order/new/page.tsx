@@ -294,14 +294,14 @@ export default function NewOrderPage() {
     if (!L) return;
 
     const map = L.map(mapId, {
-      zoomControl: false,
+      zoomControl: true,
       scrollWheelZoom: true,
     }).setView(pickupCoords, 14);
 
     mapRef.current = map;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
     }).addTo(map);
 
     // Click on map to set pickup or drop-off coordinates
@@ -456,10 +456,13 @@ export default function NewOrderPage() {
     }
   }, [step, pickupCoords, dropoffCoords, leafletLoaded]);
 
-  // Debounced search query triggers for Autocomplete
+  // Debounced search query triggers for Autocomplete with auto-pick
   useEffect(() => {
     if (!pickupSearch || pickupSearch.length < 2 || !isPickupFocused) {
       setPickupSuggestions([]);
+      return;
+    }
+    if (pickupSearch === pickupAddress) {
       return;
     }
     setSearchingPickup(true);
@@ -467,13 +470,21 @@ export default function NewOrderPage() {
       const res = await searchAddress(pickupSearch, country || 'ZW');
       setPickupSuggestions(res);
       setSearchingPickup(false);
+      // Auto-pick first suggestion immediately as the user types
+      if (res.length > 0) {
+        setPickupCoords([res[0].lat, res[0].lng]);
+        setPickupAddress(res[0].address);
+      }
     }, 400);
     return () => clearTimeout(delay);
-  }, [pickupSearch, isPickupFocused]);
+  }, [pickupSearch, isPickupFocused, pickupAddress, country]);
 
   useEffect(() => {
     if (!dropoffSearch || dropoffSearch.length < 2 || !isDropoffFocused) {
       setDropoffSuggestions([]);
+      return;
+    }
+    if (dropoffSearch === dropoffAddress) {
       return;
     }
     setSearchingDropoff(true);
@@ -481,9 +492,67 @@ export default function NewOrderPage() {
       const res = await searchAddress(dropoffSearch, country || 'ZW');
       setDropoffSuggestions(res);
       setSearchingDropoff(false);
+      // Auto-pick first suggestion immediately as the user types
+      if (res.length > 0) {
+        setDropoffCoords([res[0].lat, res[0].lng]);
+        setDropoffAddress(res[0].address);
+      }
     }, 400);
     return () => clearTimeout(delay);
-  }, [dropoffSearch, isDropoffFocused]);
+  }, [dropoffSearch, isDropoffFocused, dropoffAddress, country]);
+
+  // Blur and keypress handlers to finalize auto-picked values
+  const handlePickupBlur = () => {
+    setTimeout(() => {
+      setIsPickupFocused(false);
+      if (pickupSuggestions.length > 0) {
+        const s = pickupSuggestions[0];
+        setPickupCoords([s.lat, s.lng]);
+        setPickupAddress(s.address);
+        setPickupSearch(s.address);
+        setPickupSuggestions([]);
+      } else if (pickupAddress) {
+        setPickupSearch(pickupAddress);
+      }
+    }, 200);
+  };
+
+  const handleDropoffBlur = () => {
+    setTimeout(() => {
+      setIsDropoffFocused(false);
+      if (dropoffSuggestions.length > 0) {
+        const s = dropoffSuggestions[0];
+        setDropoffCoords([s.lat, s.lng]);
+        setDropoffAddress(s.address);
+        setDropoffSearch(s.address);
+        setDropoffSuggestions([]);
+      } else if (dropoffAddress) {
+        setDropoffSearch(dropoffAddress);
+      }
+    }, 200);
+  };
+
+  const handlePickupKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (pickupSuggestions.length > 0) {
+        handleSelectPickupSuggestion(pickupSuggestions[0]);
+      } else {
+        setIsPickupFocused(false);
+      }
+    }
+  };
+
+  const handleDropoffKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (dropoffSuggestions.length > 0) {
+        handleSelectDropoffSuggestion(dropoffSuggestions[0]);
+      } else {
+        setIsDropoffFocused(false);
+      }
+    }
+  };
 
   // Calculate pricing estimates when route coordinates change
   useEffect(() => {
@@ -805,7 +874,8 @@ export default function NewOrderPage() {
                         setIsPickupFocused(true);
                         setMapMode('pickup');
                       }}
-                      onBlur={() => setTimeout(() => setIsPickupFocused(false), 200)}
+                      onBlur={handlePickupBlur}
+                      onKeyDown={handlePickupKeyDown}
                     />
                   </div>
                   {searchingPickup && <span className={styles.searchSpinner}>⏳</span>}
@@ -841,7 +911,8 @@ export default function NewOrderPage() {
                         setIsDropoffFocused(true);
                         setMapMode('dropoff');
                       }}
-                      onBlur={() => setTimeout(() => setIsDropoffFocused(false), 200)}
+                      onBlur={handleDropoffBlur}
+                      onKeyDown={handleDropoffKeyDown}
                     />
                   </div>
                   {searchingDropoff && <span className={styles.searchSpinner}>⏳</span>}
