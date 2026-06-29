@@ -10,17 +10,17 @@
    DESIGN TOKENS
    ============================================================ */
 :root {
-  /* ---- Primary — Electric Lime / Acid Green (#CCFF00 / HSL 72, 100%, 50%) ---- */
-  --color-primary-50: hsl(72, 100%, 96%);
-  --color-primary-100: hsl(72, 100%, 88%);
-  --color-primary-200: hsl(72, 100%, 78%);
-  --color-primary-300: hsl(72, 100%, 65%);
-  --color-primary-400: hsl(72, 100%, 54%);
-  --color-primary-500: hsl(72, 100%, 46%); /* Electric Lime (#B8E600 / #CCFF00) */
-  --color-primary-600: hsl(72, 100%, 38%);
-  --color-primary-700: hsl(72, 100%, 28%);
-  --color-primary-800: hsl(72, 100%, 18%);
-  --color-primary-900: hsl(72, 100%, 8%);
+  /* ---- Primary — Trust Green (deep money-green #15835A / HSL 157, 66%, 30%) ---- */
+  --color-primary-50: hsl(157, 54%, 95%);
+  --color-primary-100: hsl(157, 50%, 87%);
+  --color-primary-200: hsl(157, 48%, 73%);
+  --color-primary-300: hsl(157, 50%, 55%);
+  --color-primary-400: hsl(157, 58%, 41%);
+  --color-primary-500: hsl(157, 66%, 30%); /* Trust money-green */
+  --color-primary-600: hsl(157, 70%, 24%);
+  --color-primary-700: hsl(157, 74%, 18%);
+  --color-primary-800: hsl(157, 78%, 12%);
+  --color-primary-900: hsl(157, 82%, 7%);
 
   /* ---- Success — Emerald ---- */
   --color-success-50: hsl(152, 75%, 96%);
@@ -153,7 +153,7 @@
   --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.5);
   --shadow-lg: 0 8px 16px hsla(0, 0%, 0%, 0.6);
   --shadow-xl: 0 16px 24px hsla(0, 0%, 0%, 0.7);
-  --shadow-glow: 0 0 20px hsla(72, 100%, 50%, 0.3);
+  --shadow-glow: 0 0 20px hsla(157, 64%, 50%, 0.3);
   --shadow-glow-success: 0 0 20px hsla(152, 70%, 38%, 0.15);
   --shadow-glow-jet: 0 0 20px hsla(24, 95%, 55%, 0.2);
 
@@ -187,6 +187,9 @@
   --sidebar-width: 280px;
   --bottom-nav-height: 72px;
   --border-radius: var(--radius-lg);
+
+  /* Text that sits on saturated fills (primary/danger/success/jet). Stays light in every theme. */
+  --text-on-accent: hsl(0, 0%, 100%);
 }
 
 /* ============================================================
@@ -241,7 +244,7 @@
 .merchant-theme .navItemActive,
 .ops-theme .navItemActive,
 [data-theme='dark'] .navItemActive {
-  background: hsla(72, 100%, 46%, 0.15) !important;
+  background: hsla(157, 64%, 46%, 0.15) !important;
   color: var(--color-primary-400) !important;
 }
 
@@ -408,7 +411,7 @@ h1, h2, h3, h4, h5, h6 {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(204, 255, 0, 0.08) 50%,
+    rgba(25, 150, 105, 0.08) 50%,
     transparent 100%
   );
   animation: shimmer 1.6s infinite;
@@ -726,7 +729,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .input:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px hsla(215, 75%, 47%, 0.12);
+  box-shadow: 0 0 0 3px hsla(157, 62%, 40%, 0.12);
 }
 
 .input--error {
@@ -1017,7 +1020,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .pin-digit:focus {
   border-color: var(--color-primary-500);
-  box-shadow: 0 0 0 3px hsla(215, 75%, 47%, 0.15);
+  box-shadow: 0 0 0 3px hsla(157, 62%, 40%, 0.15);
 }
 
 .pin-digit--filled {
@@ -1215,7 +1218,7 @@ h1, h2, h3, h4, h5, h6 {
   -webkit-backdrop-filter: blur(12px);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .bottom-nav { display: none; }
 }
 
@@ -1768,7 +1771,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .btn-apple-primary:hover {
   background: linear-gradient(135deg, var(--color-primary-400), var(--color-primary-500));
-  box-shadow: 0 8px 25px rgba(204, 255, 0, 0.25);
+  box-shadow: 0 8px 25px rgba(25, 150, 105, 0.25);
 }
 
 .btn-apple-secondary {
@@ -1810,4 +1813,19 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 15px currentColor;
   opacity: 0.15;
   pointer-events: none;
+}
+
+/* Keep text on saturated fills readable in EVERY theme (fixes the old white-on-lime / dark-on-fill bug).
+   Only targets solid-fill buttons — secondary/ghost keep their normal text colour. */
+.btn--primary,
+.btn--danger,
+.btn--success,
+.btn--jet,
+.btn--primary:hover,
+.btn--danger:hover,
+.btn--success:hover,
+.btn--jet:hover,
+.btn-apple-primary,
+.btn-apple-primary:hover {
+  color: var(--text-on-accent) !important;
 }

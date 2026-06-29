@@ -294,13 +294,13 @@ function SignupContent() {
         <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <linearGradient id="custGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="0%" stopColor="#1FA46F" />
               <stop offset="50%" stopColor="#88EE44" />
               <stop offset="100%" stopColor="#00E5FF" />
             </linearGradient>
             <linearGradient id="custGrad2" x1="0%" y1="100%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#CCFF00" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#1FA46F" stopOpacity="0.3" />
             </linearGradient>
           </defs>
           {/* Parcel body - 3D box */}
@@ -310,15 +310,15 @@ function SignupContent() {
           {/* Center line */}
           <path d="M20 20V34" stroke="url(#custGrad)" strokeWidth="2"/>
           {/* Tape strip horizontal */}
-          <path d="M14 11L26 17" stroke="#CCFF00" strokeWidth="2.5" strokeLinecap="round" opacity="0.9"/>
+          <path d="M14 11L26 17" stroke="#1FA46F" strokeWidth="2.5" strokeLinecap="round" opacity="0.9"/>
           {/* Tape strip vertical */}
-          <path d="M20 8V20" stroke="#CCFF00" strokeWidth="2" strokeLinecap="round" opacity="0.5"/>
+          <path d="M20 8V20" stroke="#1FA46F" strokeWidth="2" strokeLinecap="round" opacity="0.5"/>
           {/* Speed lines - parcel in motion */}
           <path d="M3 18H6" stroke="url(#custGrad)" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
           <path d="M2 22H5.5" stroke="url(#custGrad)" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
           <path d="M4 26H6" stroke="url(#custGrad)" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
           {/* Location pin */}
-          <circle cx="33" cy="10" r="3" fill="#CCFF00" opacity="0.8"/>
+          <circle cx="33" cy="10" r="3" fill="#1FA46F" opacity="0.8"/>
           <circle cx="33" cy="10" r="1.2" fill="#0a0a0a"/>
         </svg>
       ),
@@ -331,13 +331,13 @@ function SignupContent() {
         <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <linearGradient id="bikeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="0%" stopColor="#1FA46F" />
               <stop offset="50%" stopColor="#E5CC00" />
               <stop offset="100%" stopColor="#FF9F00" />
             </linearGradient>
             <linearGradient id="bikeGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#FF9F00" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#CCFF00" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#1FA46F" stopOpacity="0.15" />
             </linearGradient>
           </defs>
           {/* Rear wheel */}
@@ -353,17 +353,17 @@ function SignupContent() {
           {/* Handlebar */}
           <path d="M24 17L28 12L33 11" stroke="url(#bikeGrad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           {/* Headlight */}
-          <circle cx="33" cy="11" r="2" fill="#CCFF00" opacity="0.9"/>
-          <circle cx="33" cy="11" r="3.5" fill="#CCFF00" opacity="0.15"/>
+          <circle cx="33" cy="11" r="2" fill="#1FA46F" opacity="0.9"/>
+          <circle cx="33" cy="11" r="3.5" fill="#1FA46F" opacity="0.15"/>
           {/* Seat */}
           <path d="M15 18L21 16" stroke="url(#bikeGrad)" strokeWidth="3" strokeLinecap="round"/>
           {/* Exhaust pipes */}
           <path d="M13 30L8 33" stroke="#FF9F00" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
           <path d="M8 33L5 32" stroke="#FF9F00" strokeWidth="1" strokeLinecap="round" opacity="0.4"/>
           {/* Speed streaks */}
-          <path d="M1 16H5" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
-          <path d="M0 20H4.5" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
-          <path d="M2 24H5" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
+          <path d="M1 16H5" stroke="#1FA46F" strokeWidth="1.5" strokeLinecap="round" opacity="0.8"/>
+          <path d="M0 20H4.5" stroke="#1FA46F" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+          <path d="M2 24H5" stroke="#1FA46F" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
           {/* Rider silhouette */}
           <path d="M18 16L17 11L19 8L21 8L20 12L22 15" stroke="url(#bikeGrad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="url(#bikeGrad2)"/>
           {/* Helmet */}
@@ -380,13 +380,13 @@ function SignupContent() {
         <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <linearGradient id="merchGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#CCFF00" />
+              <stop offset="0%" stopColor="#1FA46F" />
               <stop offset="50%" stopColor="#BB88FF" />
               <stop offset="100%" stopColor="#A855F7" />
             </linearGradient>
             <linearGradient id="merchGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#A855F7" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#CCFF00" stopOpacity="0.1" />
+              <stop offset="100%" stopColor="#1FA46F" stopOpacity="0.1" />
             </linearGradient>
           </defs>
           {/* Awning */}
@@ -400,7 +400,7 @@ function SignupContent() {
           {/* Door */}
           <rect x="15" y="22" width="10" height="10" rx="2" fill="url(#merchGrad)" opacity="0.25" stroke="url(#merchGrad)" strokeWidth="1.5"/>
           {/* Door handle */}
-          <circle cx="23" cy="27" r="1" fill="#CCFF00" opacity="0.9"/>
+          <circle cx="23" cy="27" r="1" fill="#1FA46F" opacity="0.9"/>
           {/* Left window */}
           <rect x="8" y="17" width="5" height="4" rx="1" fill="url(#merchGrad)" opacity="0.3" stroke="url(#merchGrad)" strokeWidth="1.2"/>
           {/* Right window */}
@@ -408,13 +408,13 @@ function SignupContent() {
           {/* Signage/name plate */}
           <rect x="12" y="5" width="16" height="4" rx="2" fill="url(#merchGrad)" opacity="0.2" stroke="url(#merchGrad)" strokeWidth="1.5"/>
           {/* Signage text lines */}
-          <path d="M15 7H25" stroke="#CCFF00" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
+          <path d="M15 7H25" stroke="#1FA46F" strokeWidth="1.5" strokeLinecap="round" opacity="0.7"/>
           {/* Open sign glow */}
-          <circle cx="34" cy="20" r="2.5" fill="#CCFF00" opacity="0.6"/>
+          <circle cx="34" cy="20" r="2.5" fill="#1FA46F" opacity="0.6"/>
           <circle cx="34" cy="20" r="1" fill="#0a0a0a"/>
           {/* Window light glow */}
-          <rect x="8.5" y="17.5" width="4" height="3" rx="0.5" fill="#CCFF00" opacity="0.08"/>
-          <rect x="27.5" y="17.5" width="4" height="3" rx="0.5" fill="#CCFF00" opacity="0.08"/>
+          <rect x="8.5" y="17.5" width="4" height="3" rx="0.5" fill="#1FA46F" opacity="0.08"/>
+          <rect x="27.5" y="17.5" width="4" height="3" rx="0.5" fill="#1FA46F" opacity="0.08"/>
         </svg>
       ),
       title: 'Merchant',

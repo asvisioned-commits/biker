@@ -129,7 +129,7 @@ export default function RouteBundleVisualizer({
     // Draw route polyline linking stops in order
     const points = sortedStops.map(s => [s.lat, s.lng] as [number, number]);
     polylineRef.current = L.polyline(points, {
-      color: '#CCFF00',
+      color: '#1FA46F',
       weight: 4,
       opacity: 0.8,
       dashArray: '8, 8',

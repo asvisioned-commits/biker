@@ -178,8 +178,8 @@
   width: 240px;
   height: 240px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(204, 255, 0, 0.05) 0%, rgba(204, 255, 0, 0.15) 70%, rgba(204, 255, 0, 0) 100%);
-  border: 2px solid rgba(204, 255, 0, 0.35);
+  background: radial-gradient(circle, rgba(25, 150, 105, 0.05) 0%, rgba(25, 150, 105, 0.15) 70%, rgba(25, 150, 105, 0) 100%);
+  border: 2px solid rgba(25, 150, 105, 0.35);
   animation: sonarPulse 3s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
   pointer-events: none;
 }

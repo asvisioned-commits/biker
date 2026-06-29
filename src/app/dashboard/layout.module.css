@@ -188,3 +188,32 @@
 .themeToggleBtn:active {
   transform: scale(0.95);
 }
+
+/* ============================================================
+   DESKTOP (>=1024px): dock the sidebar, drop the mobile chrome
+   ============================================================ */
+@media (min-width: 1024px) {
+  /* Sidebar becomes a permanently-docked rail */
+  .sidebar {
+    transform: none;
+    box-shadow: none;
+    border-right: 1px solid var(--border-default);
+  }
+  /* Content sits to the right of the fixed sidebar */
+  .main {
+    margin-left: var(--sidebar-width);
+  }
+  /* The off-canvas mobile chrome is not needed on desktop */
+  .hamburger,
+  .mobileTitle,
+  .sidebarClose {
+    display: none;
+  }
+  .overlay {
+    display: none;
+  }
+  /* Keep the top bar only for its right-side actions (notifications, theme, avatar) */
+  .mobileHeader {
+    justify-content: flex-end;
+  }
+}

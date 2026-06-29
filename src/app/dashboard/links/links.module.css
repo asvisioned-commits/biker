@@ -131,7 +131,7 @@
 
 .historyCardActive {
   border-color: var(--color-primary-500);
-  background-color: hsla(72, 100%, 50%, 0.02);
+  background-color: hsla(157, 64%, 50%, 0.02);
 }
 
 .historyName {

@@ -92,13 +92,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background-color: hsla(72, 100%, 50%, 0.05);
+  background-color: hsla(157, 64%, 50%, 0.05);
   border-top: 1px dashed var(--border-default);
   color: var(--text-primary);
 }
 
 [data-theme='dark'] .footerBanner {
-  background-color: hsla(72, 100%, 46%, 0.1);
+  background-color: hsla(157, 64%, 46%, 0.1);
   color: var(--color-primary-300);
 }
 
@@ -113,15 +113,15 @@
 @keyframes badgePulseDot {
   0% {
     transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(204, 255, 0, 0.7);
+    box-shadow: 0 0 0 0 rgba(25, 150, 105, 0.7);
   }
   70% {
     transform: scale(1);
-    box-shadow: 0 0 0 6px rgba(204, 255, 0, 0);
+    box-shadow: 0 0 0 6px rgba(25, 150, 105, 0);
   }
   100% {
     transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(204, 255, 0, 0);
+    box-shadow: 0 0 0 0 rgba(25, 150, 105, 0);
   }
 }
 
@@ -135,12 +135,12 @@
 }
 
 .held {
-  border-color: rgba(204, 255, 0, 0.3);
-  box-shadow: 0 4px 20px rgba(204, 255, 0, 0.05);
+  border-color: rgba(25, 150, 105, 0.3);
+  box-shadow: 0 4px 20px rgba(25, 150, 105, 0.05);
 }
 .held .iconContainer {
   color: var(--color-primary-500);
-  background-color: hsla(72, 100%, 50%, 0.1);
+  background-color: hsla(157, 64%, 50%, 0.1);
 }
 
 .released {

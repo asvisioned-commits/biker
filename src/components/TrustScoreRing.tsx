@@ -46,7 +46,7 @@ export default function TrustScoreRing({
         return {
           color: 'var(--color-primary-500)', // Electric Lime
           label: 'Elite',
-          bg: 'hsla(72, 100%, 50%, 0.15)',
+          bg: 'hsla(157, 64%, 50%, 0.15)',
         };
     }
   };

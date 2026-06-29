@@ -312,7 +312,7 @@ export default function LiveTrackingMap({
       const hotZones = [
         { coords: [pickupCoords[0] + 0.005, pickupCoords[1] - 0.005] as [number, number], radius: 400, color: '#ef4444', label: 'Borrowdale • 1.9x Surge' },
         { coords: [pickupCoords[0] - 0.004, pickupCoords[1] + 0.004] as [number, number], radius: 350, color: '#f59e0b', label: 'CBD • 1.4x Surge' },
-        { coords: [pickupCoords[0] + 0.002, pickupCoords[1] + 0.006] as [number, number], radius: 300, color: '#CCFF00', label: 'Avondale • High Demand' },
+        { coords: [pickupCoords[0] + 0.002, pickupCoords[1] + 0.006] as [number, number], radius: 300, color: '#1FA46F', label: 'Avondale • High Demand' },
       ];
       hotZones.forEach(zone => {
         const circle = L.circle(zone.coords, {

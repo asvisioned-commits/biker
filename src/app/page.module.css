@@ -286,7 +286,7 @@
 }
 
 .statusBadge {
-  background: rgba(204, 255, 0, 0.08) !important;
+  background: rgba(25, 150, 105, 0.08) !important;
 }
 
 .heroOrderRef {
@@ -490,7 +490,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-4xl);
   font-weight: 800;
-  color: rgba(204, 255, 0, 0.15);
+  color: rgba(25, 150, 105, 0.15);
   margin-bottom: var(--space-4);
 }
 

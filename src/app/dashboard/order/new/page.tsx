@@ -232,7 +232,7 @@ export default function NewOrderPage() {
 
   const getProbabilityColor = () => {
     const pct = getProbabilityPercent();
-    if (pct >= 70) return '#CCFF00'; // Electric Lime
+    if (pct >= 70) return '#1FA46F'; // Electric Lime
     if (pct >= 45) return '#f59e0b'; // Amber / Orange
     return '#ef4444'; // Red
   };

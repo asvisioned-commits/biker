@@ -41,11 +41,11 @@
 
 .selectedCard {
   border-color: var(--color-primary-500);
-  background-color: hsla(72, 100%, 50%, 0.03);
+  background-color: hsla(157, 64%, 50%, 0.03);
 }
 
 [data-theme='dark'] .selectedCard {
-  background-color: hsla(72, 100%, 46%, 0.05);
+  background-color: hsla(157, 64%, 46%, 0.05);
 }
 
 .leftSide {
@@ -101,12 +101,12 @@
 }
 
 .safeBadge {
-  background-color: hsla(72, 100%, 50%, 0.1);
+  background-color: hsla(157, 64%, 50%, 0.1);
   color: var(--color-primary-600);
 }
 
 [data-theme='dark'] .safeBadge {
-  background-color: hsla(72, 100%, 46%, 0.15);
+  background-color: hsla(157, 64%, 46%, 0.15);
   color: var(--color-primary-300);
 }
 
